@@ -21,7 +21,7 @@ Rules:
 Branch from `master`; never push to it directly. A PR is merged only when:
 
 - All CI jobs pass: `lint` (fmt, clippy, rustdoc with `-D warnings`), `test`,
-  `live` (Postgres, MySQL, MongoDB, Redis), `msrv` (Rust 1.92) and `deny`.
+  `live` (Postgres, MySQL, MongoDB, Redis), `msrv` (Rust 1.99) and `deny`.
 - It does one thing. Split unrelated changes into separate PRs.
 - The title and commits follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`, with an optional scope,

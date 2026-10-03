@@ -8,7 +8,7 @@
    `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features`.
 2. Run the live-database suites against `docker-compose.yml` (see
    [TESTING.md](TESTING.md)).
-3. Check the MSRV: `cargo +1.92.0 check --workspace --all-features --all-targets`.
+3. Check the MSRV: `cargo +1.99.0 check --workspace --all-features --all-targets`.
 4. Run `cargo deny check`.
 5. Move the `[Unreleased]` section of `CHANGELOG.md` under the new version
    and bump `workspace.package.version` plus the `version` of every internal

@@ -1,6 +1,6 @@
 # siderite
 
-A FastAPI-style Rust web framework with Pydantic-style validation and a Django-style ORM. It is async-first, type-safe, and targets stable Rust (edition 2024, MSRV 1.92).
+A FastAPI-style Rust web framework with Pydantic-style validation and a Django-style ORM. It is async-first, type-safe, and targets stable Rust (edition 2024, MSRV 1.99).
 
 **Documentation:** [jraavis.github.io/siderite](https://jraavis.github.io/siderite/)
 

@@ -20,11 +20,11 @@ and `use siderite::prelude::*;`.
 | Requirement | Value |
 |---|---|
 | Rust edition | 2024 |
-| MSRV | 1.92 |
+| MSRV | 1.99 |
 | Async runtime | Tokio |
 
 ```bash
-rustup toolchain install 1.92
+rustup toolchain install 1.99
 ```
 
 ## Cargo features

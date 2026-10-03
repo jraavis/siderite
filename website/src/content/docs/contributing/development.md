@@ -11,10 +11,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 ```
 
-MSRV is 1.92:
+MSRV is 1.99:
 
 ```bash
-cargo +1.92.0 check --workspace --all-features --all-targets
+cargo +1.99.0 check --workspace --all-features --all-targets
 ```
 
 Live databases: see [Testing](/siderite/guides/production/testing/). License and

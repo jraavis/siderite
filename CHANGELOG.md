@@ -8,6 +8,7 @@
 
 
 ### Changed
+- **Breaking:** MSRV is Rust 1.99, the stable compiler CI already uses.
 - **Breaking (Migrations):** bounded PostgreSQL/MySQL advisory acquisition and read-only
   recovery inspection. Pending-step intents reject automatic replay of
   uncertain non-transactional scripts/callbacks. Callback replay requires

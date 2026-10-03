@@ -60,7 +60,7 @@ impl Readiness {
         // Repeated cleanup must not move Stopped back into Draining.
         let _ = self
             .0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |phase| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |phase| {
                 (phase < 2).then_some(2)
             });
     }
