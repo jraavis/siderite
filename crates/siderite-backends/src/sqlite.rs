@@ -25,8 +25,8 @@ mod gate;
 mod group;
 
 use gate::{WriteGate, WritePermit};
-pub use group::GroupCommit;
 use group::Committer;
+pub use group::GroupCommit;
 
 /// SQLite adapter executing compiled plans on a connection pool.
 ///
