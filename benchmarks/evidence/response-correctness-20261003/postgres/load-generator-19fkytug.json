@@ -1,0 +1,22 @@
+{
+  "req_per_sec": 3322.26,
+  "time_per_req_ms": 3.01,
+  "p50_ms": 1.0,
+  "p90_ms": 7.0,
+  "p99_ms": 9.0,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient).....done\n\n\nServer Software:        \nServer Hostname:        127.0.0.1\nServer Port:            18081\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      10\nTime taken for tests:   0.015 seconds\nComplete requests:      50\nFailed requests:        0\nTotal transferred:      8250 bytes\nTotal body sent:        8550\nHTML transferred:       2600 bytes\nRequests per second:    3322.26 [#/sec] (mean)\nTime per request:       3.010 [ms] (mean)\nTime per request:       0.301 [ms] (mean, across all concurrent requests)\nTransfer rate:          535.32 [Kbytes/sec] received\n                        554.79 kb/s sent\n                        1090.12 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.1      0       0\nProcessing:     1    2   2.3      1       8\nWaiting:        1    2   2.3      1       8\nTotal:          1    3   2.3      1       9\n\nPercentage of the requests served within a certain time (ms)\n  50%      1\n  66%      2\n  75%      2\n  80%      6\n  90%      7\n  95%      7\n  98%      9\n  99%      9\n 100%      9 (longest request)\n",
+  "exit_status": 0,
+  "completed_requests": 50,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 0.015,
+  "requested_requests": 50,
+  "concurrency": 10,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": null,
+  "response_checks": null,
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "valid": true
+}

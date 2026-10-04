@@ -1,0 +1,24 @@
+
+--- trial process started 1791029023.796976 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":31856}
+BENCHMARK_DATABASE {"pid":31856,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}
+
+--- trial process started 1791029026.773707 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":31915}
+BENCHMARK_DATABASE {"pid":31915,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}
+
+--- trial process started 1791029080.184628 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":32978}
+BENCHMARK_DATABASE {"pid":32978,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}
+
+--- trial process started 1791029096.0526552 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":33319}
+BENCHMARK_DATABASE {"pid":33319,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}
+
+--- trial process started 1791029146.039975 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":34319}
+BENCHMARK_DATABASE {"pid":34319,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}
+
+--- trial process started 1791029159.39363 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":34574}
+BENCHMARK_DATABASE {"pid":34574,"settings":{"version":"PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit","synchronous_commit":"on","fsync":"on","full_page_writes":"on","timezone":"UTC"}}

@@ -1,0 +1,18 @@
+
+--- trial process started 1791017025.442852 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 8838}
+
+--- trial process started 1791017041.580398 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 9134}
+
+--- trial process started 1791017065.725673 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 9630}
+
+--- trial process started 1791017121.369112 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 10687}
+
+--- trial process started 1791017146.012767 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 11152}
+
+--- trial process started 1791017200.494165 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 12228}

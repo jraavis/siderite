@@ -4,6 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Dict, List
 from fastapi import FastAPI, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlite_connections import SQLiteConnections
 from database_settings import capture
@@ -22,12 +23,50 @@ sqlite_wal: bool = os.getenv("SQLITE_WAL") == "1"
 sqlite_profile = os.getenv(
     "SQLITE_PROFILE", "wal-normal" if sqlite_wal else "default"
 )
-sqlite_mode = os.getenv("FASTAPI_SQLITE_MODE", "pooled-sync")
-sqlite_connections = SQLiteConnections(sqlite_path, sqlite_profile, sqlite_mode)
+sqlite_mode = os.getenv("FASTAPI_SQLITE_MODE", "pooled")
+sqlite_connections = SQLiteConnections(
+    sqlite_path, sqlite_profile, sqlite_mode, pool_size
+)
 
 
 def sqlite_connect():
     return sqlite_connections.borrow()
+
+
+async def sqlite_call(function, *args):
+    """Run a blocking SQLite handler body for the configured strategy.
+
+    ``pooled`` runs it on a worker thread so ``pool_size`` connections are
+    used concurrently; the other strategies run it on the event loop.
+    """
+    if sqlite_mode == "pooled":
+        return await run_in_threadpool(function, *args)
+    return function(*args)
+
+
+def sqlite_list():
+    with sqlite_connect() as db:
+        rows = db.execute(
+            "SELECT id, title, done FROM todos ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        return [TodoOut(id=r[0], title=r[1], done=bool(r[2])) for r in rows]
+
+
+def sqlite_get(todo_id):
+    with sqlite_connect() as db:
+        row = db.execute(
+            "SELECT id, title, done FROM todos WHERE id = ?", (todo_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Todo not found")
+        return TodoOut(id=row[0], title=row[1], done=bool(row[2]))
+
+
+def sqlite_create(title):
+    with sqlite_connect() as db:
+        cur = db.execute("INSERT INTO todos (title, done) VALUES (?, 0)",
+                         (title,))
+        return TodoOut(id=cur.lastrowid, title=title, done=False)
 
 
 class TodoCreate(BaseModel):
@@ -128,6 +167,11 @@ async def lifespan(app: FastAPI):
         mongo_client = AsyncIOMotorClient(mongo_url, maxPoolSize=pool_size)
         mongo_db = mongo_client.get_default_database("siderite")
     elif db_backend == "sqlite":
+        if sqlite_mode == "pooled":
+            # Starlette's default worker limit must not cap the pool.
+            import anyio.to_thread
+            limiter = anyio.to_thread.current_default_thread_limiter()
+            limiter.total_tokens = max(limiter.total_tokens, pool_size)
         sqlite_connections.open()
         with sqlite_connect() as db:
             db.execute(
@@ -209,16 +253,7 @@ async def list_todos():
             )
         return results
     elif db_backend == "sqlite":
-        with sqlite_connect() as db:
-            cur = db.cursor()
-            cur.execute(
-                "SELECT id, title, done FROM todos "
-                    "ORDER BY id DESC LIMIT 20"
-            )
-            rows = cur.fetchall()
-            return [
-                TodoOut(id=r[0], title=r[1], done=bool(r[2])) for r in rows
-            ]
+        return await sqlite_call(sqlite_list)
     raise HTTPException(status_code=500, detail="Unsupported backend")
 
 
@@ -251,15 +286,7 @@ async def get_todo(todo_id: int):
             raise HTTPException(status_code=404, detail="Todo not found")
         return TodoOut(id=doc["_id"], title=doc["title"], done=doc["done"])
     elif db_backend == "sqlite":
-        with sqlite_connect() as db:
-            cur = db.cursor()
-            cur.execute(
-                "SELECT id, title, done FROM todos WHERE id = ?", (todo_id,)
-            )
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Todo not found")
-            return TodoOut(id=row[0], title=row[1], done=bool(row[2]))
+        return await sqlite_call(sqlite_get, todo_id)
     raise HTTPException(status_code=500, detail="Unsupported backend")
 
 
@@ -298,15 +325,7 @@ async def create_todo(todo: TodoCreate):
         )
         return TodoOut(id=new_id, title=todo.title, done=False)
     elif db_backend == "sqlite":
-        with sqlite_connect() as db:
-            cur = db.cursor()
-            cur.execute(
-                "INSERT INTO todos (title, done) VALUES (?, 0)",
-                (todo.title,),
-            )
-            db.commit()
-            inserted_id = cur.lastrowid
-            return TodoOut(id=inserted_id, title=todo.title, done=False)
+        return await sqlite_call(sqlite_create, todo.title)
     raise HTTPException(status_code=500, detail="Unsupported backend")
 
 

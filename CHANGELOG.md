@@ -8,6 +8,24 @@
 
 
 ### Changed
+- **SQLite:** writers of one `SqliteBackend` (statements, raw writes,
+  scripts, transactions and transactional schema changes) queue in FIFO
+  order for one write slot instead of racing for the file lock and sleeping
+  in SQLite's busy handler; reads keep the whole pool. A write that cannot
+  get the slot within `with_write_timeout` (five seconds by default) fails
+  with "database is locked", including one issued outside a transaction the
+  same task holds open.
+- **SQLite:** opt-in `SqliteBackend::group_commit` lets concurrent
+  autocommit writes share one transaction and commit sync, each in its own
+  savepoint and acknowledged only after the commit.
+- **Benchmarks:** SQLite comparisons use the same pool size in both apps.
+  FastAPI's new default `pooled` strategy keeps `--pool-size` sqlite3
+  connections used from worker threads; single-connection strategies
+  require `--pool-size 1`. `--siderite-group-commit` is reported as a
+  separately labelled workload.
+- JSON responses stream ordinary derived models and containers directly,
+  avoiding an intermediate JSON tree while preserving dump hooks, custom
+  implementations, field exclusions, and numeric conversion semantics.
 - **Breaking:** MSRV is Rust 1.99, the stable compiler CI already uses.
 - **Breaking (Migrations):** bounded PostgreSQL/MySQL advisory acquisition and read-only
   recovery inspection. Pending-step intents reject automatic replay of

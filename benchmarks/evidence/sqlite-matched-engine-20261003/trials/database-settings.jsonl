@@ -1,0 +1,12 @@
+{"application": "siderite_todo-siderite.log", "pid": 13123, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 13175, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 13207, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 13481, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 13911, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 14347, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 14628, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 14900, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 15323, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 15762, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 16082, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 16364, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}

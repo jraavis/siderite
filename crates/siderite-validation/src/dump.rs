@@ -6,7 +6,7 @@
 //! serializers and to recurse into nested models, so nested computed fields
 //! also appear.
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
@@ -164,6 +164,24 @@ impl DumpOptions {
 /// `exclude_defaults`, and recursion into nested models. Containers delegate
 /// to their elements so nested models keep their computed fields.
 pub trait Dump: Serialize {
+    /// Serialize directly when supported, preserving `dump` semantics.
+    ///
+    /// Args:
+    ///     serializer: Destination serializer.
+    ///     opts: Field selection and exclusion policy.
+    ///
+    /// Returns:
+    ///     Serialized output, or a serialization error.
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        self.dump(opts)
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+
     /// Serialize with `opts` applied.
     ///
     /// # Errors
@@ -173,27 +191,93 @@ pub trait Dump: Serialize {
     }
 }
 
+/// Borrowed Serde adapter that preserves a value's `Dump` implementation.
+pub struct DumpSerialize<'a, T: ?Sized>(pub &'a T, pub &'a DumpOptions);
+
+impl<T: Dump + ?Sized> Serialize for DumpSerialize<'_, T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize_dump(serializer, self.1)
+    }
+}
+
 macro_rules! plain_dump {
-    ($($t:ty),* $(,)?) => {$(impl Dump for $t {})*};
+    ($($t:ty),* $(,)?) => {$(
+        impl Dump for $t {
+            fn serialize_dump<S: Serializer>(
+                &self,
+                serializer: S,
+                _: &DumpOptions,
+            ) -> Result<S::Ok, S::Error> {
+                self.serialize(serializer)
+            }
+        }
+    )*};
 }
 plain_dump!(
-    bool, i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, isize, usize, f32, f64, char, String,
-    str, (), Value, Map<String, Value>,
+    bool,
+    i8,
+    i16,
+    i32,
+    i64,
+    u8,
+    u16,
+    u32,
+    u64,
+    isize,
+    usize,
+    char,
+    String,
+    str,
+    (),
 );
 
+impl Dump for f32 {}
+impl Dump for f64 {}
+impl Dump for i128 {}
+impl Dump for u128 {}
+impl Dump for Value {}
+impl Dump for Map<String, Value> {}
+
 impl<T: Dump + ?Sized> Dump for &T {
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        (**self).serialize_dump(serializer, opts)
+    }
+
     fn dump(&self, opts: &DumpOptions) -> Result<Value, DumpError> {
         (**self).dump(opts)
     }
 }
 
 impl<T: Dump + ?Sized> Dump for Box<T> {
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        (**self).serialize_dump(serializer, opts)
+    }
+
     fn dump(&self, opts: &DumpOptions) -> Result<Value, DumpError> {
         (**self).dump(opts)
     }
 }
 
 impl<T: Dump> Dump for Option<T> {
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        match self {
+            Some(value) => value.serialize_dump(serializer, opts),
+            None => serializer.serialize_none(),
+        }
+    }
+
     fn dump(&self, opts: &DumpOptions) -> Result<Value, DumpError> {
         self.as_ref()
             .map_or(Ok(Value::Null), |inner| inner.dump(opts))
@@ -201,6 +285,19 @@ impl<T: Dump> Dump for Option<T> {
 }
 
 impl<T: Dump> Dump for [T] {
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut sequence = serializer.serialize_seq(Some(self.len()))?;
+        for value in self {
+            sequence.serialize_element(&DumpSerialize(value, opts))?;
+        }
+        sequence.end()
+    }
+
     fn dump(&self, opts: &DumpOptions) -> Result<Value, DumpError> {
         self.iter()
             .map(|item| item.dump(opts))
@@ -210,6 +307,14 @@ impl<T: Dump> Dump for [T] {
 }
 
 impl<T: Dump> Dump for Vec<T> {
+    fn serialize_dump<S: Serializer>(
+        &self,
+        serializer: S,
+        opts: &DumpOptions,
+    ) -> Result<S::Ok, S::Error> {
+        self.as_slice().serialize_dump(serializer, opts)
+    }
+
     fn dump(&self, opts: &DumpOptions) -> Result<Value, DumpError> {
         self.as_slice().dump(opts)
     }

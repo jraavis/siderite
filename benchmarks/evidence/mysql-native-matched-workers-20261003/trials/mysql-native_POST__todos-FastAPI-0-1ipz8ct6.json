@@ -1,0 +1,295 @@
+{
+  "req_per_sec": 3805.99,
+  "time_per_req_ms": 13.137,
+  "p50_ms": 12.412,
+  "p90_ms": 21.366,
+  "p99_ms": 40.004,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        uvicorn\nServer Hostname:        127.0.0.1\nServer Port:            8082\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      50\nTime taken for tests:   14.859 seconds\nComplete requests:      56554\nFailed requests:        0\nTotal transferred:      11501697 bytes\nTotal body sent:        9614180\nHTML transferred:       3075151 bytes\nRequests per second:    3805.99 [#/sec] (mean)\nTime per request:       13.137 [ms] (mean)\nTime per request:       0.263 [ms] (mean, across all concurrent requests)\nTransfer rate:          755.90 [Kbytes/sec] received\n                        631.85 kb/s sent\n                        1387.76 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.4      0      35\nProcessing:     1   13   7.3     12      74\nWaiting:        1   13   7.3     12      74\nTotal:          1   13   7.3     12      74\n\nPercentage of the requests served within a certain time (ms)\n  50%     12\n  66%     14\n  75%     15\n  80%     17\n  90%     21\n  95%     25\n  98%     34\n  99%     40\n 100%     74 (longest request)\nCompleted 5655 requests\nCompleted 11310 requests\nCompleted 16965 requests\nCompleted 22620 requests\nCompleted 28275 requests\nCompleted 33930 requests\nCompleted 39585 requests\nCompleted 45240 requests\nCompleted 50895 requests\nCompleted 56550 requests\nFinished 56554 requests\n",
+  "exit_status": 0,
+  "completed_requests": 56554,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 14.859,
+  "requested_requests": 56554,
+  "concurrency": 50,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": 56554,
+  "response_checks": {
+    "phase": "after_timed_trial",
+    "measured_responses_checked": false,
+    "requested_samples": 50,
+    "concurrency": 50,
+    "verified_rows": 50,
+    "responses": [
+      {
+        "status": 201,
+        "id": 121240,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121235,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121236,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121238,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121237,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121241,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121239,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121243,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121242,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121244,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121245,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121246,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121247,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121249,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121250,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121248,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121251,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121258,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121253,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121254,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121252,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121257,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121255,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121256,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121259,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121260,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121261,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121262,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121263,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121269,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121264,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121268,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121265,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121266,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121277,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121267,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121278,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121280,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121282,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121271,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121273,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121284,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121272,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121270,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121283,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121274,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121279,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121276,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121275,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 121281,
+        "invalid_reasons": []
+      }
+    ],
+    "invalid_reasons": [],
+    "valid": true
+  },
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "pair_index": 0,
+  "runtime_workers": 1,
+  "latency_resolution_ms": 0.001,
+  "latency_csv": "latency-sbtgou69.csv",
+  "database_backend": "mysql",
+  "database_settings": {
+    "version": "8.4.11",
+    "autocommit": 1,
+    "timezone": "+00:00",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "innodb_flush_log_at_trx_commit": 1,
+    "sync_binlog": 1
+  },
+  "valid": true
+}

@@ -1,0 +1,65 @@
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+    Checking hashbrown v0.17.1
+    Checking indexmap v2.14.2
+    Checking tracing v0.1.44
+    Checking regex-automata v0.4.18
+   Compiling num-traits v0.2.19
+    Checking serde_json v1.0.151
+    Checking futures-util v0.3.34
+    Checking uuid v1.26.1
+    Checking serde_path_to_error v0.1.20
+    Checking h2 v0.4.19
+    Checking url v2.5.8
+    Checking rust_decimal v1.43.0
+    Checking regex v1.13.1
+    Checking futures-channel v0.3.34
+    Checking siderite-validation v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-validation)
+    Checking hyper v1.11.1
+    Checking tower v0.5.3
+    Checking toml_datetime v0.6.11
+    Checking serde_spanned v0.6.9
+    Checking spin v0.9.9
+    Checking winnow v0.7.15
+   Compiling memchr v2.8.3
+    Checking toml_write v0.1.2
+   Compiling aho-corasick v1.1.5
+    Checking toml_edit v0.22.27
+    Checking multer v3.1.0
+    Checking serde_urlencoded v0.7.1
+    Checking hyper-util v0.1.21
+    Checking tokio-tungstenite v0.29.0
+    Checking chrono v0.4.45
+    Checking rustix v1.1.5
+    Checking fastrand v2.5.0
+    Checking lazy_static v1.5.0
+    Checking inlinable_string v0.1.15
+    Checking yansi v1.0.1
+    Checking unicode-ident v1.0.26
+    Checking pear v0.2.9
+    Checking tower-http v0.6.11
+    Checking proc-macro2 v1.0.107
+    Checking axum v0.8.9
+    Checking sharded-slab v0.1.7
+    Checking tempfile v3.27.0
+    Checking siderite-orm v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-orm)
+    Checking toml v0.8.23
+    Checking uncased v0.9.10
+    Checking siderite-openapi v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-openapi)
+    Checking tracing-log v0.2.0
+    Checking tracing-serde v0.2.0
+    Checking matchers v0.2.0
+    Checking thread_local v1.1.10
+    Checking regex-syntax v0.8.11
+    Checking nu-ansi-term v0.50.3
+    Checking tracing-subscriber v0.3.23
+    Checking siderite-core v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-core)
+    Checking figment v0.10.19
+    Checking quote v1.0.47
+    Checking lru v0.18.5
+   Compiling siderite-macros v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-macros)
+    Checking siderite-cache v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-cache)
+    Checking syn v2.0.119
+    Checking siderite-config v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-config)
+    Checking siderite v0.1.0 (/Users/raavi/dev/siderite/crates/siderite)
+    Finished `release` profile [optimized] target(s) in 1m 17s

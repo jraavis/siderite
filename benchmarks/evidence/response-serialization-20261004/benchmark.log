@@ -1,0 +1,40 @@
+   Compiling siderite-bench v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-bench)
+    Finished `bench` profile [optimized] target(s) in 12.70s
+     Running benches/extract.rs (target/release/deps/extract-6c8fd97bb7a9152c)
+Benchmarking response_serialization/siderite/dump
+Benchmarking response_serialization/siderite/dump: Warming up for 1.0000 s
+Benchmarking response_serialization/siderite/dump: Collecting 100 samples in estimated 3.0009 s (8.2M iterations)
+Benchmarking response_serialization/siderite/dump: Analyzing
+response_serialization/siderite/dump
+                        time:   [359.81 ns 361.80 ns 363.87 ns]
+Benchmarking response_serialization/siderite/value_tree_reference
+Benchmarking response_serialization/siderite/value_tree_reference: Warming up for 1.0000 s
+Benchmarking response_serialization/siderite/value_tree_reference: Collecting 100 samples in estimated 3.0001 s (3.9M iterations)
+Benchmarking response_serialization/siderite/value_tree_reference: Analyzing
+response_serialization/siderite/value_tree_reference
+                        time:   [771.12 ns 773.25 ns 775.32 ns]
+Found 6 outliers among 100 measurements (6.00%)
+  1 (1.00%) low severe
+  4 (4.00%) low mild
+  1 (1.00%) high mild
+Benchmarking response_serialization/axum/response
+Benchmarking response_serialization/axum/response: Warming up for 1.0000 s
+Benchmarking response_serialization/axum/response: Collecting 100 samples in estimated 3.0017 s (6.4M iterations)
+Benchmarking response_serialization/axum/response: Analyzing
+response_serialization/axum/response
+                        time:   [460.31 ns 461.38 ns 462.51 ns]
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) low mild
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking response_serialization/serde_json/to_vec
+Benchmarking response_serialization/serde_json/to_vec: Warming up for 1.0000 s
+Benchmarking response_serialization/serde_json/to_vec: Collecting 100 samples in estimated 3.0004 s (33M iterations)
+Benchmarking response_serialization/serde_json/to_vec: Analyzing
+response_serialization/serde_json/to_vec
+                        time:   [90.052 ns 90.297 ns 90.539 ns]
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+

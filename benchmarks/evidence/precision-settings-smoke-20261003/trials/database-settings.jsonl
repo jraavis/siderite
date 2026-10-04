@@ -1,0 +1,4 @@
+{"application": "siderite_todo-siderite.log", "pid": 11787, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 11848, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-siderite.log", "pid": 11882, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}
+{"application": "siderite_todo-fastapi.log", "pid": 11887, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}, "scope": "sampled SQL connections"}

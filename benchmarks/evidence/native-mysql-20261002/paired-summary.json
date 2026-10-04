@@ -1,0 +1,31 @@
+{
+  "sqlx": {
+    "median_commits_per_second": 4007.7094569079713,
+    "median_p99_us": 6627,
+    "shortest_seconds": 12.383960125,
+    "total_verified_rows": 250000
+  },
+  "native_reset": {
+    "median_commits_per_second": 2704.4201252606617,
+    "median_p99_us": 6750,
+    "shortest_seconds": 17.446125333,
+    "total_verified_rows": 250000,
+    "paired_geometric_mean_ratio_vs_sqlx": 0.6810127589255671,
+    "paired_bootstrap_95_percent_interval": [
+      0.5893960193056589,
+      0.7493365314554148
+    ]
+  },
+  "native_retain": {
+    "median_commits_per_second": 4656.128894768406,
+    "median_p99_us": 5409,
+    "shortest_seconds": 10.638876666,
+    "total_verified_rows": 250000,
+    "paired_geometric_mean_ratio_vs_sqlx": 1.2044308686256406,
+    "paired_bootstrap_95_percent_interval": [
+      1.139512595044901,
+      1.279680604181147
+    ]
+  },
+  "limitations": "Driver-only local Docker measurements; 5 pairs; retained session workload; no framework comparison or production adapter adoption."
+}

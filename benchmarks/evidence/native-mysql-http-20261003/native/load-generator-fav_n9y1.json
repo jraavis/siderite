@@ -1,0 +1,21 @@
+{
+  "req_per_sec": 3807.52,
+  "time_per_req_ms": 5.253,
+  "p50_ms": 5.0,
+  "p90_ms": 7.0,
+  "p99_ms": 16.0,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        uvicorn\nServer Hostname:        127.0.0.1\nServer Port:            8082\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      20\nTime taken for tests:   15.106 seconds\nComplete requests:      57515\nFailed requests:        0\nTotal transferred:      11733060 bytes\nTotal body sent:        9777550\nHTML transferred:       3163325 bytes\nRequests per second:    3807.52 [#/sec] (mean)\nTime per request:       5.253 [ms] (mean)\nTime per request:       0.263 [ms] (mean, across all concurrent requests)\nTransfer rate:          758.53 [Kbytes/sec] received\n                        632.11 kb/s sent\n                        1390.64 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.2      0      29\nProcessing:     1    5   2.9      5      46\nWaiting:        1    5   2.8      5      46\nTotal:          1    5   2.9      5      46\n\nPercentage of the requests served within a certain time (ms)\n  50%      5\n  66%      6\n  75%      6\n  80%      6\n  90%      7\n  95%      9\n  98%     11\n  99%     16\n 100%     46 (longest request)\nCompleted 5751 requests\nCompleted 11502 requests\nCompleted 17253 requests\nCompleted 23004 requests\nCompleted 28755 requests\nCompleted 34506 requests\nCompleted 40257 requests\nCompleted 46008 requests\nCompleted 51759 requests\nCompleted 57510 requests\nFinished 57515 requests\n",
+  "exit_status": 0,
+  "completed_requests": 57515,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 15.106,
+  "requested_requests": 57515,
+  "concurrency": 20,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": null,
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "valid": true
+}

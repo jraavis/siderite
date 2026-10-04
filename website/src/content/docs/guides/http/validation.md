@@ -156,6 +156,15 @@ Computed fields appear in OpenAPI as `readOnly` properties.
 `exclude_unset` is not available: Serde does not record which fields were
 explicitly set.
 
+Ordinary derived models and lists now write response JSON directly without
+building an intermediate JSON tree. The encoded body remains buffered until
+serialization succeeds. Computed fields, serializer hooks, and
+explicit dump options retain their existing behavior. Hand-written `Dump`
+implementations remain compatible: the default `serialize_dump` method calls
+`dump`, so custom output is never silently replaced by plain Serde output.
+`DumpSerialize(&value, &options)` in `validation::dump` exposes the same
+serialization path for other Serde consumers.
+
 ## Constrained types
 
 | Type | Accepts |

@@ -33,6 +33,7 @@ pub fn expand(input: &DeriveInput, container: &Container, hooks: Hooks) -> Token
         predicates
             .push(parse_quote!(for<'__a> #ident #ty_generics: ::siderite::validation::ModelHooks));
     }
+    let mut stream = TokenStream::new();
     let body = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => {
@@ -43,6 +44,7 @@ pub fn expand(input: &DeriveInput, container: &Container, hooks: Hooks) -> Token
                     &[],
                     &mut sink,
                 );
+                stream = super::stream::named(&plans, hooks);
                 named_body(&plans, container, hooks, &mut predicates)
             }
             Fields::Unnamed(fields) => {
@@ -83,6 +85,7 @@ pub fn expand(input: &DeriveInput, container: &Container, hooks: Hooks) -> Token
     quote! {
         impl #impl_generics #validation::Dump for #ident #ty_generics #where_clause {
             #method
+            #stream
         }
     }
 }

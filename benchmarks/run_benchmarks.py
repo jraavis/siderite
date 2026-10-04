@@ -472,13 +472,16 @@ def run_todo_suite(
     requests: Optional[int] = None,
     warmup_requests: Optional[int] = None,
     runtime_workers: int = 1,
-    fastapi_sqlite_mode: str = "pooled-sync",
+    fastapi_sqlite_mode: str = "pooled",
+    siderite_group_commit: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     profile_name = sqlite_profile or (
         "wal-normal" if sqlite_wal else "default"
     )
     if profile_name not in ("default", "wal-full", "wal-normal"):
         raise ValueError("Invalid SQLite durability profile")
+    if backend == "sqlite":
+        sqlite_pool_size(fastapi_sqlite_mode, pool_size)
     database_file = sqlite_path or SQLITE_DB
     db_url = db_url or resolve_db_url(backend)
 
@@ -511,6 +514,7 @@ def run_todo_suite(
         env["FASTAPI_SQLITE_MODE"] = fastapi_sqlite_mode
         env["SQLITE_PROFILE"] = profile_name
         env["SQLITE_WAL"] = "1" if profile_name == "wal-normal" else "0"
+        env["SQLITE_GROUP_COMMIT"] = "1" if siderite_group_commit else "0"
     specs = server_specs(
         "siderite_todo",
         "todo_app",
@@ -522,7 +526,12 @@ def run_todo_suite(
     )
     profile = f"mysql-{mysql_driver}" if backend == "mysql" else backend
     if backend == "sqlite":
-        profile = f"sqlite-{profile_name}-fastapi-{fastapi_sqlite_mode}"
+        profile = (f"sqlite-{profile_name}-pool{pool_size}"
+                   f"-fastapi-{fastapi_sqlite_mode}")
+        if siderite_group_commit:
+            # Shared commits are a different workload from FastAPI's
+            # one commit per request; never report them as the same row.
+            profile += "-siderite-group-commit"
     results = {}
     for path, method, name in (
         ("/todos", "GET", "list 20"),
@@ -586,6 +595,33 @@ def run_todo_suite(
             "fastapi": asdict(f),
         }
     return results
+
+
+def sqlite_pool_size(mode: str, pool_size: int) -> int:
+    """Return the SQLite connection count both applications use.
+
+    Only ``pooled`` keeps several FastAPI connections; the other strategies
+    serve one request at a time on the event loop, so Siderite must also use
+    one connection for the comparison to hold equal pool sizes.
+
+    Args:
+        mode: FastAPI SQLite connection strategy.
+        pool_size: Requested pool size for both applications.
+
+    Returns:
+        The matched pool size.
+
+    Raises:
+        ValueError: The strategy cannot match the requested pool size.
+    """
+    if mode not in ("pooled", "pooled-sync", "per-request"):
+        raise ValueError("Invalid FastAPI SQLite connection strategy")
+    if pool_size < 1 or (mode != "pooled" and pool_size != 1):
+        raise ValueError(
+            f"FastAPI SQLite mode {mode} uses one connection; "
+            "pass --pool-size 1 or use pooled"
+        )
+    return pool_size
 
 
 def print_markdown_summary(
@@ -709,8 +745,14 @@ def main():
         ),
     )
     parser.add_argument(
-        "--fastapi-sqlite-mode", choices=["pooled-sync", "per-request"],
-        default="pooled-sync", help="Named native SQLite baseline strategy",
+        "--fastapi-sqlite-mode",
+        choices=["pooled", "pooled-sync", "per-request"], default="pooled",
+        help="Native SQLite baseline strategy; pooled matches --pool-size",
+    )
+    parser.add_argument(
+        "--siderite-group-commit", action="store_true",
+        help="SQLite: Siderite shares commits between concurrent inserts; "
+             "reported as a separately labelled workload",
     )
     parser.add_argument(
         "--sqlite-profile",
@@ -722,8 +764,7 @@ def main():
         type=int,
         default=10,
         help=(
-            "PostgreSQL / MySQL connection pool size in both apps "
-            "(default: 10)"
+            "Database connection pool size in both apps (default: 10)"
         ),
     )
     parser.add_argument(
@@ -770,6 +811,11 @@ def main():
         parser.error("concurrency cannot exceed requests")
     if args.runs < 1 or args.pool_size < 1:
         parser.error("runs and pool-size must be positive")
+    if args.suite != "plain" and args.db in ("sqlite", "all"):
+        try:
+            sqlite_pool_size(args.fastapi_sqlite_mode, args.pool_size)
+        except ValueError as error:
+            parser.error(str(error))
     if args.sqlite_wal and args.sqlite_profile:
         parser.error("choose sqlite-profile or the legacy sqlite-wal alias")
     if args.mysql_driver == "native" and (
@@ -844,6 +890,7 @@ def main():
                     warmup_requests=args.warmup_requests,
                     runtime_workers=args.runtime_workers,
                     fastapi_sqlite_mode=args.fastapi_sqlite_mode,
+                    siderite_group_commit=args.siderite_group_commit,
                 )
                 all_todo_results.update(res)
 

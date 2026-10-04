@@ -57,14 +57,19 @@ warms it, resets rows without recreating the schema, measures, and shuts
 down before starting the next application. Trial order alternates S/F then
 F/S. Each database reset restores 100 initial rows outside timed work.
 
-`--pool-size N` controls the configured pools. SQLite FastAPI still uses
-blocking sqlite3 connections opened per request; its lifecycle differs from
-Siderite's pool and must be identified in published comparisons.
+`--pool-size N` sets the same pool size in both applications, SQLite
+included. FastAPI's default SQLite strategy (`--fastapi-sqlite-mode pooled`)
+keeps N blocking sqlite3 connections used from worker threads. The
+single-connection strategies (`pooled-sync`, `per-request`) require
+`--pool-size 1`, so Siderite also runs one connection.
 Pool 10 with concurrency 20 remains an intentional saturation workload.
 
 SQLite defaults use rollback journal and `synchronous=FULL`.
 `--sqlite-wal` selects WAL and `synchronous=NORMAL` in both applications;
 report this as a separate durability profile.
+`--siderite-group-commit` enables Siderite's opt-in commit coalescing for
+concurrent autocommit writes; because FastAPI has no counterpart and commits
+per request, report this as a separately labelled workload.
 
 ## Validity and evidence
 

@@ -108,7 +108,7 @@ macro_rules! probe_traits {
             $(
                 #[allow(unused_variables)]
                 fn $name(&self, $($arg: $ty),*) $(-> $ret)? {
-                    let ($($d),*) = ($($d),*);
+                    let ($($d,)*) = ($($d,)*);
                     $default
                 }
             )*
@@ -117,6 +117,8 @@ macro_rules! probe_traits {
 }
 
 probe_traits! {
+    /// Whether the model implements hooks, requiring value-based dumping.
+    fn has_hooks(model: &T) -> bool => |model| false;
     /// Probe for [`ModelHooks::before_model`].
     fn before_model(input: &mut Value, ctx: &mut ValidationContext) => |input, ctx| ();
     /// Probe for [`ModelHooks::before_field`].
@@ -136,6 +138,10 @@ probe_traits! {
 }
 
 impl<T: ModelHooks> ViaHooks<T> for &Probe<T> {
+    fn has_hooks(&self, _: &T) -> bool {
+        true
+    }
+
     fn before_model(&self, input: &mut Value, ctx: &mut ValidationContext) {
         T::before_model(input, ctx);
     }

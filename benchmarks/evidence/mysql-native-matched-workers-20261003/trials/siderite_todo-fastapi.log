@@ -1,0 +1,36 @@
+
+--- trial process started 1791022837.020867 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 17324}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 17324, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}
+
+--- trial process started 1791022855.2450812 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 17692}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 17692, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}
+
+--- trial process started 1791022871.60533 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 18012}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 18012, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}
+
+--- trial process started 1791022916.099048 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 18949}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 18949, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}
+
+--- trial process started 1791022932.1106071 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 19272}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 19272, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}
+
+--- trial process started 1791022978.2580311 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 20205}
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+BENCHMARK_DATABASE {"pid": 20205, "settings": {"version": "8.4.11", "autocommit": 1, "timezone": "+00:00", "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION", "innodb_flush_log_at_trx_commit": 1, "sync_binlog": 1}}

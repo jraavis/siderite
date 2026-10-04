@@ -17,7 +17,7 @@ siderite-orm.workspace = true
 async-trait.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 mongodb = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }

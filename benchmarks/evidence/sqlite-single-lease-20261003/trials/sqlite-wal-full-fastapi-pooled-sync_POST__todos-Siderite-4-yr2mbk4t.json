@@ -1,0 +1,134 @@
+{
+  "req_per_sec": 13589.95,
+  "time_per_req_ms": 1.472,
+  "p50_ms": 1.0,
+  "p90_ms": 1.0,
+  "p99_ms": 2.0,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        \nServer Hostname:        127.0.0.1\nServer Port:            8081\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      20\nTime taken for tests:   15.092 seconds\nComplete requests:      205096\nFailed requests:        0\nTotal transferred:      34345431 bytes\nTotal body sent:        34866320\nHTML transferred:       11169583 bytes\nRequests per second:    13589.95 [#/sec] (mean)\nTime per request:       1.472 [ms] (mean)\nTime per request:       0.074 [ms] (mean, across all concurrent requests)\nTransfer rate:          2222.44 [Kbytes/sec] received\n                        2256.14 kb/s sent\n                        4478.58 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.2      0      53\nProcessing:     0    1   3.6      1     197\nWaiting:        0    1   3.6      1     197\nTotal:          0    1   3.6      1     197\n\nPercentage of the requests served within a certain time (ms)\n  50%      1\n  66%      1\n  75%      1\n  80%      1\n  90%      1\n  95%      1\n  98%      2\n  99%      2\n 100%    197 (longest request)\nCompleted 20509 requests\nCompleted 41018 requests\nCompleted 61527 requests\nCompleted 82036 requests\nCompleted 102545 requests\nCompleted 123054 requests\nCompleted 143563 requests\nCompleted 164072 requests\nCompleted 184581 requests\nCompleted 205090 requests\nFinished 205096 requests\n",
+  "exit_status": 0,
+  "completed_requests": 205096,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 15.092,
+  "requested_requests": 205096,
+  "concurrency": 20,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": 205096,
+  "response_checks": {
+    "phase": "after_timed_trial",
+    "measured_responses_checked": false,
+    "requested_samples": 20,
+    "concurrency": 20,
+    "verified_rows": 20,
+    "responses": [
+      {
+        "status": 201,
+        "id": 205200,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205197,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205198,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205199,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205201,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205202,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205204,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205203,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205205,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205206,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205207,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205208,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205210,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205216,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205214,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205211,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205215,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205212,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205209,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 205213,
+        "invalid_reasons": []
+      }
+    ],
+    "invalid_reasons": [],
+    "valid": true
+  },
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "pair_index": 4,
+  "runtime_workers": 1,
+  "valid": true
+}

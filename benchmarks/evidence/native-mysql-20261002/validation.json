@@ -1,0 +1,12 @@
+{
+  "cargo_fmt_check": "passed",
+  "cargo_clippy_workspace_all_targets_all_features": "passed with -D warnings",
+  "cargo_test_workspace_all_features": "passed; ignored live tests excluded",
+  "workspace_passed_tests": 883,
+  "workspace_ignored_tests": 23,
+  "native_mysql_live_reuse_contract": "passed separately with --include-ignored",
+  "cargo_1_92_check_probe": "passed",
+  "cargo_deny_check": "passed with allowed warnings",
+  "probe_database_cleanup": "no siderite_probe_* schemas remain",
+  "workspace_test_output_sha256": "ec3cca7762c2dc762041c3db30ba50528c81a5d7eb523e17e3280aa357fca22e"
+}

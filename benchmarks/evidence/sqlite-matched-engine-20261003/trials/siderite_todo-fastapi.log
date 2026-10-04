@@ -1,0 +1,24 @@
+
+--- trial process started 1791022624.729284 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 13175}
+BENCHMARK_DATABASE {"pid": 13175, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}
+
+--- trial process started 1791022640.595958 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 13481}
+BENCHMARK_DATABASE {"pid": 13481, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}
+
+--- trial process started 1791022661.8117719 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 13911}
+BENCHMARK_DATABASE {"pid": 13911, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}
+
+--- trial process started 1791022714.355926 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 14900}
+BENCHMARK_DATABASE {"pid": 14900, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}
+
+--- trial process started 1791022737.708728 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 15323}
+BENCHMARK_DATABASE {"pid": 15323, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}
+
+--- trial process started 1791022789.5737019 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 16364}
+BENCHMARK_DATABASE {"pid": 16364, "settings": {"version": "3.53.4", "journal_mode": "wal", "synchronous": 2, "foreign_keys": 1, "busy_timeout": 5000}}

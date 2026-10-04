@@ -1,0 +1,62 @@
+Raw trial evidence: /Users/raavi/dev/siderite/benchmarks/logs/trials-20261003-140059
+  -> Seeding 100 rows into database (sqlite)...
+
+=======================================================
+Benchmark: sqlite-wal-full POST /todos (POST /todos)
+Parameters: -n 10000 -c 20, repetitions=5
+=======================================================
+  -> Seeding 100 rows into database (sqlite)...
+  -> Calibrating Siderite...
+  -> Seeding 100 rows into database (sqlite)...
+  -> Calibrating FastAPI...
+  -> Calibrated request count: 203919 (minimum 10.0s)
+  -> Seeding 100 rows into database (sqlite)...
+  -> Warming up Siderite...
+  -> Seeding 100 rows into database (sqlite)...
+  -> Siderite Run 1/5... 13,399 req/s
+  -> Seeding 100 rows into database (sqlite)...
+  -> Warming up FastAPI...
+  -> Seeding 100 rows into database (sqlite)...
+  -> FastAPI Run 1/5...Traceback (most recent call last):
+  File "/Users/raavi/dev/siderite/benchmarks/run_benchmarks.py", line 837, in <module>
+    main()
+    ~~~~^^
+  File "/Users/raavi/dev/siderite/benchmarks/run_benchmarks.py", line 793, in main
+    res = run_todo_suite(
+        backend=b,
+    ...<17 lines>...
+        runtime_workers=args.runtime_workers,
+    )
+  File "/Users/raavi/dev/siderite/benchmarks/run_benchmarks.py", line 519, in run_todo_suite
+    s, f = run_benchmark_set(
+           ~~~~~~~~~~~~~~~~~^
+        f"{profile} {method} {path}",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<39 lines>...
+        warmup_requests=warmup_requests,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/raavi/dev/siderite/benchmarks/run_benchmarks.py", line 244, in run_benchmark_set
+    result = run_ab(
+        f"{base}{path}",
+    ...<5 lines>...
+        timeout=timeout,
+    )
+  File "/Users/raavi/dev/siderite/benchmarks/run_benchmarks.py", line 116, in run_ab
+    proc = subprocess.run(
+        cmd,
+    ...<3 lines>...
+        timeout=timeout,
+    )
+  File "/opt/homebrew/Cellar/python@3.13/3.13.14_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/subprocess.py", line 556, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.14_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/subprocess.py", line 1222, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.14_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/subprocess.py", line 2154, in _communicate
+    ready = selector.select(timeout)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.14_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/selectors.py", line 398, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

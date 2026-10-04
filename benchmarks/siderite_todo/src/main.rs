@@ -7,7 +7,7 @@ use siderite::prelude::*;
 use siderite_backends::mongodb::MongoBackend;
 use siderite_backends::mysql::MySqlBackend;
 use siderite_backends::postgres::PgBackend;
-use siderite_backends::sqlite::SqliteBackend;
+use siderite_backends::sqlite::{GroupCommit, SqliteBackend};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 const SQLITE_SCHEMA: &str = "
@@ -52,7 +52,7 @@ pub struct NewTodo {
 }
 
 /// `DATABASE_POOL_SIZE` (the runner's `--pool-size`), ten by default like
-/// `connect`. Applies to PostgreSQL and MySQL, in both apps.
+/// `connect`. Applies to every SQL backend, with the same value in both apps.
 fn pool_size() -> u32 {
     std::env::var("DATABASE_POOL_SIZE")
         .ok()
@@ -126,6 +126,14 @@ pub async fn open_db(url: &str) -> Result<Db, ApiError> {
             return Err(ApiError::internal("invalid SQLite profile"));
         }
         .map_err(ApiError::internal)?;
+        // `SQLITE_GROUP_COMMIT=1` (the runner's `--siderite-group-commit`)
+        // shares commits between concurrent inserts. FastAPI has no
+        // counterpart, so results are labelled as a separate workload.
+        let backend = if std::env::var("SQLITE_GROUP_COMMIT").is_ok_and(|v| v == "1") {
+            backend.group_commit(GroupCommit::default())
+        } else {
+            backend
+        };
         let db = Db::new(backend);
         db.execute_script(SQLITE_SCHEMA)
             .await

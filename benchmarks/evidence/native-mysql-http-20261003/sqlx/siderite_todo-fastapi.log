@@ -1,0 +1,24 @@
+
+--- trial process started 1790993562.38435 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790993581.194581 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790993597.578478 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790993655.511437 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790993671.141124 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790993718.804432 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)

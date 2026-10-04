@@ -75,6 +75,12 @@ Two details matter in practice:
 * Integer literals are bound as 64-bit integers. PostgreSQL functions that take `integer` (`SUBSTR`, `NTILE`, `LAG`) get a `CAST` or a literal from the compiler. `LAG(x, n, default)` needs `default` to have the column's exact type; cast it when the column is not `bigint`.
 * A `NULL` value is written as the keyword `NULL`, not bound, so the server infers its type from context and SQLx's statement cache (keyed by SQL text) never reuses a statement that was prepared with an inferred parameter type for a later value. In `raw_sql` a `Value::Null` parameter is sent untyped (OID 0); keep `NULL` and non-`NULL` variants of a raw statement textually different (`WHERE x IS NULL`) or cast the parameter (`$1::text`).
 
+## SQLite notes
+
+* **Write serialization (`WriteGate`):** SQLite allows only one writer per database file. In a pooled backend, concurrent writes on separate connections contend for the file lock, causing losing connections to sleep in SQLite's busy handler (1, 2, 5 … 100 ms backoff) and driving up tail latency. `SqliteBackend` serializes all writes across its clones through an in-process FIFO `WriteGate`. Uncontended writes proceed immediately; queued writers hand over the write slot without sleeping in the busy handler. Configure the maximum wait time with [`with_write_timeout`](file:///Users/raavi/dev/siderite/crates/siderite-backends/src/sqlite.rs) (default: 5 seconds, matching SQLx's busy timeout).
+* **Group commit (`group_commit`):** Autocommit writes each normally pay a commit sync (multiple `fsync` calls in rollback-journal mode). With [`SqliteBackend::group_commit(GroupCommit::default())`](file:///Users/raavi/dev/siderite/crates/siderite-backends/src/sqlite.rs), concurrent writes queued during a flush share a single transaction and commit `fsync`. Each write runs within its own savepoint so individual errors fail only their caller, and responses are sent only after the shared commit completes, preserving durability.
+* **Pool sizing and WAL:** [`connect`](file:///Users/raavi/dev/siderite/crates/siderite-backends/src/sqlite.rs) defaults to a pool of 10 connections for file databases and 1 for `:memory:`. Use [`connect_with`](file:///Users/raavi/dev/siderite/crates/siderite-backends/src/sqlite.rs) to customize pool size or opt in to `SqliteJournalMode::Wal` for concurrent non-blocking reads and writes.
+
 ## MySQL notes
 
 * Identifiers use backticks (embedded backticks doubled); placeholders are `?`. A bare `OFFSET` gets `LIMIT 18446744073709551615`.

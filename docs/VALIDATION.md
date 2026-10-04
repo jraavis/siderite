@@ -131,6 +131,15 @@ The derives find `#[model_hooks]` without being told, as long as the model type 
 
 Computed fields appear in the OpenAPI schema as `readOnly` properties.
 
+Ordinary derived models and containers serialize response JSON directly,
+without allocating an intermediate JSON tree. The encoded body remains
+buffered until serialization succeeds. Hooks and explicit options
+retain the value-based path. Existing custom `Dump::dump` implementations
+remain authoritative through the default `Dump::serialize_dump` fallback.
+The borrowed `validation::dump::DumpSerialize(&value, &options)` adapter
+exposes this behavior to Serde consumers. An override of `serialize_dump`
+must preserve the output and failure semantics of `dump`.
+
 ## Constrained types
 
 | Type | Accepts |

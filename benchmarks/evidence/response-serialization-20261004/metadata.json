@@ -1,0 +1,13 @@
+{
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "source_sha256": {
+    "crates/siderite-bench/benches/extract.rs": "224bcadcd423fb61dc700274969067e4ef5b411c6127621b5c258ba8e0f1bb30",
+    "crates/siderite-core/src/response.rs": "2fc4d843a2f206d0e87b8330abe0accdd3e5c277fe7b63c0a3f3aad67251b02a",
+    "crates/siderite-validation/src/dump.rs": "87a4889af2df8cab4c0d8ad5e3f2a26564394b0bb32d17c74134e8ebd849f50e",
+    "crates/siderite-validation/src/hooks.rs": "53b6fc349f314031de1c1b1d76e90cc000deb0afa6671299329eb0049805540c",
+    "crates/siderite-macros/src/schema/stream.rs": "79978a5e653d4df30c0f4aef23053c41ee0541e33df487b6f3b159b5e81026b4",
+    "crates/siderite-macros/src/schema/dump.rs": "db4150fb37d89c3e4b54707a8abd5c0f8d480e7a6ad2c54da4afca10372c8ecb"
+  },
+  "command": "cargo bench -p siderite-bench --bench extract -- response_serialization --warm-up-time 1 --measurement-time 3 --save-baseline stream-control",
+  "host_isolation": "Another workspace build was present. Diagnostic microbenchmark; no isolated-host or HTTP throughput claim."
+}

@@ -1,0 +1,10 @@
+
+--- trial process started 1790995877.3590999 ---
+
+--- trial process started 1790995879.543457 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)
+
+--- trial process started 1790995881.4440901 ---
+/opt/homebrew/lib/python3.13/site-packages/aiomysql/cursors.py:239: Warning: Table 'todos' already exists
+  await self._query(query)

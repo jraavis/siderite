@@ -1,0 +1,24 @@
+
+--- trial process started 1791028803.315802 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":27409}
+BENCHMARK_DATABASE {"pid":27409,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791028807.6687958 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":27527}
+BENCHMARK_DATABASE {"pid":27527,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791028859.219202 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":28547}
+BENCHMARK_DATABASE {"pid":28547,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791028877.91642 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":28892}
+BENCHMARK_DATABASE {"pid":28892,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791028932.978848 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":30008}
+BENCHMARK_DATABASE {"pid":30008,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791028950.9546392 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":30390}
+BENCHMARK_DATABASE {"pid":30390,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"PIPES_AS_CONCAT,IGNORE_SPACE,ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}

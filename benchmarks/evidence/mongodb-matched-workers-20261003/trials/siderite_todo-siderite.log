@@ -1,0 +1,24 @@
+
+--- trial process started 1791029591.941973 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":42646}
+BENCHMARK_DATABASE {"pid":42646,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}
+
+--- trial process started 1791029596.1184561 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":42742}
+BENCHMARK_DATABASE {"pid":42742,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}
+
+--- trial process started 1791029651.9132218 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":43836}
+BENCHMARK_DATABASE {"pid":43836,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}
+
+--- trial process started 1791029667.902421 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":44184}
+BENCHMARK_DATABASE {"pid":44184,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}
+
+--- trial process started 1791029724.2856672 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":45352}
+BENCHMARK_DATABASE {"pid":45352,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}
+
+--- trial process started 1791029739.506619 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":45644}
+BENCHMARK_DATABASE {"pid":45644,"settings":{"version":"8.3.11","read_preference":"primary","client_read_concern":"{}","client_write_concern":"{}","server_default_read_concern":"{\"level\":\"local\"}","server_default_write_concern":"{\"w\":\"majority\",\"wtimeout\":0}","majority_journal_default":1,"max_pool_size":10,"min_pool_size":0,"max_connecting":2,"retry_reads":1,"retry_writes":1}}

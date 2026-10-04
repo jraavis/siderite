@@ -298,3 +298,21 @@ class FixtureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SQLitePoolTests(unittest.TestCase):
+    """SQLite comparisons always hold equal connection counts."""
+
+    def test_pooled_mode_matches_requested_size(self):
+        self.assertEqual(runner.sqlite_pool_size("pooled", 10), 10)
+        self.assertEqual(runner.sqlite_pool_size("pooled", 1), 1)
+
+    def test_single_connection_modes_require_pool_of_one(self):
+        for mode in ("pooled-sync", "per-request"):
+            self.assertEqual(runner.sqlite_pool_size(mode, 1), 1)
+            with self.assertRaises(ValueError):
+                runner.sqlite_pool_size(mode, 10)
+
+    def test_unknown_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            runner.sqlite_pool_size("threads", 1)

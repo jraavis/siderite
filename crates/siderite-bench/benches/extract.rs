@@ -81,10 +81,29 @@ fn bench_extract(c: &mut Criterion) {
     group.bench_function("siderite/dump", |b| {
         b.iter(|| Json(item.clone()).into_response());
     });
+    group.bench_function("siderite/value_tree_reference", |b| {
+        b.iter(|| value_tree_response(item.clone()));
+    });
+    group.bench_function("axum/response", |b| {
+        b.iter(|| axum::response::IntoResponse::into_response(axum::Json(item.clone())));
+    });
     group.bench_function("serde_json/to_vec", |b| {
         b.iter(|| serde_json::to_vec(&item).unwrap());
     });
     group.finish();
+}
+
+// Preserve the previous response algorithm as a same-run control.
+fn value_tree_response(item: Item) -> siderite::Response {
+    use siderite::validation::{Dump, DumpOptions};
+    let value = item.dump(&DumpOptions::default()).unwrap();
+    let bytes = serde_json::to_vec(&value).unwrap();
+    let mut response = http::Response::new(siderite::Body::from(bytes));
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+    );
+    response
 }
 
 criterion_group!(benches, bench_extract);

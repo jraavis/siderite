@@ -1,0 +1,22 @@
+{
+  "req_per_sec": 2789.71,
+  "time_per_req_ms": 3.585,
+  "p50_ms": 3.0,
+  "p90_ms": 5.0,
+  "p99_ms": 6.0,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient).....done\n\n\nServer Software:        uvicorn\nServer Hostname:        127.0.0.1\nServer Port:            18082\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      10\nTime taken for tests:   0.018 seconds\nComplete requests:      50\nFailed requests:        0\nTotal transferred:      10050 bytes\nTotal body sent:        8550\nHTML transferred:       2600 bytes\nRequests per second:    2789.71 [#/sec] (mean)\nTime per request:       3.585 [ms] (mean)\nTime per request:       0.358 [ms] (mean, across all concurrent requests)\nTransfer rate:          547.59 [Kbytes/sec] received\n                        465.86 kb/s sent\n                        1013.45 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.2      0       1\nProcessing:     1    3   0.9      2       5\nWaiting:        1    3   0.9      2       5\nTotal:          2    3   1.1      3       6\nWARNING: The median and mean for the processing time are not within a normal deviation\n        These results are probably not that reliable.\nWARNING: The median and mean for the waiting time are not within a normal deviation\n        These results are probably not that reliable.\n\nPercentage of the requests served within a certain time (ms)\n  50%      3\n  66%      3\n  75%      3\n  80%      4\n  90%      5\n  95%      5\n  98%      6\n  99%      6\n 100%      6 (longest request)\n",
+  "exit_status": 0,
+  "completed_requests": 50,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 0.018,
+  "requested_requests": 50,
+  "concurrency": 10,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": null,
+  "response_checks": null,
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "valid": true
+}

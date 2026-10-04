@@ -1,0 +1,31 @@
+{
+  "sqlx": {
+    "median_commits_per_second": 4785.072186009158,
+    "median_p99_us": 4843,
+    "shortest_seconds": 11.750625,
+    "total_verified_rows": 300000
+  },
+  "native_reset": {
+    "median_commits_per_second": 4831.591490057868,
+    "median_p99_us": 4679,
+    "shortest_seconds": 11.928323666,
+    "total_verified_rows": 300000,
+    "paired_geometric_mean_ratio_vs_sqlx": 0.9383434813017312,
+    "paired_bootstrap_95_percent_interval": [
+      0.8372498208714054,
+      1.01862822364432
+    ]
+  },
+  "native_retain": {
+    "median_commits_per_second": 4860.864028779208,
+    "median_p99_us": 4737,
+    "shortest_seconds": 11.783557375000001,
+    "total_verified_rows": 300000,
+    "paired_geometric_mean_ratio_vs_sqlx": 1.0094695964991809,
+    "paired_bootstrap_95_percent_interval": [
+      0.9649723351905243,
+      1.0560187365941656
+    ]
+  },
+  "limitations": "Driver-only held-connection local Docker diagnostic; 5 pairs; no HTTP or full ORM path. All acknowledged rows verified."
+}

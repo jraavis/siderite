@@ -1,0 +1,4 @@
+{"application": "siderite_todo-siderite.log", "scheduler_workers": 1, "pid": 11787}
+{"application": "siderite_todo-fastapi.log", "scheduler_workers": 1, "pid": 11848}
+{"application": "siderite_todo-siderite.log", "scheduler_workers": 1, "pid": 11882}
+{"application": "siderite_todo-fastapi.log", "scheduler_workers": 1, "pid": 11887}

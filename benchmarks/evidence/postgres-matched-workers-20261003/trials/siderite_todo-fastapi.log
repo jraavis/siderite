@@ -1,0 +1,24 @@
+
+--- trial process started 1791029024.940816 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 31884}
+BENCHMARK_DATABASE {"pid": 31884, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}
+
+--- trial process started 1791029041.6708171 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 32213}
+BENCHMARK_DATABASE {"pid": 32213, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}
+
+--- trial process started 1791029061.7623942 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 32625}
+BENCHMARK_DATABASE {"pid": 32625, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}
+
+--- trial process started 1791029110.524242 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 33606}
+BENCHMARK_DATABASE {"pid": 33606, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}
+
+--- trial process started 1791029128.61964 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 33988}
+BENCHMARK_DATABASE {"pid": 33988, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}
+
+--- trial process started 1791029173.514554 ---
+BENCHMARK_RUNTIME {"scheduler_workers": 1, "pid": 34851}
+BENCHMARK_DATABASE {"pid": 34851, "settings": {"version": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit", "synchronous_commit": "on", "fsync": "on", "full_page_writes": "on", "timezone": "UTC"}}

@@ -75,10 +75,8 @@ impl IntoResponse for Response {
 
 /// Serialize `value` with `opts` into a JSON response.
 fn dump_response<T: Dump + ?Sized>(value: &T, opts: &DumpOptions) -> Response {
-    match value
-        .dump(opts)
-        .and_then(|v| serde_json::to_vec(&v).map_err(Into::into))
-    {
+    let value = siderite_validation::dump::DumpSerialize(value, opts);
+    match serde_json::to_vec(&value) {
         Ok(bytes) => with_content_type("application/json", bytes),
         Err(err) => ApiError::internal(err).into_response(),
     }

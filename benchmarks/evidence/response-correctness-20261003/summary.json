@@ -1,0 +1,7 @@
+{
+  "scope": "correctness smoke only; no performance claim",
+  "timed_trials": 8,
+  "timed_committed_rows": 4000,
+  "untimed_verified_samples": 80,
+  "mongodb_live_validation": false
+}

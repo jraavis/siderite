@@ -1,0 +1,63 @@
+    Blocking waiting for file lock on build directory
+   Compiling siderite-validation v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-validation)
+   Compiling siderite-orm v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-orm)
+   Compiling siderite-openapi v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-openapi)
+   Compiling siderite-core v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-core)
+   Compiling siderite-backends v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-backends)
+   Compiling siderite-migrations v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-migrations)
+   Compiling siderite-cache v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-cache)
+   Compiling siderite-testkit v0.1.0 (/Users/raavi/dev/siderite/crates/siderite-testkit)
+   Compiling siderite v0.1.0 (/Users/raavi/dev/siderite/crates/siderite)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5m 09s
+     Running tests/stream_dump.rs (target/debug/deps/stream_dump-e1500807eb1d5065)
+
+running 4 tests
+test nested_hooks_use_the_value_path ... ok
+test numeric_edge_cases_keep_value_dump_semantics ... ok
+test nested_streams_preserve_custom_dump_and_filters ... ok
+test failed_nested_dump_cannot_publish_partial_success ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/validation.rs (target/debug/deps/validation-aab0c7ff13afb0d1)
+
+running 36 tests
+test dump_applies_exactly_to_serializable_types ... ok
+test generic_computed_fields_appear_in_the_schema ... ok
+test generic_models_without_hooks_validate_items ... ok
+test extra_allow_and_direct_hooks_on_concrete_types ... ok
+test a_skip_deserializing_key_is_extra_under_forbid ... ok
+test computed_fields_are_read_only_properties ... ok
+test field_exclude_hides_the_field_from_dumps_only ... ok
+test exclude_defaults_drops_fields_equal_to_their_default ... ok
+test json_dump_options_apply ... ok
+test line_and_basket_prepare_agrees_with_serde ... ok
+test newtype_dump_delegates_and_nested_options_hold ... ok
+test lists_of_models_use_index_locations ... ok
+test before_validators_see_raw_input ... ok
+test hooks_run_in_declaration_order ... ok
+test every_error_is_reported_with_body_locations ... ok
+test deny_unknown_fields_means_extra_forbid ... ok
+test numeric_string_and_collection_constraints ... ok
+test generic_models_validate_nested_items_and_run_hooks ... ok
+test search_and_palette_prepare_agrees_with_serde ... ok
+test model_serializer_wraps_the_output ... ok
+test nested_models_keep_computed_fields ... ok
+test newtypes_delegate_and_apply_their_constraints ... ok
+test nested_model_errors_carry_the_full_path ... ok
+test responses_include_computed_fields_and_serializers ... ok
+test two_names_for_one_field_are_a_duplicate ... ok
+test schema_prepare_and_dump_use_the_same_keys ... ok
+test reusable_field_validators_run_after_deserialization ... ok
+test populate_by_name_accepts_the_rust_field_name ... ok
+test missing_aliased_field_is_reported_under_the_alias ... ok
+test query_strings_coerce_leniently_and_report_query_locations ... ok
+test signup_prepare_agrees_with_serde ... ok
+test strict_and_lax_models_differ_on_coercion ... ok
+test string_transforms_apply_before_checks ... ok
+test valid_signup_round_trips_and_aliases_apply ... ok
+test unit_enums_are_checked_against_their_serde_names ... ok
+test extra_forbid_is_documented_and_the_document_is_valid_openapi_31 ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

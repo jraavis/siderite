@@ -1,0 +1,23 @@
+{
+  "req_per_sec": 3238.34,
+  "time_per_req_ms": 3.088,
+  "p50_ms": 2.0,
+  "p90_ms": 4.0,
+  "p99_ms": 4.0,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient).....done\n\n\nServer Software:        \nServer Hostname:        127.0.0.1\nServer Port:            18481\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      10\nTime taken for tests:   0.015 seconds\nComplete requests:      50\nFailed requests:        0\nTotal transferred:      8250 bytes\nTotal body sent:        8550\nHTML transferred:       2600 bytes\nRequests per second:    3238.34 [#/sec] (mean)\nTime per request:       3.088 [ms] (mean)\nTime per request:       0.309 [ms] (mean, across all concurrent requests)\nTransfer rate:          521.80 [Kbytes/sec] received\n                        540.78 kb/s sent\n                        1062.58 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.1      0       0\nProcessing:     1    2   0.7      2       4\nWaiting:        1    2   0.7      2       3\nTotal:          1    3   0.8      2       4\nWARNING: The median and mean for the total time are not within a normal deviation\n        These results are probably not that reliable.\n\nPercentage of the requests served within a certain time (ms)\n  50%      2\n  66%      3\n  75%      3\n  80%      3\n  90%      4\n  95%      4\n  98%      4\n  99%      4\n 100%      4 (longest request)\n",
+  "exit_status": 0,
+  "completed_requests": 50,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 0.015,
+  "requested_requests": 50,
+  "concurrency": 10,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": null,
+  "response_checks": null,
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "pair_index": null,
+  "valid": true
+}

@@ -19,11 +19,28 @@ use sqlx::sqlite::{
 };
 use sqlx::{Column as _, Row as _, TransactionManager, TypeInfo as _, ValueRef as _};
 use std::collections::HashSet;
+use std::time::Duration;
+
+mod gate;
+mod group;
+
+use gate::{WriteGate, WritePermit};
+pub use group::GroupCommit;
+use group::Committer;
 
 /// SQLite adapter executing compiled plans on a connection pool.
+///
+/// Writes from this backend and its clones (statements through
+/// [`execute`](Executor::execute), [`execute_raw`](Executor::execute_raw)
+/// and [`execute_script`](Executor::execute_script), transactions, and
+/// transactional schema changes) queue for one write slot instead of racing
+/// for SQLite's file lock, while reads keep using the whole pool. A write
+/// sent through [`fetch_raw`](Executor::fetch_raw) bypasses the queue.
 #[derive(Debug, Clone)]
 pub struct SqliteBackend {
     pool: SqlitePool,
+    gate: WriteGate,
+    committer: Option<Committer>,
 }
 
 impl SqliteBackend {
@@ -42,7 +59,7 @@ impl SqliteBackend {
             .connect(url)
             .await
             .map_err(|e| BackendError::Connection(e.to_string()))?;
-        Ok(Self { pool })
+        Ok(Self::from_pool(pool))
     }
 
     /// Connect with explicit connection and pool options, for example to opt
@@ -79,12 +96,47 @@ impl SqliteBackend {
             .connect_with(options)
             .await
             .map_err(|e| BackendError::Connection(e.to_string()))?;
-        Ok(Self { pool })
+        Ok(Self::from_pool(pool))
     }
 
     /// Wrap an existing pool.
     pub fn from_pool(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            gate: WriteGate::new(gate::DEFAULT_WAIT),
+            committer: None,
+        }
+    }
+
+    /// Opt in to group commit: concurrent [`execute`](Executor::execute)
+    /// calls outside a transaction share one transaction and one commit
+    /// sync, each isolated by a savepoint and acknowledged only after the
+    /// commit. See [`GroupCommit`] for what changes compared with one
+    /// transaction per write. Raw statements, scripts and transactions are
+    /// unaffected.
+    ///
+    /// Call [`with_write_timeout`](Self::with_write_timeout) first; the
+    /// committer keeps the timeout it started with.
+    ///
+    /// # Panics
+    /// Outside a Tokio runtime, which runs the committer task.
+    #[must_use]
+    pub fn group_commit(mut self, config: GroupCommit) -> Self {
+        let committer = Committer::spawn(self.pool.clone(), self.gate.clone(), config);
+        self.committer = Some(committer);
+        self
+    }
+
+    /// How long a write waits for the write slot before failing with
+    /// "database is locked"; five seconds by default, like SQLx's busy
+    /// timeout. Match it when configuring a different busy timeout.
+    ///
+    /// The slot is shared with existing clones; only this handle's wait
+    /// changes.
+    #[must_use]
+    pub fn with_write_timeout(mut self, wait: Duration) -> Self {
+        self.gate = self.gate.with_wait(wait);
+        self
     }
 }
 
@@ -101,7 +153,12 @@ impl Executor for SqliteBackend {
 
     async fn execute(&self, plan: &WritePlan) -> Result<ExecResult, OrmError> {
         let compiled = compile_write(plan, &Sqlite)?;
-        run_write(&self.pool, compiled, !plan.returning().is_empty()).await
+        let returning = !plan.returning().is_empty();
+        if let Some(committer) = &self.committer {
+            return committer.submit(compiled, returning).await;
+        }
+        let _permit = self.gate.acquire().await?;
+        run_write(&self.pool, compiled, returning).await
     }
 
     async fn fetch_raw(&self, sql: &str, params: Vec<Value>) -> Result<QueryResult, OrmError> {
@@ -109,10 +166,12 @@ impl Executor for SqliteBackend {
     }
 
     async fn execute_raw(&self, sql: &str, params: Vec<Value>) -> Result<u64, OrmError> {
+        let _permit = self.gate.acquire().await?;
         execute_rows(&self.pool, sql, params).await
     }
 
     async fn execute_script(&self, sql: &str) -> Result<(), OrmError> {
+        let _permit = self.gate.acquire().await?;
         script_result(sqlx::Executor::execute(&self.pool, sql).await)
     }
 }
@@ -131,19 +190,56 @@ impl Backend for SqliteBackend {
             self.capabilities()
                 .require(siderite_orm::Feature::Isolation(level))?;
         }
+        // Held for the whole transaction: it may write at any point.
+        let permit = self.gate.acquire().await?;
         let tx = self.pool.begin().await.map_err(map_error)?;
-        Ok(Box::new(SqliteTransaction(TxSlot::new(tx))))
+        Ok(Box::new(SqliteTransaction {
+            slot: TxSlot::new(tx),
+            permit: Held::new(permit),
+        }))
     }
 
     async fn begin_schema(&self, transactional: bool) -> Result<Box<dyn Transaction>, OrmError> {
+        // `BEGIN IMMEDIATE` already excludes other writers. A non-transactional
+        // schema connection stays ungated: callers keep writing through the
+        // pool while it is open.
+        let permit = if transactional {
+            Some(self.gate.acquire().await?)
+        } else {
+            None
+        };
         Ok(Box::new(
-            SqliteSchemaTransaction::open(&self.pool, transactional).await?,
+            SqliteSchemaTransaction::open(&self.pool, transactional, permit).await?,
         ))
     }
 }
 
+/// The write slot of an open transaction, released once it finishes.
+///
+/// Dropping a transaction without commit releases the slot before SQLx's
+/// deferred rollback runs, so the next writer can briefly meet SQLite's busy
+/// handler; it does not fail because of it.
+struct Held(std::sync::Mutex<Option<WritePermit>>);
+
+impl Held {
+    fn new(permit: WritePermit) -> Self {
+        Self(std::sync::Mutex::new(Some(permit)))
+    }
+
+    fn none() -> Self {
+        Self(std::sync::Mutex::new(None))
+    }
+
+    fn release(&self) {
+        drop(self.0.lock().map(|mut held| held.take()));
+    }
+}
+
 /// An open SQLite transaction. Dropped without commit, it rolls back.
-struct SqliteTransaction(TxSlot<sqlx::Sqlite>);
+struct SqliteTransaction {
+    slot: TxSlot<sqlx::Sqlite>,
+    permit: Held,
+}
 
 #[async_trait]
 impl Executor for SqliteTransaction {
@@ -153,36 +249,40 @@ impl Executor for SqliteTransaction {
 
     async fn fetch(&self, plan: &QueryPlan) -> Result<QueryResult, OrmError> {
         let compiled = compile(plan, &Sqlite)?;
-        with_tx!(self.0, conn => fetch_rows(conn, &compiled.sql, compiled.params).await)
+        with_tx!(self.slot, conn => fetch_rows(conn, &compiled.sql, compiled.params).await)
     }
 
     async fn execute(&self, plan: &WritePlan) -> Result<ExecResult, OrmError> {
         let compiled = compile_write(plan, &Sqlite)?;
         let returning = !plan.returning().is_empty();
-        with_tx!(self.0, conn => run_write(conn, compiled, returning).await)
+        with_tx!(self.slot, conn => run_write(conn, compiled, returning).await)
     }
 
     async fn fetch_raw(&self, sql: &str, params: Vec<Value>) -> Result<QueryResult, OrmError> {
-        with_tx!(self.0, conn => fetch_rows(conn, sql, params).await)
+        with_tx!(self.slot, conn => fetch_rows(conn, sql, params).await)
     }
 
     async fn execute_raw(&self, sql: &str, params: Vec<Value>) -> Result<u64, OrmError> {
-        with_tx!(self.0, conn => execute_rows(conn, sql, params).await)
+        with_tx!(self.slot, conn => execute_rows(conn, sql, params).await)
     }
 
     async fn execute_script(&self, sql: &str) -> Result<(), OrmError> {
-        with_tx!(self.0, conn => script_result(sqlx::Executor::execute(conn, sql).await))
+        with_tx!(self.slot, conn => script_result(sqlx::Executor::execute(conn, sql).await))
     }
 }
 
 #[async_trait]
 impl Transaction for SqliteTransaction {
     async fn commit(&self) -> Result<(), OrmError> {
-        self.0.commit().await
+        let done = self.slot.commit().await;
+        self.permit.release();
+        done
     }
 
     async fn rollback(&self) -> Result<(), OrmError> {
-        self.0.rollback().await
+        let done = self.slot.rollback().await;
+        self.permit.release();
+        done
     }
 }
 
@@ -214,6 +314,7 @@ struct SqliteSchemaTransaction {
     restore_fk: i64,
     in_txn: bool,
     fk_baseline: Option<HashSet<FkViolation>>,
+    permit: Held,
 }
 
 /// One `PRAGMA foreign_key_check` row: the offending child row and the parent
@@ -259,7 +360,11 @@ async fn fk_violations(
 }
 
 impl SqliteSchemaTransaction {
-    async fn open(pool: &SqlitePool, transactional: bool) -> Result<Self, OrmError> {
+    async fn open(
+        pool: &SqlitePool,
+        transactional: bool,
+        permit: Option<WritePermit>,
+    ) -> Result<Self, OrmError> {
         let mut conn = pool.acquire().await.map_err(map_error)?;
         let restore_fk: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
             .fetch_one(&mut *conn)
@@ -291,6 +396,7 @@ impl SqliteSchemaTransaction {
             restore_fk,
             in_txn: transactional,
             fk_baseline,
+            permit: permit.map_or_else(Held::none, Held::new),
         })
     }
 
@@ -348,6 +454,20 @@ impl Executor for SqliteSchemaTransaction {
 #[async_trait]
 impl Transaction for SqliteSchemaTransaction {
     async fn commit(&self) -> Result<(), OrmError> {
+        let done = self.finish_commit().await;
+        self.permit.release();
+        done
+    }
+
+    async fn rollback(&self) -> Result<(), OrmError> {
+        let done = self.finish_rollback().await;
+        self.permit.release();
+        done
+    }
+}
+
+impl SqliteSchemaTransaction {
+    async fn finish_commit(&self) -> Result<(), OrmError> {
         let mut conn = self.take().await?;
         if let Some(baseline) = &self.fk_baseline {
             // Row-level diff, not a count: a change that repairs one old
@@ -391,7 +511,7 @@ impl Transaction for SqliteSchemaTransaction {
         Ok(())
     }
 
-    async fn rollback(&self) -> Result<(), OrmError> {
+    async fn finish_rollback(&self) -> Result<(), OrmError> {
         let mut conn = self.take().await?;
         let rollback = if self.in_txn {
             SqliteTransactionManager::rollback(&mut *conn)

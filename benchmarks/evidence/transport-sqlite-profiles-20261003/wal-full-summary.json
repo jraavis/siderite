@@ -1,0 +1,215 @@
+{
+  "sqlite-wal-full: insert": {
+    "siderite": {
+      "median_rps": 2844.32,
+      "min_rps": 2844.32,
+      "max_rps": 2844.32,
+      "median_time_per_req_ms": 3.516,
+      "median_p99_ms": 75.0,
+      "total_failures": 0,
+      "runs": [
+        {
+          "req_per_sec": 2844.32,
+          "time_per_req_ms": 3.516,
+          "p50_ms": 0.0,
+          "p90_ms": 2.0,
+          "p99_ms": 75.0,
+          "failed_requests": 0,
+          "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        \nServer Hostname:        127.0.0.1\nServer Port:            18381\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      10\nTime taken for tests:   0.176 seconds\nComplete requests:      500\nFailed requests:        0\nTotal transferred:      82500 bytes\nTotal body sent:        85500\nHTML transferred:       26000 bytes\nRequests per second:    2844.32 [#/sec] (mean)\nTime per request:       3.516 [ms] (mean)\nTime per request:       0.352 [ms] (mean, across all concurrent requests)\nTransfer rate:          458.31 [Kbytes/sec] received\n                        474.98 kb/s sent\n                        933.29 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.0      0       0\nProcessing:     0    2  12.6      0     175\nWaiting:        0    2  12.6      0     175\nTotal:          0    2  12.6      0     175\n\nPercentage of the requests served within a certain time (ms)\n  50%      0\n  66%      0\n  75%      0\n  80%      0\n  90%      2\n  95%      5\n  98%     27\n  99%     75\n 100%    175 (longest request)\nCompleted 100 requests\nCompleted 200 requests\nCompleted 300 requests\nCompleted 400 requests\nCompleted 500 requests\nFinished 500 requests\n",
+          "exit_status": 0,
+          "completed_requests": 500,
+          "non_2xx_responses": 0,
+          "elapsed_seconds": 0.176,
+          "requested_requests": 500,
+          "concurrency": 10,
+          "timed_out": false,
+          "invalid_reasons": [],
+          "row_delta": 500,
+          "response_checks": {
+            "phase": "after_timed_trial",
+            "measured_responses_checked": false,
+            "requested_samples": 10,
+            "concurrency": 10,
+            "verified_rows": 10,
+            "responses": [
+              {
+                "status": 201,
+                "id": 603,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 607,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 601,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 602,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 604,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 605,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 609,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 608,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 606,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 610,
+                "invalid_reasons": []
+              }
+            ],
+            "invalid_reasons": [],
+            "valid": true
+          },
+          "keep_alive_requested": false,
+          "keep_alive_requests": null,
+          "pair_index": 0
+        }
+      ],
+      "paired_comparison": {
+        "paired_geometric_ratio": 0.8076508069920374,
+        "paired_ratios": [
+          0.8076508069920374
+        ],
+        "pair_ids": [
+          0
+        ],
+        "pairs": 1,
+        "confidence_level": 0.95,
+        "percentile_interval": null,
+        "bootstrap_draws": 10000,
+        "bootstrap_seed": 0,
+        "minimum_trial_seconds": 0.142,
+        "lead_threshold": 1.1,
+        "lead_gate_passed": false,
+        "gate_reasons": [
+          "Fewer than five independent trial pairs",
+          "A timed trial was shorter than ten seconds"
+        ],
+        "limitations": [
+          "Interval covers this host, workload and durability profile",
+          "Pair bootstrap does not remove systematic benchmark bias",
+          "Repeated requests within a trial are not independent pairs"
+        ]
+      }
+    },
+    "fastapi": {
+      "median_rps": 3521.72,
+      "min_rps": 3521.72,
+      "max_rps": 3521.72,
+      "median_time_per_req_ms": 2.84,
+      "median_p99_ms": 8.0,
+      "total_failures": 0,
+      "runs": [
+        {
+          "req_per_sec": 3521.72,
+          "time_per_req_ms": 2.84,
+          "p50_ms": 2.0,
+          "p90_ms": 4.0,
+          "p99_ms": 8.0,
+          "failed_requests": 0,
+          "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        uvicorn\nServer Hostname:        127.0.0.1\nServer Port:            18382\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      10\nTime taken for tests:   0.142 seconds\nComplete requests:      500\nFailed requests:        0\nTotal transferred:      100500 bytes\nTotal body sent:        85500\nHTML transferred:       26000 bytes\nRequests per second:    3521.72 [#/sec] (mean)\nTime per request:       2.840 [ms] (mean)\nTime per request:       0.284 [ms] (mean, across all concurrent requests)\nTransfer rate:          691.28 [Kbytes/sec] received\n                        588.10 kb/s sent\n                        1279.38 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.0      0       0\nProcessing:     0    3   1.0      2       9\nWaiting:        0    3   1.0      2       9\nTotal:          1    3   1.0      2       9\n\nPercentage of the requests served within a certain time (ms)\n  50%      2\n  66%      3\n  75%      3\n  80%      3\n  90%      4\n  95%      5\n  98%      6\n  99%      8\n 100%      9 (longest request)\nCompleted 100 requests\nCompleted 200 requests\nCompleted 300 requests\nCompleted 400 requests\nCompleted 500 requests\nFinished 500 requests\n",
+          "exit_status": 0,
+          "completed_requests": 500,
+          "non_2xx_responses": 0,
+          "elapsed_seconds": 0.142,
+          "requested_requests": 500,
+          "concurrency": 10,
+          "timed_out": false,
+          "invalid_reasons": [],
+          "row_delta": 500,
+          "response_checks": {
+            "phase": "after_timed_trial",
+            "measured_responses_checked": false,
+            "requested_samples": 10,
+            "concurrency": 10,
+            "verified_rows": 10,
+            "responses": [
+              {
+                "status": 201,
+                "id": 601,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 602,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 603,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 604,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 605,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 606,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 608,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 607,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 609,
+                "invalid_reasons": []
+              },
+              {
+                "status": 201,
+                "id": 610,
+                "invalid_reasons": []
+              }
+            ],
+            "invalid_reasons": [],
+            "valid": true
+          },
+          "keep_alive_requested": false,
+          "keep_alive_requests": null,
+          "pair_index": 0
+        }
+      ],
+      "paired_comparison": null
+    }
+  }
+}

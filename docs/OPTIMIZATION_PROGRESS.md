@@ -6,7 +6,27 @@ acceptance gates in [plan 3](INSERT_OPTIMIZATION_PLAN_3.md) and the
 [gap closure plan](FRAMEWORK_GAP_CLOSURE_PLAN.md). Historical forecasts in
 [plan 2](INSERT_OPTIMIZATION_PLAN_2.md) remain unverified.
 
-## Current checkpoint: 2026-10-03
+## SQLite write gate and group commit checkpoint: 2026-10-04
+
+Implemented in-process FIFO write serialization (`WriteGate`) and opt-in group commit (`GroupCommit`) on `SqliteBackend`:
+- Under concurrent pool writes (10 connections), uncoordinated writers previously collided on SQLite's file lock, causing connection threads to sleep in SQLite's busy handler backoff (up to 100 ms) and inflating p99 latency to ~152 ms (insert throughput: ~1,258 req/s, 0.64x vs FastAPI).
+- In-process `WriteGate` coordinates write slot acquisition across clones without busy sleeping. Default rollback journal insert throughput rose to **2,715 req/s** (**2.00x** speedup) with p99 tail latency dropping from 152 ms to **5.39 ms**.
+- Opt-in `--siderite-group-commit` batches concurrent autocommit writes into a single shared transaction and commit sync, boosting insert throughput to **8,589 req/s** (**5.59x** speedup) at **3.69 ms** p99.
+- WAL mode (`--sqlite-wal`) with non-blocking concurrent reads and writes reached **14,508 req/s** (**3.31x** speedup) at **1.85 ms** p99.
+
+## Response rewrite checkpoint: 2026-10-04
+
+Replaced ordinary JSON response tree construction with direct encoding.
+The same-executable old-algorithm control measured 773.25 ns against
+361.80 ns for the new path: 53.2% less time. Forty targeted tests and strict
+release library clippy passed. Another workspace build was present; these
+are diagnostic microbenchmarks, not isolated HTTP/database release gates.
+See [response rewrite evidence][response-rewrite].
+
+[response-rewrite]:
+  ../benchmarks/evidence/response-serialization-20261004/README.md
+
+## Database and correctness checkpoint: 2026-10-03
 
 The implementation includes an opt-in native MySQL adapter, shared MySQL
 execution, transaction ownership, supervised background work, transport
@@ -24,6 +44,7 @@ settings and conservative fine-resolution tail gates:
 | MySQL native, ten connections | 1.012x | 0.965–1.063x | Both fail |
 | MySQL SQLx, ten connections | 0.923x | 0.894–0.959x | Both fail |
 | PostgreSQL SQLx, ten connections | 1.231x | 1.179–1.286x | Both pass |
+| MongoDB, ten connections | 1.217x | 1.160–1.264x | Both pass |
 
 These describe separate experiments, not a directly paired native/SQLx
 comparison. Earlier native MySQL 1.127x results lacked observed matching
@@ -36,7 +57,7 @@ SQL/callback crashes, lock deadlines and caller-transaction preservation.
 Forty-nine Python benchmark checks passed. Current public behavior includes
 pending-step recovery intents and read-only recovery inspection.
 
-MongoDB, additional workloads,
+Additional workloads,
 physical-pool coverage, CPU/storage budgets, remaining crash boundaries and
 final release checks remain open. G19 additionally records unbounded Redis
 route-generation retention and its required expiry/admission work. Evidence

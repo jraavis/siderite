@@ -1,0 +1,22 @@
+{
+  "server_globals_after_run": {
+    "version": "8.4.11",
+    "innodb_flush_log_at_trx_commit": "1",
+    "sync_binlog": "1",
+    "log_bin": "1",
+    "transaction_isolation": "REPEATABLE-READ",
+    "autocommit": "1",
+    "auto_increment_increment": "1",
+    "character_set_server": "utf8mb4",
+    "collation_server": "utf8mb4_0900_ai_ci",
+    "innodb_doublewrite": "ON"
+  },
+  "settings_limitation": "Captured after the run; not every effective measured client session or table/storage setting.",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: aarch64-apple-darwin\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "release_build_command": "cargo build --release -p siderite_todo --features mysql-native",
+  "build_environment_limitation": "Complete effective compiler flags and environment were not captured at build time.",
+  "execution_order": "All five native/FastAPI pairs, then all five SQLx/FastAPI pairs; driver series were not interleaved.",
+  "disposable_database": "siderite_http_f506200dcd754840ac67c0a77ab9a5ba",
+  "cleanup": "Orchestrator completed and dropped its unique database in finally."
+}

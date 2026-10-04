@@ -1,0 +1,144 @@
+{
+  "req_per_sec": 7735.4,
+  "time_per_req_ms": 2.586,
+  "p50_ms": 2.178,
+  "p90_ms": 2.332,
+  "p99_ms": 3.823,
+  "failed_requests": 0,
+  "raw_output": "This is ApacheBench, Version 2.3 <$Revision: 1923142 $>\nCopyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/\nLicensed to The Apache Software Foundation, http://www.apache.org/\n\nBenchmarking 127.0.0.1 (be patient)\n\n\nServer Software:        uvicorn\nServer Hostname:        127.0.0.1\nServer Port:            8082\n\nDocument Path:          /todos\nDocument Length:        Variable\n\nConcurrency Level:      20\nTime taken for tests:   22.047 seconds\nComplete requests:      170544\nFailed requests:        0\nTotal transferred:      34680279 bytes\nTotal body sent:        28992480\nHTML transferred:       9269223 bytes\nRequests per second:    7735.40 [#/sec] (mean)\nTime per request:       2.586 [ms] (mean)\nTime per request:       0.129 [ms] (mean, across all concurrent requests)\nTransfer rate:          1536.13 [Kbytes/sec] received\n                        1284.20 kb/s sent\n                        2820.33 kb/s total\n\nConnection Times (ms)\n              min  mean[+/-sd] median   max\nConnect:        0    0   0.1      0      29\nProcessing:     0    3   7.2      2     225\nWaiting:        0    3   7.2      2     225\nTotal:          0    3   7.2      2     225\n\nPercentage of the requests served within a certain time (ms)\n  50%      2\n  66%      2\n  75%      2\n  80%      2\n  90%      2\n  95%      2\n  98%      3\n  99%      4\n 100%    225 (longest request)\nCompleted 17054 requests\nCompleted 34108 requests\nCompleted 51162 requests\nCompleted 68216 requests\nCompleted 85270 requests\nCompleted 102324 requests\nCompleted 119378 requests\nCompleted 136432 requests\nCompleted 153486 requests\nCompleted 170540 requests\nFinished 170544 requests\n",
+  "exit_status": 0,
+  "completed_requests": 170544,
+  "non_2xx_responses": 0,
+  "elapsed_seconds": 22.047,
+  "requested_requests": 170544,
+  "concurrency": 20,
+  "timed_out": false,
+  "invalid_reasons": [],
+  "row_delta": 170544,
+  "response_checks": {
+    "phase": "after_timed_trial",
+    "measured_responses_checked": false,
+    "requested_samples": 20,
+    "concurrency": 20,
+    "verified_rows": 20,
+    "responses": [
+      {
+        "status": 201,
+        "id": 170646,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170645,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170647,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170649,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170650,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170648,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170652,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170655,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170651,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170656,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170657,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170654,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170658,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170653,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170662,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170661,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170659,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170660,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170664,
+        "invalid_reasons": []
+      },
+      {
+        "status": 201,
+        "id": 170663,
+        "invalid_reasons": []
+      }
+    ],
+    "invalid_reasons": [],
+    "valid": true
+  },
+  "keep_alive_requested": false,
+  "keep_alive_requests": null,
+  "pair_index": 3,
+  "runtime_workers": 1,
+  "latency_resolution_ms": 0.001,
+  "latency_csv": "latency-jbwqesdu.csv",
+  "database_backend": "sqlite",
+  "database_settings": {
+    "version": "3.53.4",
+    "journal_mode": "wal",
+    "synchronous": 2,
+    "foreign_keys": 1,
+    "busy_timeout": 5000
+  },
+  "valid": true
+}

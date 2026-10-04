@@ -1,0 +1,24 @@
+
+--- trial process started 1791022835.7182999 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":17276}
+BENCHMARK_DATABASE {"pid":17276,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791022838.788092 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":17368}
+BENCHMARK_DATABASE {"pid":17368,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791022887.395554 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":18342}
+BENCHMARK_DATABASE {"pid":18342,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791022902.0452611 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":18672}
+BENCHMARK_DATABASE {"pid":18672,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791022948.0249898 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":19606}
+BENCHMARK_DATABASE {"pid":19606,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}
+
+--- trial process started 1791022963.271276 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":19902}
+BENCHMARK_DATABASE {"pid":19902,"settings":{"version":"8.4.11","autocommit":1,"timezone":"+00:00","sql_mode":"ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION","innodb_flush_log_at_trx_commit":1,"sync_binlog":1}}

@@ -1,0 +1,43 @@
+{
+  "source_revision": "4a0ee1fb91788273165c7df0e54210944db761d5",
+  "worktree_dirty": true,
+  "source_sha256": {
+    "benchmarks/mysql_driver_probe/src/trial.rs": "ff95c2852a2acc7885889706f060cb33dde31d363e02154818c3a0e2719d96ae",
+    "benchmarks/mysql_driver_probe/src/fixture.rs": "bb50fc721f73809829c26e13a6d77170cc96d5eaee269d5f4abd2e7fb92144b7",
+    "benchmarks/mysql_driver_probe/src/driver.rs": "c520b602b8001c2b85393970fe8fe7859eedd07b90c247f224ea786c3686925c",
+    "benchmarks/mysql_driver_probe/src/main.rs": "4d62e620e8513892619bf08491ae83126879d6465fd1b5e61c21d1e689c78edd",
+    "benchmarks/mysql_driver_probe/src/tests.rs": "77cd7daadaf4ef2a802e5af141562da9c5ac710eb4fd815659a0bdf0abf4343c",
+    "benchmarks/mysql_driver_probe/Cargo.toml": "b552ed5aa01f58725aa1347a4691025d83102523f792e21e55410bdc6d6593d2",
+    "Cargo.lock": "7bd27481483af22ef480f112273eff697e4beee44d38d43a18ae89ea3e798d4f"
+  },
+  "binary_sha256": "96e21836e4d346fbff3039fa0d27f64d58c8b8f1c85d5eece9196bf705c8fa6a",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "build_command": "cargo build -p mysql_driver_probe --release --offline",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "cpu_count": 12,
+  "runtime_workers": "Tokio default (logical CPU count)",
+  "arguments": [
+    "--requests",
+    "60000",
+    "--pairs",
+    "5",
+    "--concurrency",
+    "10",
+    "--pool",
+    "10",
+    "--held"
+  ],
+  "database_image": "mysql:8.4",
+  "database_image_id": "sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d",
+  "database_storage_driver": "not exposed by inspect",
+  "database_mounts": [
+    {
+      "type": "volume",
+      "destination": "/var/lib/mysql"
+    }
+  ],
+  "database_cpu_quota": 0,
+  "database_memory_limit": 0,
+  "scope": "driver-only, loopback, local Docker; no HTTP/framework comparison"
+}

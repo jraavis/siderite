@@ -1,0 +1,88 @@
+{
+  "paired_geometric_ratio": 1.012236478344042,
+  "paired_ratios": [
+    0.9389383576940564,
+    1.042471329863143,
+    1.1035271200741679,
+    1.014377680732974,
+    0.9698979103877354
+  ],
+  "pair_ids": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "pair_scheduler_workers": [
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      1
+    ]
+  ],
+  "sql_pair_settings_match": [
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "pairs": 5,
+  "confidence_level": 0.95,
+  "percentile_interval": [
+    0.9650288066624839,
+    1.0632315008148183
+  ],
+  "bootstrap_draws": 10000,
+  "bootstrap_seed": 0,
+  "minimum_trial_seconds": 13.346,
+  "lead_threshold": 1.1,
+  "adoption_gate_passed": false,
+  "adoption_gate_reasons": [
+    "A paired p99 regression exceeds five percent",
+    "Point throughput gain is below ten percent",
+    "Lower confidence bound does not exceed parity"
+  ],
+  "evidence_gate_passed": true,
+  "paired_p99_ratios": [
+    0.9999500049995002,
+    1.072172156619018,
+    0.982523507113671,
+    0.8113879003558719,
+    1.1678741734067497
+  ],
+  "paired_p99_rounding_upper_bounds": [
+    0.9999750021873088,
+    1.072198987453225,
+    0.9825479071026819,
+    0.8114093880117204,
+    1.1679027307575778
+  ],
+  "p99_ratio_budget": 1.05,
+  "lead_gate_passed": false,
+  "gate_reasons": [
+    "A paired p99 regression exceeds five percent",
+    "Lower confidence bound does not exceed the lead gate"
+  ],
+  "limitations": [
+    "Interval covers this host, workload and durability profile",
+    "Pair bootstrap does not remove systematic benchmark bias",
+    "Repeated requests within a trial are not independent pairs"
+  ]
+}

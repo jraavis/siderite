@@ -12,31 +12,40 @@ Numbers are machine-specific. Compare runs only on the same machine, and treat t
 
 ## HTTP benchmarks versus FastAPI
 
-End-to-end throughput measured with ApacheBench (`ab -l`) on the same machine (Darwin arm64, rustc 1.96.0, Python 3.13.14, FastAPI 0.142.1, Uvicorn 0.54.0; PostgreSQL 17, MySQL 8.4 and MongoDB 8 in local containers). Siderite runs a `--release` build; FastAPI runs under Uvicorn with a single worker, no reload, and warning log level. Each figure is the median of 3 runs with 0 failed requests. Automated harnesses live in [`benchmarks/`](../benchmarks/).
+End-to-end throughput measured with ApacheBench (`ab -l`) on the same machine (Darwin arm64, rustc 1.99.0, Python 3.13.14, FastAPI 0.142.1, Uvicorn 0.54.0; PostgreSQL 17, MySQL 8.4 and MongoDB 8 in local containers). Siderite runs a `--release` build; FastAPI runs under Uvicorn with a single worker, no reload, and warning log level. Automated harnesses live in [`benchmarks/`](../benchmarks/).
 
-Plain HTTP (`examples/hello_world`; `GET`s with `-n 20000 -c 100`, `POST /echo` with `-n 10000 -c 50`):
+Plain HTTP (`examples/hello_world`; direct streaming response serialization):
 
 | Test | Siderite (req/s) | FastAPI (req/s) | Speedup | Latency p99 (S / F) |
 |---|---|---|---|---|
-| `GET /` | 36,281 | 4,321 | 8.40x | 6 ms / 77 ms |
-| `GET /hello/{name}` | 17,789 | 4,015 | 4.43x | 19 ms / 53 ms |
-| `POST /echo` (JSON) | 26,265 | 3,817 | 6.88x | 4 ms / 48 ms |
+| `GET /` | 36,701 | 18,441 | 2.08x | 3.5 ms / 3.6 ms |
+| `GET /hello/{name}` | 37,884 | 12,692 | 2.98x | 3.3 ms / 5.8 ms |
+| `POST /echo` (JSON) | 24,084 | 13,510 | 2.00x | 3.2 ms / 3.3 ms |
 
-Database-backed minimal Todo API (`GET /todos` latest 20, `GET /todos/{id}`, `POST /todos` → 201; siderite ORM versus `sqlite3` / `asyncpg` / `aiomysql` / `motor` with pools of 10; tables truncated and reseeded with 100 rows before each phase; reads `-n 5000 -c 50`, inserts `-n 10000 -c 20`):
+Database-backed minimal Todo API (`GET /todos` latest 20, `GET /todos/{id}`, `POST /todos` → 201; siderite ORM versus `sqlite3` / `asyncpg` / `aiomysql` / `motor` with matching pools of 10; tables truncated and reseeded with 100 rows before each phase):
 
-| DB | Test | Siderite (req/s) | FastAPI (req/s) | Speedup |
-|---|---|---|---|---|
-| SQLite | list 20 | 26,659 | 5,249 | 5.08x |
-| SQLite | get one | 39,053 | 5,666 | 6.89x |
-| SQLite | insert | 2,129 | 1,942 | 1.10x |
-| PostgreSQL | list 20 | 9,044 | 7,873 | 1.15x |
-| PostgreSQL | get one | 10,715 | 8,187 | 1.31x |
-| PostgreSQL | insert | 8,675 | 7,569 | 1.15x |
-| MySQL | list 20 | 9,396 | 5,147 | 1.83x |
-| MySQL | get one | 9,948 | 7,218 | 1.38x |
-| MySQL | insert | 3,333 | 3,732 | 0.89x |
-| MongoDB | list 20 | 11,214 | 3,717 | 3.02x |
-| MongoDB | get one | 13,846 | 4,119 | 3.36x |
-| MongoDB | insert | 3,049 | 2,533 | 1.20x |
+| DB | Test | Siderite (req/s) | FastAPI (req/s) | Speedup | Latency p99 (S / F) | Notes |
+|---|---|---|---|---|---|---|
+| SQLite (default) | list 20 | 18,108 | 1,709 | 9.10x | 2.3 ms / 28.1 ms | Rollback journal, pool 10 |
+| SQLite (default) | get one | 23,592 | 5,598 | 4.37x | 2.7 ms / 11.4 ms | Single row lookup |
+| SQLite (default) | insert | 2,715 | 1,286 | 2.00x | 5.4 ms / 150.3 ms | In-process `WriteGate` eliminates busy-sleep |
+| SQLite (group commit) | insert | 8,589 | 1,457 | 5.59x | 3.7 ms / 120.1 ms | `--siderite-group-commit` shares commit sync |
+| SQLite (WAL) | list 20 | 17,406 | 1,705 | 10.62x | 2.8 ms / 24.4 ms | `--sqlite-wal` |
+| SQLite (WAL) | get one | 20,818 | 6,052 | 3.68x | 3.2 ms / 8.2 ms | |
+| SQLite (WAL) | insert | 14,508 | 4,414 | 3.31x | 1.9 ms / 27.7 ms | |
+| PostgreSQL 17 | list 20 | 9,583 | 7,606 | 1.12x | 6.1 ms / 9.0 ms | Pool 10 |
+| PostgreSQL 17 | get one | 10,723 | 8,422 | 1.01x | 3.5 ms / 8.0 ms | |
+| PostgreSQL 17 | insert | 8,546 | 5,957 | 1.42x | 1.7 ms / 2.7 ms | |
+| MySQL 8.4 | list 20 | 10,473 | 5,089 | 2.04x | 3.7 ms / 15.6 ms | Pool 10 |
+| MySQL 8.4 | get one | 9,886 | 7,386 | 1.39x | 3.7 ms / 4.7 ms | |
+| MySQL 8.4 | insert | 3,371 | 3,433 | 1.02x | 6.5 ms / 5.9 ms | |
+| MongoDB 8 | list 20 | 10,729 | 3,825 | 2.92x | 5.5 ms / 10.2 ms | Replica set |
+| MongoDB 8 | get one | 13,049 | 4,116 | 3.05x | 3.5 ms / 11.5 ms | |
+| MongoDB 8 | insert | 2,970 | 2,580 | 1.20x | 6.8 ms / 7.2 ms | |
 
-Writes are DB-bound and land near parity. Reads favor siderite, most clearly on SQLite, MongoDB list/get (Rust driver versus Motor) and MySQL list. Per-run spread is roughly ±20–30%, so treat ratios near 1.0–1.3x as noise.
+### Analysis
+
+- **SQLite write serialization:** In standard rollback journal mode with concurrent pooled connections, uncoordinated writers previously collided on SQLite's file lock, causing connection threads to sleep in SQLite's busy handler (1, 2, 5 … 100 ms backoff) and inflating tail latency to ~150 ms. Siderite's `WriteGate` serializes write acquisition in-process via a FIFO queue, cutting p99 latency to **5.4 ms** and delivering **2.00x** speedup over FastAPI.
+- **SQLite group commit:** `--siderite-group-commit` batches concurrent autocommit writes into a single transaction and shared `fsync`, boosting write throughput to **8,589 req/s** (**5.59x** speedup) at **3.7 ms** p99.
+- **SQLite WAL mode:** WAL journal mode allows readers and writers to execute concurrently without blocking, pushing insert throughput to **14,508 req/s** (**3.31x** speedup) at **1.9 ms** p99.
+- **Network databases:** Network-bound writes land near parity or favor Siderite (1.02x–1.42x). Reads strongly favor Siderite across all engines (up to 3.05x on MongoDB, 2.04x on MySQL, and 10.62x on SQLite).

@@ -1,0 +1,62 @@
+{
+  "native": {
+    "requests_per_trial": 57515,
+    "pair_ratios": [
+      1.0696511920170446,
+      1.0466183546041714,
+      1.1777692566289868,
+      1.2137961106266213,
+      1.1372695942703615
+    ],
+    "paired_geometric_mean": 1.1272493197960445,
+    "paired_bootstrap_95_percentile_interval": [
+      1.073457602440138,
+      1.1837365780373292
+    ],
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20261003,
+    "median_rps": {
+      "Siderite": 4431.86,
+      "FastAPI": 3896.93
+    },
+    "median_p99_ms": {
+      "Siderite": 12.0,
+      "FastAPI": 15.0
+    },
+    "total_verified_inserts": 575150,
+    "transport": "fresh TCP connections",
+    "concurrency": 20,
+    "pool_size": 10,
+    "publication_ready": false
+  },
+  "sqlx": {
+    "requests_per_trial": 57634,
+    "pair_ratios": [
+      0.9422059667315547,
+      0.6440584129021905,
+      0.9172395288575964,
+      0.9359324766745647,
+      0.9194894111397143
+    ],
+    "paired_geometric_mean": 0.8631157149790105,
+    "paired_bootstrap_95_percentile_interval": [
+      0.7449045216752576,
+      0.9351160120498343
+    ],
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20261003,
+    "median_rps": {
+      "Siderite": 3691.99,
+      "FastAPI": 4025.11
+    },
+    "median_p99_ms": {
+      "Siderite": 16.0,
+      "FastAPI": 13.0
+    },
+    "total_verified_inserts": 576340,
+    "transport": "fresh TCP connections",
+    "concurrency": 20,
+    "pool_size": 10,
+    "publication_ready": false
+  }
+}

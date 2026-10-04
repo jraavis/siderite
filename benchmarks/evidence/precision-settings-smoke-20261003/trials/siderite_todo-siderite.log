@@ -1,0 +1,8 @@
+
+--- trial process started 1791022558.044783 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":11787}
+BENCHMARK_DATABASE {"pid":11787,"settings":{"version":"3.53.4","journal_mode":"wal","synchronous":2,"foreign_keys":1,"busy_timeout":5000}}
+
+--- trial process started 1791022561.665189 ---
+BENCHMARK_RUNTIME {"scheduler_workers":1,"pid":11882}
+BENCHMARK_DATABASE {"pid":11882,"settings":{"version":"3.53.4","journal_mode":"wal","synchronous":2,"foreign_keys":1,"busy_timeout":5000}}

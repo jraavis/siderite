@@ -4,6 +4,7 @@
 mod dump;
 mod enums;
 mod fields;
+mod stream;
 mod strukt;
 
 use crate::attrs::model::Container;
