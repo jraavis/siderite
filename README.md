@@ -161,7 +161,7 @@ The detailed plans contain **66 small tasks**, with dependencies, acceptance
 criteria and release gates:
 
 - [Core roadmap and 46 tasks](docs/plans/CLI_AI_ROADMAP.md)
-- [Developer workflow and 20 additional tasks](docs/plans/DEVELOPER_EXPERIENCE.md)
+- [Developer workflow: 20 tasks](docs/plans/DEVELOPER_EXPERIENCE.md)
 
 First deliver structured checks/OpenAPI export, reliable development reload,
 unified verification and version-correct AI context. Keep reliability fixes
