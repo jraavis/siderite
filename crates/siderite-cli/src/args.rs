@@ -1,4 +1,4 @@
-//! Global flags shared by the standalone `siderite` binary and [`AppCli`](crate::AppCli).
+//! Global flags shared by standalone binary and [`AppCli`](crate::AppCli).
 //!
 //! Global flags may appear anywhere on the command line. Everything else is
 //! passed through untouched, in order, for the command to parse (the migration
@@ -18,6 +18,14 @@ pub struct GlobalArgs {
     pub migrations_dir: Option<PathBuf>,
     /// `--addr ADDR` (`run`).
     pub addr: Option<String>,
+    /// `--manifest-path PATH`.
+    pub manifest_path: Option<PathBuf>,
+    /// `--package PKG` / `-p PKG`.
+    pub package: Option<String>,
+    /// `--bin BIN`.
+    pub bin: Option<String>,
+    /// `--json`.
+    pub json: bool,
     /// `--help` / `-h` before any command.
     pub help: bool,
 }
@@ -38,6 +46,11 @@ pub fn split_global(args: &[String]) -> Result<(GlobalArgs, Vec<String>), CliErr
             rest.push(arg.clone());
             continue;
         }
+        if arg == "--json" {
+            global.json = true;
+            rest.push(arg.clone());
+            continue;
+        }
         let Some((flag, inline)) = flag_parts(arg) else {
             rest.push(arg.clone());
             continue;
@@ -46,6 +59,13 @@ pub fn split_global(args: &[String]) -> Result<(GlobalArgs, Vec<String>), CliErr
             "--database-url" => &mut global.database_url,
             "--database" => &mut global.database,
             "--addr" => &mut global.addr,
+            "--manifest-path" => {
+                let value = flag_value(flag, inline, args, &mut i)?;
+                global.manifest_path = Some(PathBuf::from(value));
+                continue;
+            }
+            "--package" | "-p" => &mut global.package,
+            "--bin" => &mut global.bin,
             "--migrations-dir" => {
                 let value = flag_value(flag, inline, args, &mut i)?;
                 global.migrations_dir = Some(PathBuf::from(value));
@@ -61,15 +81,22 @@ pub fn split_global(args: &[String]) -> Result<(GlobalArgs, Vec<String>), CliErr
     Ok((global, rest))
 }
 
-/// `--flag=value` -> (`--flag`, Some(`value`)); `--flag` -> (`--flag`, None).
+/// `--flag=val` -> (`--flag`, Some(`val`)); `--flag` -> (`--flag`, None).
+/// Also handles `-p=val` -> (`-p`, Some(`val`)) and `-p` -> (`-p`, None).
 fn flag_parts(arg: &str) -> Option<(&str, Option<&str>)> {
-    if !arg.starts_with("--") {
-        return None;
+    if arg.starts_with("--") {
+        return Some(match arg.split_once('=') {
+            Some((flag, value)) => (flag, Some(value)),
+            None => (arg, None),
+        });
     }
-    Some(match arg.split_once('=') {
-        Some((flag, value)) => (flag, Some(value)),
-        None => (arg, None),
-    })
+    if arg == "-p" {
+        return Some(("-p", None));
+    }
+    if let Some(rest) = arg.strip_prefix("-p=") {
+        return Some(("-p", Some(rest)));
+    }
+    None
 }
 
 fn flag_value(
@@ -110,6 +137,11 @@ mod tests {
             "--database=replica",
             "--addr",
             "0.0.0.0:1",
+            "-p",
+            "myapp",
+            "--manifest-path=crates/app/Cargo.toml",
+            "--bin=server",
+            "--json",
             "--dry-run",
         ])
         .unwrap();
@@ -117,13 +149,36 @@ mod tests {
         assert_eq!(global.database.as_deref(), Some("replica"));
         assert_eq!(global.addr.as_deref(), Some("0.0.0.0:1"));
         assert_eq!(global.migrations_dir, Some(PathBuf::from("db/migrations")));
-        assert_eq!(rest, ["migrate", "0001_init", "--dry-run"]);
+        assert_eq!(global.package.as_deref(), Some("myapp"));
+        assert_eq!(
+            global.manifest_path,
+            Some(PathBuf::from("crates/app/Cargo.toml"))
+        );
+        assert_eq!(global.bin.as_deref(), Some("server"));
+        assert!(global.json);
+        assert_eq!(rest, ["migrate", "0001_init", "--json", "--dry-run"]);
         assert!(!global.help);
     }
 
     #[test]
+    fn parses_short_p_flag_with_equal() {
+        let (global, rest) = split(&["run", "-p=demo"]).unwrap();
+        assert_eq!(global.package.as_deref(), Some("demo"));
+        assert_eq!(rest, ["run"]);
+    }
+
+    #[test]
     fn missing_values_are_usage_errors() {
-        for flag in ["--database-url", "--database", "--addr", "--migrations-dir"] {
+        for flag in [
+            "--database-url",
+            "--database",
+            "--addr",
+            "--migrations-dir",
+            "--manifest-path",
+            "--package",
+            "-p",
+            "--bin",
+        ] {
             let err = split(&["migrate", flag]).unwrap_err();
             assert!(err.to_string().contains(flag), "{err}");
             assert_eq!(err.exit_code(), 2);

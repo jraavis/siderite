@@ -1,7 +1,10 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
+use crate::args::{self, GlobalArgs};
+use crate::commands::{command_catalog, render_commands_text};
+use crate::envelope::CliEnvelope;
 use crate::error::CliError;
-use crate::project::{self, CARGO_COMMANDS, find_app_dir, is_app_command};
+use crate::project::{self, CARGO_COMMANDS, is_app_command};
 use crate::scaffold;
 use crate::standalone;
 use std::env;
@@ -13,49 +16,97 @@ use std::env;
 pub async fn run() -> Result<u8, CliError> {
     let raw: Vec<String> = env::args().skip(1).collect();
     let cwd = env::current_dir().map_err(|err| CliError::Io(format!("cannot read cwd: {err}")))?;
-    dispatch(&raw, &cwd).await
+    match dispatch(&raw, &cwd).await {
+        Ok(code) => Ok(code),
+        Err(err) => {
+            if raw.iter().any(|a| a == "--json") {
+                let cmd = first_command(&raw).unwrap_or("siderite");
+                let env: CliEnvelope<()> = CliEnvelope::error(cmd, "ERROR", err.to_string());
+                if let Ok(json) = env.to_json_pretty() {
+                    eprintln!("{json}");
+                }
+            } else {
+                eprintln!("error: {err}");
+            }
+            Err(err)
+        }
+    }
 }
 
 async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError> {
-    if raw.iter().any(|a| a == "--help" || a == "-h")
-        && first_command(raw).is_none_or(|c| c == "help")
+    let (global, _rest) = args::split_global(raw)?;
+    if (raw.iter().any(|a| a == "--help" || a == "-h")
+        && first_command(raw).is_none_or(|c| c == "help"))
+        || first_command(raw) == Some("help")
     {
-        print_help();
-        return Ok(0);
+        return handle_help(&global);
     }
     let command = first_command(raw).unwrap_or("");
-    if command.is_empty() || command == "help" {
-        print_help();
-        return Ok(if command == "help" { 0 } else { 2 });
+    if command.is_empty() {
+        return handle_missing_command(&global);
+    }
+    if command == "commands" {
+        return handle_commands(&global);
     }
     if command == "new" {
         return scaffold::run(raw);
     }
     if CARGO_COMMANDS.contains(&command) {
-        let dir = find_app_dir(cwd).ok_or_else(|| {
-            CliError::usage(format!(
-                "{command} needs a Cargo package (cd into a siderite app, or run siderite new)"
-            ))
-        })?;
-        return project::cargo_passthrough(&dir, command, raw);
+        let resolved = project::resolve_project(cwd, &global, command)?;
+        return project::cargo_passthrough(&resolved, command, raw);
     }
     if is_app_command(command) {
-        if let Some(dir) = find_app_dir(cwd) {
-            return project::cargo_run(&dir, raw);
-        }
-        if command == "run"
-            || command == "routes"
-            || command == "check"
-            || command == "dbshell"
-            || command == "makemigrations"
-        {
-            return Err(CliError::usage(format!(
-                "`{command}` needs an application. cd into a project created with `siderite new`, or an example directory"
-            )));
+        match project::resolve_project(cwd, &global, command) {
+            Ok(resolved) => return project::cargo_run(&resolved, raw),
+            Err(err) => {
+                if matches!(command, "run" | "routes" | "check" | "makemigrations") {
+                    return Err(err);
+                }
+            }
         }
     }
     let code = standalone::run_with(raw, env::var("DATABASE_URL").ok()).await?;
     Ok(code.0)
+}
+
+fn handle_help(global: &GlobalArgs) -> Result<u8, CliError> {
+    if global.json {
+        let env = CliEnvelope::success("commands", command_catalog());
+        let json = env
+            .to_json_pretty()
+            .map_err(|err| CliError::Io(format!("failed to serialize JSON: {err}")))?;
+        println!("{json}");
+    } else {
+        print_help();
+    }
+    Ok(0)
+}
+
+fn handle_missing_command(global: &GlobalArgs) -> Result<u8, CliError> {
+    if global.json {
+        let env: CliEnvelope<()> =
+            CliEnvelope::error("siderite", "USAGE", "no command specified; try --help");
+        let json = env
+            .to_json_pretty()
+            .map_err(|err| CliError::Io(format!("failed to serialize JSON: {err}")))?;
+        eprintln!("{json}");
+    } else {
+        print_help();
+    }
+    Ok(2)
+}
+
+fn handle_commands(global: &GlobalArgs) -> Result<u8, CliError> {
+    if global.json {
+        let env = CliEnvelope::success("commands", command_catalog());
+        let json = env
+            .to_json_pretty()
+            .map_err(|err| CliError::Io(format!("failed to serialize JSON: {err}")))?;
+        println!("{json}");
+    } else {
+        print!("{}", render_commands_text(&command_catalog()));
+    }
+    Ok(0)
 }
 
 /// First positional token, skipping flags and the values of known flags.
@@ -64,14 +115,22 @@ fn first_command(args: &[String]) -> Option<&str> {
     while i < args.len() {
         let arg = &args[i];
         i += 1;
-        if arg == "--help" || arg == "-h" {
+        if arg == "--help" || arg == "-h" || arg == "--json" {
             continue;
         }
         if let Some((flag, inline)) = flag_parts(arg) {
             if inline.is_none()
                 && matches!(
                     flag,
-                    "--database-url" | "--database" | "--addr" | "--migrations-dir" | "--path"
+                    "--database-url"
+                        | "--database"
+                        | "--addr"
+                        | "--migrations-dir"
+                        | "--manifest-path"
+                        | "--package"
+                        | "-p"
+                        | "--bin"
+                        | "--path"
                 )
             {
                 i += 1;
@@ -87,13 +146,19 @@ fn first_command(args: &[String]) -> Option<&str> {
 }
 
 fn flag_parts(arg: &str) -> Option<(&str, Option<&str>)> {
-    if !arg.starts_with("--") {
-        return None;
+    if arg.starts_with("--") {
+        return Some(match arg.split_once('=') {
+            Some((flag, value)) => (flag, Some(value)),
+            None => (arg, None),
+        });
     }
-    Some(match arg.split_once('=') {
-        Some((flag, value)) => (flag, Some(value)),
-        None => (arg, None),
-    })
+    if arg == "-p" {
+        return Some(("-p", None));
+    }
+    if let Some(rest) = arg.strip_prefix("-p=") {
+        return Some(("-p", Some(rest)));
+    }
+    None
 }
 
 fn print_help() {
@@ -104,11 +169,12 @@ siderite {} — FastAPI-style Rust web framework
 Create and run an app:
   new NAME                      Write a new API crate
   run [--addr ADDR]             Serve the app
-  routes                        List METHOD PATH operation_id
-  check                         Validate config, models, migrations and routes
+  routes [--json]               List METHOD PATH operation_id
+  check [--json]                Validate config, models, migrations and routes
   dbshell                       Open the database's native client
   build [--release ...]         cargo build in the app package
   test                          cargo test in the app package
+  commands [--json]             List available commands and metadata
 
 Migrations:
   makemigrations [--name SLUG] [--empty] [--dry-run]
@@ -123,6 +189,10 @@ Options:
   --database ALIAS              Database alias (migrate, dbshell)
   --database-url URL            Database URL
   --migrations-dir DIR          Migration JSON directory
+  --manifest-path PATH          Path to Cargo.toml
+  -p, --package PKG             Target package in workspace
+  --bin BIN                     Target binary
+  --json                        Produce structured JSON output
   --help                        Show this help
 
 `run`, `routes`, `check`, `dbshell` and `makemigrations` invoke `cargo run`
@@ -149,6 +219,15 @@ mod tests {
             first_command(&args(&["--addr", "127.0.0.1:1", "run"])),
             Some("run")
         );
+        assert_eq!(first_command(&args(&["-p", "demo", "run"])), Some("run"));
+        assert_eq!(
+            first_command(&args(&["--manifest-path", "Cargo.toml", "build"])),
+            Some("build")
+        );
+        assert_eq!(
+            first_command(&args(&["--json", "commands"])),
+            Some("commands")
+        );
         assert_eq!(first_command(&args(&["new", "demo"])), Some("new"));
         assert_eq!(first_command(&args(&["--help"])), None);
     }
@@ -162,12 +241,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn commands_command_returns_success() {
+        let cwd = std::env::temp_dir();
+        assert_eq!(dispatch(&args(&["commands"]), &cwd).await.unwrap(), 0);
+        assert_eq!(
+            dispatch(&args(&["commands", "--json"]), &cwd)
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn run_without_a_package_is_usage() {
         let dir = std::env::temp_dir().join(format!("siderite-dispatch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let err = dispatch(&args(&["run"]), &dir).await.unwrap_err();
         assert_eq!(err.exit_code(), 2);
-        assert!(err.to_string().contains("siderite new"));
+        assert!(err.to_string().contains("needs an application"));
     }
 
     #[tokio::test]
@@ -178,6 +269,6 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.exit_code(), 2);
-        assert!(err.to_string().contains("build needs a Cargo package"));
+        assert!(err.to_string().contains("needs an application"));
     }
 }

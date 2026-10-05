@@ -14,15 +14,17 @@
 #![forbid(unsafe_code)]
 
 mod app_cli;
-mod args;
+pub mod args;
 pub mod check;
+pub mod commands;
 pub mod connect;
 pub mod dbshell;
 mod dispatch;
+pub mod envelope;
 mod error;
 #[cfg(test)]
 mod fixtures;
-mod project;
+pub mod project;
 pub mod routes;
 mod scaffold;
 pub mod settings;
@@ -30,9 +32,15 @@ mod standalone;
 
 pub use app_cli::AppCli;
 pub use check::{CheckIssue, CheckLevel, check};
+pub use commands::{
+    CommandMeta, FlagMeta, LiveAccess, MutationKind, OutputMode, ProjectRequirement,
+    command_catalog, find_command, render_commands_text,
+};
 pub use connect::connect_url;
 pub use dbshell::ShellCommand;
 pub use dispatch::run;
+pub use envelope::{CliDiagnostic, CliEnvelope, DiagnosticSeverity, ENVELOPE_SCHEMA_VERSION};
 pub use error::CliError;
+pub use project::{ResolvedProject, resolve_project};
 pub use routes::{RouteRow, render_routes, route_table};
 pub use settings::{CliSettings, DEFAULT_ADDR};

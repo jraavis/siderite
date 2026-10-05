@@ -78,7 +78,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
 
 ### Make the CLI sufficient for daily work
 
-- [ ] **X01 — Define the developer command contract.**
+- [x] **X01 — Define the developer command contract.**
   Depends: C01, C02. Scope: consistent help, arguments and command metadata.
   Done: commands declare project requirements, mutations, live access and
   supported output modes. Provide a versioned machine-readable command list

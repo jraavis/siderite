@@ -6,6 +6,12 @@
   admission and readiness phases; overdue cooperative workers are aborted
   and joined before resource teardown.
 
+### Added
+- **CLI (Developer command contract):** `commands` command and `--json` envelope
+  reporting project requirements, mutations, live access and supported output
+  modes. Added explicit project resolution (`--manifest-path`, `-p`/`--package`,
+  `--bin`) supporting virtual workspaces, nested packages and deterministic
+  errors.
 
 ### Changed
 - **SQLite:** writers of one `SqliteBackend` (statements, raw writes,
