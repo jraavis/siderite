@@ -1,10 +1,59 @@
 # siderite
 
-A FastAPI-style Rust web framework with Pydantic-style validation and a Django-style ORM. It is async-first, type-safe, and targets stable Rust (edition 2024, MSRV 1.99).
+An async-first Rust web framework with FastAPI-style routing,
+Pydantic-style validation and a Django-style ORM. Targets stable Rust,
+edition 2024, with a declared MSRV of 1.99.
 
 **Documentation:** [jraavis.github.io/siderite](https://jraavis.github.io/siderite/)
 
-> **Status: Phase 6 (production tooling) complete, pre-alpha.** The APIs will change. The [architecture](https://jraavis.github.io/siderite/internals/architecture/) page lists what is implemented.
+> **Status: pre-alpha.** Core framework and initial tooling are implemented;
+> APIs may change, and reliability work continues. Expanded CLI workflows and
+> AI assistance are planned. See the [roadmap](#roadmap) for delivery scope.
+
+## Start with the CLI
+
+Install from the repository using Rust 1.99 or newer and Cargo:
+
+```bash
+cargo install --git https://github.com/jraavis/siderite siderite-cli
+siderite new my_api
+cd my_api
+siderite check
+siderite run
+```
+
+The default scaffold uses SQLite and creates an application with `AppCli`,
+configuration and a migrations directory. Open the app at
+[localhost:8000](http://127.0.0.1:8000/) and its interactive API documentation
+at [localhost:8000/docs](http://127.0.0.1:8000/docs).
+
+From the application directory, these commands are available today:
+
+| Command | Purpose |
+|---|---|
+| `siderite run` | Build and serve the application |
+| `siderite build --release` | Compile a release build through Cargo |
+| `siderite test` | Run application tests through Cargo |
+| `siderite check` | Validate framework configuration and metadata |
+| `siderite routes` | List documented routes |
+| `siderite makemigrations --name change` | Generate a model migration |
+| `siderite migrate` | Apply migrations to the selected database |
+| `siderite showmigrations` | Show applied and pending migrations |
+| `siderite inspectmigrations` | Inspect migration recovery state |
+| `siderite rollback --steps 1` | Roll back one migration |
+| `siderite dbshell` | Open the configured database's native client |
+
+Commands that connect to a database require its configuration; `dbshell`
+also requires its native client. Framework `check` does not replace
+compilation or Rust linting.
+Use `siderite --help` for additional commands and options.
+
+The CLI currently delegates compilation and application commands to Cargo.
+The planned workflow adds `dev`, `generate`, `verify`, `ai` and `mcp` so daily
+work can stay inside `siderite`. **Those additions are not available yet.**
+Cargo and the Rust toolchain remain build prerequisites.
+
+## Framework example
 
 ```rust
 use siderite::prelude::*;
@@ -69,8 +118,8 @@ let adults = User::objects(&db)
 
 ```bash
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
 cargo install --path crates/siderite-cli
 cd examples/hello_world && siderite run
 ```
@@ -87,7 +136,10 @@ Examples (in `examples/`):
 
 Guides: [configuration](https://jraavis.github.io/siderite/guides/production/config/) and [cache](https://jraavis.github.io/siderite/guides/production/cache/).
 
-Backends other than SQLite are behind cargo features (`postgres`, `mysql`, `mongodb`, `redis`). Their live tests are skipped unless a server URL is set:
+Backends other than SQLite use Cargo features: `postgres`, `mysql`,
+`mongodb` and `redis`. Live tests are ignored in ordinary test runs; explicitly
+selected live tests require their service configuration and fail if it is
+missing. Setting a URL alone does not enable ignored tests.
 
 | Backend | Feature | Live-test variable |
 |---|---|---|
@@ -100,8 +152,14 @@ To run them locally, start the databases from `docker-compose.yml` and export th
 
 ```bash
 docker compose up -d --wait
-cargo test --workspace --all-features
+# Export the service URLs from docker-compose.yml before this command.
+cargo test --workspace --all-features -- --include-ignored \
+  --test-threads=1 --skip tls_certificate_contracts --skip recovery_child
 ```
+
+The command above follows the main CI live-test selection. TLS certificate
+contracts require separate fixtures; recovery child tests run through their
+parent harness. Use disposable local services for migration and backend tests.
 
 Unsupported features fail with a `BackendCapabilityError` before any I/O; see the [backend matrix](https://jraavis.github.io/siderite/reference/backend-matrix/). Redis is a key/hash/set client, not a `QuerySet` backend.
 
