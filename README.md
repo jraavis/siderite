@@ -130,12 +130,46 @@ DB writes are DB-bound and land near parity; reads favor siderite. Numbers are m
 
 ## Roadmap
 
-1. Foundation: done
-2. HTTP framework: done (route macros, DI, middleware, lifespan, WebSockets, OpenAPI 3.1)
-3. Validation and serialization: done (Pydantic-style pipeline, validators, computed fields, dump options, constrained types)
-4. ORM models, QuerySet, relations, transactions, migrations: done
-5. MySQL, MongoDB, Redis: done (MongoDB compiles the supported QuerySet subset; Redis is a typed client)
-6. Production tooling: done (configuration, observability, security schemes, signals, database routing, cache, CLI, testkit, benchmarks, CI, docker-compose; see [releasing](https://jraavis.github.io/siderite/contributing/releasing/))
+The initial framework milestones are implemented: HTTP routing and OpenAPI,
+validation and serialization, ORM and migrations, database adapters, and
+production tooling. MongoDB supports a QuerySet subset; Redis is a typed
+client. Reliability and compatibility work continues beyond these milestones.
+
+The next goal is **daily application development through `siderite` commands,
+without invoking Cargo directly**. Rust and Cargo remain the underlying build
+toolchain; setup, development, validation and packaging get one CLI workflow.
+
+Planned work, not yet implemented:
+
+- [ ] **Reliability:** bounded Redis cache-generation metadata, remaining
+  migration crash/disconnect tests, and enforced module-size limits.
+- [ ] **Complete CLI workflow:** setup/doctor, watch and restart with `dev`,
+  dependency management, route/model/CRUD generation, formatting, linting,
+  unified `verify`, and OpenAPI export.
+- [ ] **AI-assisted development:** version-matched local documentation,
+  structured diagnostics, bounded task-focused context, safe instruction-file
+  integration, validation reports, and an optional read-only MCP server.
+- [ ] **Application productivity:** verified templates, local service fixtures,
+  seed datasets, generated tests, and effective configuration inspection.
+- [ ] **Framework additions:** HTTP pagination integration, health/readiness,
+  SSE, and scoped SPA fallback. Cursor pagination and session/CSRF support
+  begin with explicit design contracts.
+- [ ] **Delivery and compatibility:** OpenAPI comparison, CI templates,
+  reproducible release packaging, and framework upgrade previews.
+
+The detailed plans contain **66 small tasks**, with dependencies, acceptance
+criteria and release gates:
+
+- [Core roadmap and 46 tasks](docs/plans/CLI_AI_ROADMAP.md)
+- [Developer workflow and 20 additional tasks](docs/plans/DEVELOPER_EXPERIENCE.md)
+
+First deliver structured checks/OpenAPI export, reliable development reload,
+unified verification and version-correct AI context. Keep reliability fixes
+independently releasable. The final workflow acceptance test must create,
+change, test and package an application using only `siderite` commands.
+
+Custom SDK generation, Studio, storage adapters, durable queues and
+multi-tenancy remain future design scope, not current release commitments.
 
 ## License
 
