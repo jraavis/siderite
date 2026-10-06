@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: X01-X03 (and parent C06) implemented; other tasks proposed.
+Updated: 2026-10-05. Status: X01-X03 (and parent C03, C06, C08) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -54,14 +54,14 @@ remain explicit commands; development reload never applies them implicitly.
 | Build and test | `build`, `test` | Exist; richer reports proposed |
 | Add libraries | `add`, `remove` | Proposed D03-D04 |
 | Generate application code | `generate route/model/crud` | Proposed D05-D10 |
-| Format and lint | `fmt`, `lint` | Proposed C08 |
+| Format and lint | `fmt`, `lint`, `clean` | Exist (C08) |
 | Complete local verification | `verify` | New X04 |
-| Framework checks | `check --json` | `check` exists; JSON is new |
+| Framework checks | `check --json` | Exists (C03) |
 | Database changes | `makemigrations`, `migrate`, `rollback` | Exist |
 | Demo data | `seed --dataset demo` | New X09 |
 | Local backing services | `services up/down/status` | New X08 |
 | Effective config | `config show --redacted` | New X07 |
-| Route/spec inspection | `routes --json`, `openapi export` | C03-C04 |
+| Route/spec inspection | `routes --json`, `openapi export` | `routes --json` exists (C03); export C04 |
 | API compatibility | `openapi diff BASE CURRENT` | New X16 |
 | Framework help | `docs search`, `explain CODE` | New X11-X12 |
 | AI setup/context | `ai init`, `ai context --task TEXT` | A03 and X13 |
@@ -263,4 +263,5 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 
 This document adds 20 tasks to the parent's 46. Implemented so far: X01
 (command contract), X02 (setup diagnostics) and X03 (shell completions),
-plus the parent's C06 (`doctor`).
+plus the parent's C03 (`check`/`routes` JSON), C06 (`doctor`) and C08
+(`fmt`/`lint`/`clean`).

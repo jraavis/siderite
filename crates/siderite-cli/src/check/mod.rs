@@ -20,13 +20,15 @@ mod models;
 mod openapi;
 
 use crate::settings::CliSettings;
+use serde::Serialize;
 use siderite_core::App;
 use siderite_orm::ModelMeta;
 use std::fmt;
 use std::path::Path;
 
-/// How serious a [`CheckIssue`] is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// How serious a [`CheckIssue`] is. Serializes as `"warning"` / `"error"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CheckLevel {
     /// Worth fixing; the app still runs.
     Warning,
@@ -44,7 +46,7 @@ impl fmt::Display for CheckLevel {
 }
 
 /// One problem found by [`check`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CheckIssue {
     /// Severity.
     pub level: CheckLevel,
@@ -77,6 +79,33 @@ impl CheckIssue {
 impl fmt::Display for CheckIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: [{}] {}", self.level, self.id, self.message)
+    }
+}
+
+/// The `data` of `check --json`: every issue plus per-level counts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CheckReport {
+    /// Issues in [`check`] order.
+    pub issues: Vec<CheckIssue>,
+    /// Number of error issues.
+    pub errors: usize,
+    /// Number of warning issues.
+    pub warnings: usize,
+}
+
+impl CheckReport {
+    /// Count the levels of `issues`.
+    #[must_use]
+    pub fn new(issues: Vec<CheckIssue>) -> Self {
+        let errors = issues
+            .iter()
+            .filter(|i| i.level == CheckLevel::Error)
+            .count();
+        Self {
+            warnings: issues.len() - errors,
+            errors,
+            issues,
+        }
     }
 }
 

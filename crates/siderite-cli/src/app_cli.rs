@@ -1,11 +1,12 @@
 //! [`AppCli`]: the command line of an application binary.
 
 use crate::args::{GlobalArgs, split_global};
-use crate::check::{check, check_build, has_errors};
+use crate::check::{CheckIssue, CheckReport, check, check_build, has_errors};
 use crate::connect::{backend_kind, connect_url, scratch_db};
 use crate::dbshell::ShellCommand;
+use crate::envelope::CliEnvelope;
 use crate::error::CliError;
-use crate::routes::{render_routes, route_table};
+use crate::routes::{RoutesReport, render_routes, route_table};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
 use siderite_core::App;
 use siderite_orm::router::DatabaseRouter;
@@ -20,10 +21,15 @@ use std::sync::Arc;
 /// | Command | Does |
 /// |---|---|
 /// | `run [--addr ADDR]` | connects the configured databases and serves the app |
-/// | `routes` | prints `METHOD PATH operation_id` for every route |
-/// | `check` | runs [`check`](crate::check()); exits `1` if any error is found |
+/// | `routes [--json]` | prints `METHOD PATH operation_id` for every documented route |
+/// | `check [--json]` | runs [`check`](crate::check()); exits `1` if any error is found |
 /// | `dbshell` | starts `sqlite3`, `psql` or `mysql` on the database |
 /// | `makemigrations`, `migrate`, `rollback`, `showmigrations`, `squashmigrations` | delegate to [`siderite_migrations::cli::run`] |
+///
+/// With `--json` (anywhere on the line), `routes` and `check` print one
+/// [`CliEnvelope`] on stdout; other commands reject it as a usage error, and
+/// failures print an error envelope on stderr. Factories must not write to
+/// stdout, or the JSON is no longer one value.
 ///
 /// Global flags: `--database ALIAS` (default `default`), `--database-url URL`
 /// and `--migrations-dir DIR`. The listen address is, in order, `--addr`, the
@@ -144,7 +150,20 @@ impl AppCli {
         match self.execute(&args, &Env::from_process()).await {
             Ok(code) => ExitCode::from(code),
             Err(err) => {
-                eprintln!("error: {err}");
+                if args.iter().any(|a| a == "--json") {
+                    let command = split_global(&args)
+                        .ok()
+                        .and_then(|(_, rest)| rest.into_iter().find(|a| a != "--json"))
+                        .unwrap_or_else(|| "siderite".to_owned());
+                    let env: CliEnvelope<()> =
+                        CliEnvelope::error(command, error_code(&err), err.to_string());
+                    match env.to_json_pretty() {
+                        Ok(json) => eprintln!("{json}"),
+                        Err(_) => eprintln!("error: {err}"),
+                    }
+                } else {
+                    eprintln!("error: {err}");
+                }
                 ExitCode::from(err.exit_code())
             }
         }
@@ -152,6 +171,8 @@ impl AppCli {
 
     pub(crate) async fn execute(&self, args: &[String], env: &Env) -> Result<u8, CliError> {
         let (global, rest) = split_global(args)?;
+        // `--json` is global: it may precede the command.
+        let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
         let Some(command) = rest.first().map(String::as_str) else {
             print_help();
             return Ok(if global.help { 0 } else { 2 });
@@ -159,6 +180,11 @@ impl AppCli {
         if global.help || command == "help" {
             print_help();
             return Ok(0);
+        }
+        if global.json && !matches!(command, "routes" | "check") {
+            return Err(CliError::usage(format!(
+                "`{command}` does not support --json (only `routes` and `check` do)"
+            )));
         }
         match command {
             "run" | "routes" | "check" | "dbshell" => {
@@ -173,8 +199,15 @@ impl AppCli {
                 }
                 match command {
                     "run" => self.serve(&global, env).await,
-                    "routes" => self.routes(),
-                    "check" => Ok(self.check()),
+                    "routes" => {
+                        print!("{}", self.routes_output(global.json)?);
+                        Ok(0)
+                    }
+                    "check" => {
+                        let (out, code) = self.check_output(global.json)?;
+                        print!("{out}");
+                        Ok(code)
+                    }
                     _ => self.dbshell(&global, env),
                 }
             }
@@ -271,13 +304,40 @@ impl AppCli {
         Ok(0)
     }
 
-    fn routes(&self) -> Result<u8, CliError> {
-        let rows = route_table(&(self.factory)())?;
-        print!("{}", render_routes(&rows));
-        Ok(0)
+    /// `routes` output: the text table, or one JSON envelope.
+    fn routes_output(&self, json: bool) -> Result<String, CliError> {
+        let routes = route_table(&(self.factory)())?;
+        if !json {
+            return Ok(render_routes(&routes));
+        }
+        to_json(&CliEnvelope::success("routes", RoutesReport { routes }))
     }
 
-    fn check(&self) -> u8 {
+    /// `check` output and exit code (`1` when an error was found).
+    fn check_output(&self, json: bool) -> Result<(String, u8), CliError> {
+        let issues = self.check_issues();
+        let code = u8::from(has_errors(&issues));
+        if json {
+            let mut env = CliEnvelope::success("check", CheckReport::new(issues));
+            env.ok = code == 0;
+            return Ok((to_json(&env)?, code));
+        }
+        let mut out = String::new();
+        for issue in &issues {
+            out.push_str(&format!("{issue}\n"));
+        }
+        if issues.is_empty() {
+            out.push_str("System check identified no issues.\n");
+        } else {
+            out.push_str(&format!(
+                "System check identified {} issue(s).\n",
+                issues.len()
+            ));
+        }
+        Ok((out, code))
+    }
+
+    fn check_issues(&self) -> Vec<CheckIssue> {
         let mut issues = check(
             &(self.factory)(),
             &self.models,
@@ -289,15 +349,7 @@ impl AppCli {
         if !issues.iter().any(|i| i.id.starts_with("openapi.")) {
             issues.extend(check_build((self.factory)()));
         }
-        for issue in &issues {
-            println!("{issue}");
-        }
-        if issues.is_empty() {
-            println!("System check identified no issues.");
-        } else {
-            println!("System check identified {} issue(s).", issues.len());
-        }
-        u8::from(has_errors(&issues))
+        issues
     }
 
     fn dbshell(&self, global: &GlobalArgs, env: &Env) -> Result<u8, CliError> {
@@ -306,13 +358,31 @@ impl AppCli {
     }
 }
 
+/// One JSON value plus a trailing newline.
+fn to_json<T: serde::Serialize>(env: &CliEnvelope<T>) -> Result<String, CliError> {
+    env.to_json_pretty()
+        .map(|json| format!("{json}\n"))
+        .map_err(|err| CliError::Io(format!("failed to serialize JSON: {err}")))
+}
+
+/// Stable diagnostic code for an error envelope.
+fn error_code(err: &CliError) -> &'static str {
+    match err.exit_code() {
+        2 => "USAGE",
+        _ => match err {
+            CliError::OpenApi(_) => "OPENAPI",
+            _ => "ERROR",
+        },
+    }
+}
+
 fn print_help() {
     println!(
         "\
 Commands:
   run [--addr ADDR]            Connect the databases and serve the app
-  routes                       List METHOD PATH operation_id
-  check                        Validate config, models, migrations and routes
+  routes [--json]              List METHOD PATH operation_id
+  check [--json]               Validate config, models, migrations and routes
   dbshell                      Open the database's native client
   makemigrations [--name SLUG] [--empty] [--dry-run]
   migrate [TARGET] [--dry-run]
@@ -326,6 +396,7 @@ Options:
   --database ALIAS        Database alias for migrate/rollback/showmigrations/dbshell
   --database-url URL      Database URL, overriding the settings
   --migrations-dir DIR    Migration JSON directory
+  --json                  One JSON envelope on stdout (routes, check)
   --help                  Show this help
 "
     );
@@ -395,6 +466,100 @@ mod tests {
         let dir = temp_dir("check-clean");
         let cli = cli().migrations_dir(dir);
         assert_eq!(run(&cli, &["check"], &env).await.unwrap(), 0);
+    }
+
+    fn parse(out: &str) -> serde_json::Value {
+        serde_json::from_str(out).unwrap()
+    }
+
+    #[tokio::test]
+    async fn routes_json_is_one_envelope_without_hidden_routes() {
+        let cli = AppCli::new(|| {
+            App::new()
+                .route("/ping", get(|| async { "pong" }).operation_id("ping"))
+                .route("/secret", get(|| async { "s" }).hidden())
+        });
+        let json = parse(&cli.routes_output(true).unwrap());
+        assert_eq!(json["schema_version"], "1.0");
+        assert_eq!(json["command"], "routes");
+        assert_eq!(json["ok"], true);
+        assert_eq!(
+            json["data"]["routes"],
+            serde_json::json!([
+                {"method": "GET", "path": "/ping", "operation_id": "ping"}
+            ])
+        );
+        // Text output is unchanged.
+        assert!(cli.routes_output(false).unwrap().starts_with("GET"));
+    }
+
+    #[tokio::test]
+    async fn json_flag_works_before_or_after_the_command() {
+        let env = Env::default();
+        let cli = cli().migrations_dir(temp_dir("json-pos"));
+        for list in [
+            &["--json", "routes"][..],
+            &["routes", "--json"],
+            &["--json", "check"],
+        ] {
+            assert_eq!(run(&cli, list, &env).await.unwrap(), 0, "{list:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn json_is_rejected_by_commands_without_a_json_mode() {
+        let env = Env::default();
+        for cmd in ["run", "dbshell", "migrate", "makemigrations"] {
+            let err = run(&cli(), &[cmd, "--json"], &env).await.unwrap_err();
+            assert_eq!(err.exit_code(), 2, "{cmd}");
+            assert!(err.to_string().contains("--json"), "{err}");
+        }
+        let err = run(&cli(), &["routes", "--json", "x"], &env)
+            .await
+            .unwrap_err();
+        assert_eq!(err.exit_code(), 2);
+    }
+
+    #[tokio::test]
+    async fn routes_json_with_a_broken_spec_is_an_error() {
+        let dup = AppCli::new(|| {
+            App::new()
+                .route("/a", get(|| async { "a" }).operation_id("same"))
+                .route("/b", get(|| async { "b" }).operation_id("same"))
+        });
+        let err = run(&dup, &["routes", "--json"], &Env::default())
+            .await
+            .unwrap_err();
+        assert_eq!(err.exit_code(), 1);
+        assert_eq!(error_code(&err), "OPENAPI");
+    }
+
+    #[tokio::test]
+    async fn check_json_reports_issues_and_fails_on_errors() {
+        let dir = temp_dir("check-json");
+        let clean = cli().migrations_dir(dir.clone());
+        let (out, code) = clean.check_output(true).unwrap();
+        let json = parse(&out);
+        assert_eq!(code, 0);
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["data"]["issues"], serde_json::json!([]));
+
+        let broken = cli().models(&[no_pk()]).migrations_dir(dir);
+        let (out, code) = broken.check_output(true).unwrap();
+        let json = parse(&out);
+        assert_eq!(code, 1);
+        assert_eq!(json["command"], "check");
+        assert_eq!(json["ok"], false);
+        assert!(json["data"]["errors"].as_u64().unwrap() >= 1);
+        let issues = json["data"]["issues"].as_array().unwrap();
+        assert!(
+            issues
+                .iter()
+                .any(|i| i["level"] == "error" && i["id"] == "models.E003"),
+            "{issues:?}"
+        );
+        let (text, _) = broken.check_output(false).unwrap();
+        assert!(text.contains("issue(s)."), "{text}");
     }
 
     #[tokio::test]

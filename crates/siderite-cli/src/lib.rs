@@ -35,7 +35,7 @@ mod standalone;
 pub mod toolchain;
 
 pub use app_cli::AppCli;
-pub use check::{CheckIssue, CheckLevel, check};
+pub use check::{CheckIssue, CheckLevel, CheckReport, check};
 pub use commands::{
     CommandMeta, FlagMeta, LiveAccess, MutationKind, OutputMode, ProjectRequirement,
     command_catalog, find_command, global_flags, render_commands_text,
@@ -46,5 +46,5 @@ pub use dispatch::run;
 pub use envelope::{CliDiagnostic, CliEnvelope, DiagnosticSeverity, ENVELOPE_SCHEMA_VERSION};
 pub use error::CliError;
 pub use project::{ResolvedProject, resolve_project};
-pub use routes::{RouteRow, render_routes, route_table};
+pub use routes::{RouteRow, RoutesReport, render_routes, route_table};
 pub use settings::{CliSettings, DEFAULT_ADDR};

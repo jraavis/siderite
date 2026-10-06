@@ -1,7 +1,7 @@
 # Framework reliability, CLI and AI tooling roadmap
 
 Reviewed: 2026-10-05. Source baseline: `0f30c32` plus the local gap plan.
-Status: planning; C06 and C08 implemented (see checked tasks), others open.
+Status: planning; C03, C06 and C08 implemented (see checked tasks), others open.
 
 The [developer experience expansion](DEVELOPER_EXPERIENCE.md) adds the
 complete Siderite-only daily workflow, 20 additional tasks and AI-focused
@@ -214,10 +214,14 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: stable ordering, envelope version, redaction and exit-code snapshots;
   no new database connections; existing text output remains compatible.
 
-- [ ] **C03 — Expose check/routes JSON end to end.**
+- [x] **C03 — Expose check/routes JSON end to end.**
   Depends: C01, C02. Scope: parser, APP_COMMANDS, dispatch and AppCli.
   Done: flags before/after commands work or fail clearly; stdout parses as
   one JSON value; errors retain exit semantics; hidden routes remain omitted.
+  Summary: `AppCli` treats `--json` as global, renders `CheckReport` /
+  `RoutesReport` envelopes and rejects `--json` elsewhere (exit 2). Factory
+  stdout prints are documented as unsupported; X04 rejects contaminated
+  output (2026-10-06).
 
 - [ ] **C04 — Export OpenAPI JSON from the app binary.**
   Depends: C01, C02. Scope: `openapi export [--output PATH]`.

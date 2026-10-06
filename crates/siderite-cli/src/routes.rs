@@ -4,10 +4,11 @@
 //! their prefix and endpoints marked `hidden` are left out.
 
 use crate::error::CliError;
+use serde::Serialize;
 use siderite_core::App;
 
 /// One row of the route table.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RouteRow {
     /// Upper-case HTTP method.
     pub method: String,
@@ -38,6 +39,14 @@ pub fn route_table(app: &App) -> Result<Vec<RouteRow>, CliError> {
     }
     rows.sort_by(|a, b| (&a.path, &a.method).cmp(&(&b.path, &b.method)));
     Ok(rows)
+}
+
+/// The `data` of `routes --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RoutesReport {
+    /// Documented routes, sorted as by [`route_table`]. Hidden endpoints
+    /// are omitted.
+    pub routes: Vec<RouteRow>,
 }
 
 /// Render `rows` as an aligned text table, one route per line.

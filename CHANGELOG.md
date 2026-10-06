@@ -7,6 +7,12 @@
   and joined before resource teardown.
 
 ### Added
+- **CLI (check/routes JSON):** `routes --json` and `check --json` print one
+  versioned JSON envelope on stdout, from both `siderite` and `AppCli`, with
+  `--json` before or after the command. `check` keeps its issues in `data`
+  and exits `1` on errors; other commands reject `--json` as a usage error.
+  New `CheckReport` and `RoutesReport` types; `CheckIssue` and `RouteRow`
+  are serializable.
 - **CLI (fmt/lint/clean):** `siderite fmt`, `siderite lint` and
   `siderite clean` run `cargo fmt`, `cargo clippy` and `cargo clean` in the
   selected package, forwarding arguments and the child's exit code. `lint`

@@ -66,8 +66,8 @@ AppCli::new(build_app)
 | Command | What it does |
 |---|---|
 | `run [--addr ADDR]` | Connects every configured SQL database, registers each under its alias (`App::database`), and serves the app. Aliases whose URL is Redis or MongoDB are skipped: register those yourself in the factory. |
-| `routes` | Prints `METHOD PATH operation_id` for every route, mounts included. |
-| `check` | Validates configuration, models, migrations, routes and the backend (see below). Exits `1` when an error is found. |
+| `routes [--json]` | Prints `METHOD PATH operation_id` for every documented route, mounts included. |
+| `check [--json]` | Validates configuration, models, migrations, routes and the backend (see below). Exits `1` when an error is found. |
 | `dbshell` | Starts the database's native client. Replaces Django-style `shell`. |
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the migration graph and writes a JSON migration. Never connects to a database. |
 | `migrate [TARGET] [--dry-run]` | Applies migrations. |
@@ -81,6 +81,24 @@ AppCli::new(build_app)
 
 See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
 
+### JSON output
+
+`routes --json` and `check --json` print exactly one JSON value on stdout:
+the standard envelope (`schema_version`, `command`, `ok`, `data`,
+`diagnostics`). `--json` may come before or after the command. Cargo's build
+output stays on stderr.
+
+- `routes`: `data.routes` is a list of `{method, path, operation_id}` sorted
+  by path, then method. Hidden endpoints are omitted, as in the text table.
+- `check`: `data` holds `issues` (`{level, id, message}`, in text order),
+  `errors` and `warnings`. When an error is found, `ok` is `false`, the
+  issues are still in `data`, and the exit code is `1`.
+
+Other commands reject `--json` with a usage error (exit `2`). When a command
+fails, an error envelope goes to stderr and the exit code is unchanged. The
+app factory must not print to stdout, or the output is no longer one JSON
+value.
+
 ### Global flags
 
 | Flag | Meaning |
@@ -88,6 +106,7 @@ See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
 | `--database ALIAS` | Alias used by `migrate`, `rollback`, `showmigrations` and `dbshell` (default `default`). |
 | `--database-url URL` | Database URL, overriding the settings. |
 | `--migrations-dir DIR` | Directory of JSON migrations (default `migrations`). |
+| `--json` | One JSON envelope on stdout (`routes`, `check`) |
 | `--addr ADDR` | Listen address for `run`. |
 | `--help`, `-h` | Help. |
 
