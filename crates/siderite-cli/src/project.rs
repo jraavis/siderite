@@ -106,6 +106,9 @@ pub fn resolve_project(
     command: &str,
 ) -> Result<ResolvedProject, CliError> {
     if let Some(manifest) = &global.manifest_path {
+        // Cargo runs from the package directory, so a relative path must
+        // be resolved against the caller's directory first.
+        let manifest = &cwd.join(manifest);
         if !manifest.exists() {
             return Err(CliError::usage(format!(
                 "manifest path `{}` does not exist",
@@ -566,6 +569,22 @@ mod tests {
         let resolved = resolve_project(&workspace, &global, "run").unwrap();
         assert_eq!(resolved.package_name.as_deref(), Some("siderite-cli"));
         assert_eq!(resolved.binary_name.as_deref(), Some("siderite"));
+    }
+
+    #[test]
+    fn relative_manifest_path_is_resolved_against_cwd() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let global = GlobalArgs {
+            manifest_path: Some(PathBuf::from("crates/siderite-cli/Cargo.toml")),
+            ..GlobalArgs::default()
+        };
+        let resolved = resolve_project(&workspace, &global, "build").unwrap();
+        assert_eq!(resolved.package_name.as_deref(), Some("siderite-cli"));
     }
 
     #[test]
