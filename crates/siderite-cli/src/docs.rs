@@ -69,6 +69,10 @@ pub struct VersionCheck {
     /// `siderite` version locked by the project, when found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_version: Option<String>,
+    /// Locked package the version is read from: `siderite`, or
+    /// `siderite-core` when the facade is not used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
     /// Lock file the version came from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lock_file: Option<String>,
@@ -106,6 +110,9 @@ pub struct DocHit {
     pub features: Vec<String>,
     /// First matching line of the section, shortened.
     pub snippet: String,
+    /// Full section text (Markdown), with `--full`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     /// Relevance score; higher is better.
     pub score: u32,
 }
@@ -121,6 +128,8 @@ pub struct DocsSearchReport {
     pub source: String,
     /// The query as searched.
     pub query: String,
+    /// Whether results match every query word or only some.
+    pub match_mode: MatchMode,
     /// Project version comparison.
     pub version_check: VersionCheck,
     /// Hits, best first.
@@ -136,18 +145,69 @@ pub fn embedded_index() -> Result<DocIndex, CliError> {
         .map_err(|err| CliError::Io(format!("embedded docs index is unreadable: {err}")))
 }
 
-fn terms(query: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for term in query
+/// Common English words dropped from queries such as "how do I run tests".
+const STOP_WORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how",
+    "i", "in", "into", "is", "it", "me", "my", "of", "on", "or", "the", "to", "use", "using",
+    "what", "when", "where", "which", "why", "with",
+];
+
+/// One query word: the lowercase word and the stem searched as a prefix.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Term {
+    word: String,
+    stem: String,
+}
+
+/// Strip one common English suffix so `connections`, `tested` and
+/// `routing` find `connection`, `test` and `route`.
+fn stem(word: &str) -> String {
+    if let Some(base) = word.strip_suffix("ies")
+        && base.chars().count() >= 3
+    {
+        return format!("{base}y");
+    }
+    for suffix in ["ing", "ed", "es", "s"] {
+        if let Some(base) = word.strip_suffix(suffix)
+            && base.chars().count() >= 4
+        {
+            // `running` -> `run`, `mapped` -> `map`.
+            let mut chars: Vec<char> = base.chars().collect();
+            let n = chars.len();
+            if (suffix == "ing" || suffix == "ed")
+                && chars[n - 1] == chars[n - 2]
+                && !"aeiouls".contains(chars[n - 1])
+            {
+                chars.pop();
+            }
+            return chars.into_iter().collect();
+        }
+    }
+    word.to_owned()
+}
+
+/// Query words without stop words (kept when the query has nothing else).
+fn terms(query: &str) -> Vec<Term> {
+    let mut words: Vec<String> = Vec::new();
+    for word in query
         .split(|c: char| !is_word(c))
         .filter(|t| !t.is_empty())
         .map(str::to_lowercase)
     {
-        if !out.contains(&term) {
-            out.push(term);
+        if !words.contains(&word) {
+            words.push(word);
         }
     }
-    out
+    if words.iter().any(|w| !STOP_WORDS.contains(&w.as_str())) {
+        words.retain(|w| !STOP_WORDS.contains(&w.as_str()));
+    }
+    words
+        .into_iter()
+        .map(|word| Term {
+            stem: stem(&word),
+            word,
+        })
+        .collect()
 }
 
 fn is_word(c: char) -> bool {
@@ -167,32 +227,50 @@ fn count(haystack: &str, needle: &str) -> u32 {
     u32::try_from(word_starts(haystack, needle).count()).unwrap_or(u32::MAX)
 }
 
-/// Every term must occur in the page title, heading or body. Heading hits
-/// weigh most, then page title, then body occurrences (at most five per term).
-fn score(section: &DocSection, terms: &[String]) -> Option<u32> {
+/// Occurrences of `word` as a whole word.
+fn count_exact(haystack: &str, word: &str) -> u32 {
+    let n = word_starts(haystack, word)
+        .filter(|&i| {
+            !haystack[i + word.len()..]
+                .chars()
+                .next()
+                .is_some_and(is_word)
+        })
+        .count();
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// Score of one term in one field: word-start (stem) matches, and twice
+/// more for whole-word matches of the query word.
+fn field_score(field: &str, term: &Term) -> u32 {
+    count(field, &term.stem) + 2 * count_exact(field, &term.word)
+}
+
+/// Per-term scores of one section. Heading hits weigh most, then the page
+/// title, then body occurrences (capped per term).
+fn term_scores(section: &DocSection, terms: &[Term]) -> Vec<u32> {
     let heading = section.heading.to_lowercase();
     let page = section.page.to_lowercase();
     let text = section.text.to_lowercase();
-    let mut total = 0u32;
-    for term in terms {
-        let s = count(&heading, term) * 10 + count(&page, term) * 4 + count(&text, term).min(5);
-        if s == 0 {
-            return None;
-        }
-        total += s;
-    }
-    Some(total)
+    terms
+        .iter()
+        .map(|term| {
+            field_score(&heading, term) * 10
+                + field_score(&page, term) * 4
+                + field_score(&text, term).min(10)
+        })
+        .collect()
 }
 
 /// The first line with a term, cut to at most 160 characters around the
 /// first match.
-fn snippet(text: &str, terms: &[String]) -> String {
+fn snippet(text: &str, terms: &[Term]) -> String {
     const MAX: usize = 160;
     let mut found = text.lines().map(str::trim).find_map(|l| {
         let lower = l.to_lowercase();
         terms
             .iter()
-            .filter_map(|t| word_starts(&lower, t).next())
+            .filter_map(|t| word_starts(&lower, &t.stem).next())
             .min()
             .map(|byte| (l, lower[..byte].chars().count()))
     });
@@ -223,46 +301,90 @@ fn snippet(text: &str, terms: &[String]) -> String {
     out
 }
 
-/// Search `index` for `query`, best first, ties by path then line.
-#[must_use]
-pub fn search(index: &DocIndex, query: &str, limit: usize) -> Vec<DocHit> {
-    let terms = terms(query);
-    if terms.is_empty() {
-        return Vec::new();
-    }
-    let mut hits: Vec<DocHit> = index
-        .sections
-        .iter()
-        .filter_map(|s| {
-            score(s, &terms).map(|score| DocHit {
-                page: s.page.clone(),
-                heading: s.heading.clone(),
-                path: s.path.clone(),
-                line: s.line,
-                url: s.url.clone(),
-                features: s.features.clone(),
-                snippet: snippet(&s.text, &terms),
-                score,
-            })
-        })
-        .collect();
-    hits.sort_by(|a, b| {
-        b.score
-            .cmp(&a.score)
-            .then_with(|| a.path.cmp(&b.path))
-            .then_with(|| a.line.cmp(&b.line))
-    });
-    hits.truncate(limit);
-    hits
+/// How results matched the query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchMode {
+    /// Every query word occurs in each result.
+    All,
+    /// No section has every word; results have at least one, most first.
+    Any,
 }
 
-/// Every `version` of a `siderite` package in a `Cargo.lock`, in file order.
-fn locked_siderite(lock: &str) -> Vec<String> {
+/// Search `index` for `query`. Sections with every query word come first;
+/// when there are none, sections with any word, more matched words first.
+/// Then best score, ties by path and line. With `full`, hits carry the
+/// section text.
+#[must_use]
+pub fn search(index: &DocIndex, query: &str, limit: usize, full: bool) -> (MatchMode, Vec<DocHit>) {
+    let terms = terms(query);
+    if terms.is_empty() {
+        return (MatchMode::All, Vec::new());
+    }
+    let per_section: Vec<(Vec<u32>, &DocSection)> = index
+        .sections
+        .iter()
+        .map(|s| (term_scores(s, &terms), s))
+        .collect();
+    // Inverse document frequency: a word found in few sections counts more
+    // than one found almost everywhere.
+    let n = per_section.len().max(1) as f64;
+    let weights: Vec<f64> = (0..terms.len())
+        .map(|i| {
+            let df = per_section.iter().filter(|(t, _)| t[i] > 0).count().max(1) as f64;
+            (1.0 + n / df).ln()
+        })
+        .collect();
+    let mut scored: Vec<(usize, u32, &DocSection)> = per_section
+        .into_iter()
+        .map(|(scores, s)| {
+            let matched = scores.iter().filter(|v| **v > 0).count();
+            let total: f64 = scores
+                .iter()
+                .zip(&weights)
+                .map(|(v, w)| f64::from(*v) * w)
+                .sum();
+            (matched, (total * 10.0).round() as u32, s)
+        })
+        .filter(|(matched, _, _)| *matched > 0)
+        .collect();
+    let mode = if scored.is_empty() || scored.iter().any(|(m, _, _)| *m == terms.len()) {
+        scored.retain(|(m, _, _)| *m == terms.len());
+        MatchMode::All
+    } else {
+        MatchMode::Any
+    };
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| a.2.path.cmp(&b.2.path))
+            .then_with(|| a.2.line.cmp(&b.2.line))
+    });
+    let hits = scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, score, s)| DocHit {
+            page: s.page.clone(),
+            heading: s.heading.clone(),
+            path: s.path.clone(),
+            line: s.line,
+            url: s.url.clone(),
+            features: s.features.clone(),
+            snippet: snippet(&s.text, &terms),
+            text: full.then(|| s.text.clone()),
+            score,
+        })
+        .collect();
+    (mode, hits)
+}
+
+/// Every `version` of package `package` in a `Cargo.lock`, in file order.
+fn locked_versions(lock: &str, package: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut name: Option<&str> = None;
     let mut version: Option<&str> = None;
     let mut flush = |name: Option<&str>, version: Option<&str>| {
-        if name == Some("siderite")
+        if name == Some(package)
             && let Some(v) = version
         {
             out.push(v.to_owned());
@@ -287,6 +409,7 @@ pub fn version_check(start: &Path, indexed: &str) -> VersionCheck {
     let unknown = |reason: &str, lock: Option<&Path>| VersionCheck {
         status: VersionStatus::Unknown,
         project_version: None,
+        package: None,
         lock_file: lock.map(|p| p.display().to_string()),
         reason: Some(reason.to_owned()),
     };
@@ -300,10 +423,18 @@ pub fn version_check(start: &Path, indexed: &str) -> VersionCheck {
     let Ok(lock) = std::fs::read_to_string(&lock_path) else {
         return unknown("Cargo.lock is unreadable", Some(&lock_path));
     };
-    let versions = locked_siderite(&lock);
-    let Some(first) = versions.first() else {
-        return unknown("Cargo.lock has no `siderite` package", Some(&lock_path));
+    // Applications may depend on the framework crates without the facade.
+    let Some((package, versions)) = ["siderite", "siderite-core"]
+        .into_iter()
+        .map(|p| (p, locked_versions(&lock, p)))
+        .find(|(_, v)| !v.is_empty())
+    else {
+        return unknown(
+            "Cargo.lock has no `siderite` or `siderite-core` package",
+            Some(&lock_path),
+        );
     };
+    let first = &versions[0];
     let matched = versions.iter().any(|v| v == indexed);
     let version = if matched {
         indexed.to_owned()
@@ -317,6 +448,7 @@ pub fn version_check(start: &Path, indexed: &str) -> VersionCheck {
             VersionStatus::Mismatch
         },
         project_version: Some(version),
+        package: Some(package.to_owned()),
         lock_file: Some(lock_path.display().to_string()),
         reason: None,
     }
@@ -325,9 +457,14 @@ pub fn version_check(start: &Path, indexed: &str) -> VersionCheck {
 fn mismatch_message(report: &DocsSearchReport) -> Option<String> {
     (report.version_check.status == VersionStatus::Mismatch).then(|| {
         format!(
-            "these docs are for siderite {}, but the project locks siderite {}; \
+            "these docs are for siderite {}, but the project locks {} {}; \
              install the matching CLI or check the docs of that version",
             report.framework_version,
+            report
+                .version_check
+                .package
+                .as_deref()
+                .unwrap_or("siderite"),
             report
                 .version_check
                 .project_version
@@ -351,6 +488,9 @@ pub fn render(report: &DocsSearchReport) -> String {
         out.push_str(&format!("No results for `{}`.\n", report.query));
         return out;
     }
+    if report.match_mode == MatchMode::Any {
+        out.push_str("No section has every query word; showing partial matches.\n");
+    }
     for (i, hit) in report.results.iter().enumerate() {
         out.push_str(&format!(
             "\n{}. {} › {}\n   {}:{}  {}\n",
@@ -364,19 +504,33 @@ pub fn render(report: &DocsSearchReport) -> String {
         if !hit.features.is_empty() {
             out.push_str(&format!("   features: {}\n", hit.features.join(", ")));
         }
-        if !hit.snippet.is_empty() {
+        if let Some(text) = &hit.text {
+            out.push('\n');
+            for line in text.lines() {
+                out.push_str(&format!("   {line}\n").replace("   \n", "\n"));
+            }
+        } else if !hit.snippet.is_empty() {
             out.push_str(&format!("   {}\n", hit.snippet));
         }
     }
     out
 }
 
-const USAGE: &str = "usage: siderite docs search QUERY... [--limit N] [--json]";
+const USAGE: &str = "usage: siderite docs search QUERY... [--limit N] [--full] [--json]";
+
+/// Parsed `docs search` arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SearchArgs {
+    query: String,
+    limit: usize,
+    full: bool,
+}
 
 /// Parse `docs search` arguments into the query and limit.
-fn parse(rest: &[String]) -> Result<(String, usize), CliError> {
+fn parse(rest: &[String]) -> Result<SearchArgs, CliError> {
     let mut words: Vec<&str> = Vec::new();
     let mut limit = DEFAULT_LIMIT;
+    let mut full = false;
     let mut positional: Vec<&str> = Vec::new();
     let mut iter = rest.iter().filter(|a| *a != "--json");
     while let Some(arg) = iter.next() {
@@ -385,7 +539,9 @@ fn parse(rest: &[String]) -> Result<(String, usize), CliError> {
         } else {
             arg.strip_prefix("--limit=")
         };
-        if let Some(value) = value {
+        if arg == "--full" {
+            full = true;
+        } else if let Some(value) = value {
             limit = value
                 .parse::<usize>()
                 .ok()
@@ -418,7 +574,7 @@ fn parse(rest: &[String]) -> Result<(String, usize), CliError> {
     if terms(&query).is_empty() {
         return Err(CliError::usage(format!("missing search query; {USAGE}")));
     }
-    Ok((query, limit))
+    Ok(SearchArgs { query, limit, full })
 }
 
 /// Build the report for `query` against the embedded index.
@@ -429,19 +585,22 @@ pub fn search_report(
     start: &Path,
     query: &str,
     limit: usize,
+    full: bool,
 ) -> Result<DocsSearchReport, CliError> {
     let index = embedded_index()?;
+    let (match_mode, results) = search(&index, query, limit, full);
     Ok(DocsSearchReport {
         format_version: DOCS_FORMAT_VERSION,
         version_check: version_check(start, &index.framework_version),
-        results: search(&index, query, limit),
+        match_mode,
+        results,
         framework_version: index.framework_version,
         source: index.source,
         query: query.to_owned(),
     })
 }
 
-/// `siderite docs search QUERY... [--limit N] [--json]`.
+/// `siderite docs search QUERY... [--limit N] [--full] [--json]`.
 ///
 /// # Errors
 /// Usage errors, or an unreadable embedded index.
@@ -451,7 +610,7 @@ pub fn run(cwd: &Path, global: &GlobalArgs, raw: &[String]) -> Result<u8, CliErr
         println!("{USAGE}");
         return Ok(0);
     }
-    let (query, limit) = parse(&rest)?;
+    let SearchArgs { query, limit, full } = parse(&rest)?;
     let start: PathBuf = match global.manifest_path.as_deref() {
         None => cwd.to_path_buf(),
         Some(manifest) => {
@@ -467,7 +626,7 @@ pub fn run(cwd: &Path, global: &GlobalArgs, raw: &[String]) -> Result<u8, CliErr
                 .map_or_else(|| cwd.to_path_buf(), Path::to_path_buf)
         }
     };
-    let report = search_report(&start, &query, limit)?;
+    let report = search_report(&start, &query, limit, full)?;
     if global.json {
         let mut env = CliEnvelope::success("docs search", report);
         if let Some(msg) = env.data.as_ref().and_then(mismatch_message) {
@@ -498,6 +657,7 @@ mod generate {
         "mysql-native",
         "mongodb",
         "redis",
+        "sqlite",
         "tls",
     ];
 
@@ -505,6 +665,9 @@ mod generate {
     const DIRS: &[&str] = &["start", "guides", "reference", "tutorials"];
 
     pub const SOURCE: &str = "website/src/content/docs";
+
+    /// Documentation site root (`site` + `base` in `website/astro.config.mjs`).
+    const SITE: &str = "https://jraavis.github.io/siderite";
 
     fn collect(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
         for entry in std::fs::read_dir(dir)? {
@@ -555,7 +718,7 @@ mod generate {
             start = end + 2;
         }
         let page_url = format!(
-            "/siderite/{}/",
+            "{SITE}/{}/",
             rel.trim_end_matches(".mdx")
                 .trim_end_matches(".md")
                 .trim_end_matches("/index")
@@ -702,11 +865,17 @@ mod tests {
         let s = generate::sections("guides/http/routing.md", md);
         assert_eq!(s.len(), 3);
         assert_eq!(s[0].heading, "Routing");
-        assert_eq!(s[0].url, "/siderite/guides/http/routing/");
+        assert_eq!(
+            s[0].url,
+            "https://jraavis.github.io/siderite/guides/http/routing/"
+        );
         assert_eq!(s[0].line, 5);
         assert_eq!(s[1].heading, "Route macros");
         assert_eq!(s[1].line, 8);
-        assert_eq!(s[1].url, "/siderite/guides/http/routing/#route-macros");
+        assert_eq!(
+            s[1].url,
+            "https://jraavis.github.io/siderite/guides/http/routing/#route-macros"
+        );
         assert_eq!(s[1].features, ["postgres"]);
         assert!(s[1].text.contains("## not a heading"));
         assert_eq!(s[2].path, "website/src/content/docs/guides/http/routing.md");
@@ -724,8 +893,11 @@ mod tests {
         let headings: Vec<_> = s.iter().map(|x| x.heading.as_str()).collect();
         assert_eq!(headings, ["Ex", "Ex"]);
         assert!(s[0].text.contains("## inner") && s[0].text.contains("## tilde"));
-        assert_eq!(s[0].url, "/siderite/guides/t/#ex");
-        assert_eq!(s[1].url, "/siderite/guides/t/#ex-1");
+        assert_eq!(s[0].url, "https://jraavis.github.io/siderite/guides/t/#ex");
+        assert_eq!(
+            s[1].url,
+            "https://jraavis.github.io/siderite/guides/t/#ex-1"
+        );
     }
 
     #[test]
@@ -733,11 +905,11 @@ mod tests {
         assert_eq!(count("doctor error or order", "or"), 2);
         assert_eq!(count("routes route_x reroute", "route"), 2);
         let long = format!("{} needle tail", "word ".repeat(60));
-        let snip = snippet(&long, &["needle".to_owned()]);
+        let snip = snippet(&long, &terms("needle"));
         assert!(snip.contains("needle"), "{snip}");
         assert!(snip.starts_with('…'));
         assert!(snip.chars().count() <= 162);
-        assert_eq!(snippet("short line", &["x".to_owned()]), "short line");
+        assert_eq!(snippet("short line", &terms("x")), "short line");
     }
 
     fn index() -> DocIndex {
@@ -765,26 +937,77 @@ mod tests {
 
     #[test]
     fn search_requires_every_term_and_orders_deterministically() {
-        let hits = search(&index(), "Routing query", 10);
+        let (mode, hits) = search(&index(), "Routing query", 10, false);
+        assert_eq!(mode, MatchMode::All);
         let order: Vec<_> = hits.iter().map(|h| (h.path.as_str(), h.line)).collect();
         assert_eq!(order, [("a.md", 9), ("a.md", 3), ("b.md", 1)]);
         assert_eq!(hits[0].snippet, "query here");
-        assert_eq!(search(&index(), "routing", 1).len(), 1);
-        assert!(search(&index(), "routing absent", 10).is_empty());
-        assert!(search(&index(), "  !! ", 10).is_empty());
+        assert!(hits[0].text.is_none());
+        assert_eq!(search(&index(), "routing", 1, false).1.len(), 1);
+        assert!(search(&index(), "  !! ", 10, false).1.is_empty());
+        assert_eq!(search(&index(), "zzz", 10, false), (MatchMode::All, vec![]));
+        assert_eq!(search(&index(), "...", 10, false), (MatchMode::All, vec![]));
+    }
+
+    #[test]
+    fn partial_matches_when_no_section_has_every_word() {
+        let (mode, hits) = search(&index(), "routing absent", 10, true);
+        assert_eq!(mode, MatchMode::Any);
+        assert_eq!(hits.len(), 3);
+        assert_eq!(hits[0].text.as_deref(), Some("query here"));
+    }
+
+    #[test]
+    fn stop_words_are_dropped_and_words_are_stemmed() {
+        let words = |q: &str| -> Vec<String> { terms(q).into_iter().map(|t| t.stem).collect() };
+        assert_eq!(words("How do I run the tests?"), ["run", "test"]);
+        assert_eq!(words("how to"), ["how", "to"]);
+        assert_eq!(
+            words("connections tested routing"),
+            ["connection", "test", "rout"]
+        );
+        assert_eq!(words("postgres is"), ["postgr"]);
+        assert_eq!(stem("uses"), "uses");
+        assert_eq!(stem("queries"), "query");
+        assert_eq!(stem("dependencies"), "dependency");
+        assert_eq!(stem("running"), "run");
+        assert_eq!(stem("mapped"), "map");
+        assert_eq!(stem("logging"), "log");
+        assert_eq!(stem("installed"), "install");
+        assert_eq!(stem("passing"), "pass");
+    }
+
+    #[test]
+    fn whole_words_outscore_prefixes() {
+        let t = &terms("post")[0];
+        assert!(field_score("post handler", t) > field_score("postgresql", t));
+        assert_eq!(count_exact("route routes route_x", "route"), 1);
     }
 
     #[test]
     fn embedded_index_finds_real_guides() {
         let index = embedded_index().unwrap();
         assert_eq!(index.framework_version, env!("CARGO_PKG_VERSION"));
-        let hits = search(&index, "makemigrations", 5);
+        let (_, hits) = search(&index, "makemigrations", 5, false);
         assert!(!hits.is_empty());
         assert!(
             hits.iter()
                 .all(|h| h.path.starts_with("website/src/content/docs/"))
         );
-        let pg = search(&index, "PostgreSQL", 50);
+        let (_, pg) = search(&index, "PostgreSQL", 50, false);
+        assert!(
+            pg.iter()
+                .all(|h| h.url.starts_with("https://jraavis.github.io/siderite/"))
+        );
+        let (mode, tests) = search(&index, "how do I run tests", 5, false);
+        assert_eq!(mode, MatchMode::All);
+        assert!(!tests.is_empty());
+        let (_, sqlite) = search(&index, "sqlite", 50, false);
+        assert!(
+            sqlite
+                .iter()
+                .any(|h| h.features.iter().any(|f| f == "sqlite"))
+        );
         assert!(
             pg.iter()
                 .any(|h| h.features.iter().any(|f| f == "postgres"))
@@ -807,11 +1030,16 @@ mod tests {
         assert_eq!(check.project_version.as_deref(), Some("0.2.0"));
         let multi = "[[package]]\nversion = \"0.1.0\"\nname = \"siderite\"\n\n\
                      [[package]]\nname = \"siderite\"\nversion = \"0.2.0\"\n";
-        assert_eq!(locked_siderite(multi), ["0.1.0", "0.2.0"]);
+        assert_eq!(locked_versions(multi, "siderite"), ["0.1.0", "0.2.0"]);
         std::fs::write(dir.join("Cargo.lock"), multi).unwrap();
         let check = version_check(&dir, "0.2.0");
         assert_eq!(check.status, VersionStatus::Match);
         assert_eq!(check.project_version.as_deref(), Some("0.2.0"));
+        let core = "[[package]]\nname = \"siderite-core\"\nversion = \"0.3.0\"\n";
+        std::fs::write(dir.join("Cargo.lock"), core).unwrap();
+        let check = version_check(&dir, "0.1.0");
+        assert_eq!(check.status, VersionStatus::Mismatch);
+        assert_eq!(check.package.as_deref(), Some("siderite-core"));
         std::fs::write(dir.join("Cargo.lock"), "version = 4\n").unwrap();
         let check = version_check(&dir, "0.1.0");
         assert_eq!(check.status, VersionStatus::Unknown);
@@ -826,7 +1054,7 @@ mod tests {
             "[[package]]\nname = \"siderite\"\nversion = \"0.0.1\"\n",
         )
         .unwrap();
-        let report = search_report(&dir, "routing", 3).unwrap();
+        let report = search_report(&dir, "routing", 3, false).unwrap();
         assert_eq!(report.version_check.status, VersionStatus::Mismatch);
         let text = render(&report);
         assert!(
@@ -851,7 +1079,16 @@ mod tests {
 
     #[test]
     fn parse_arguments() {
-        let ok = |list: &[&str]| parse(&strings(list)).unwrap();
+        let ok = |list: &[&str]| {
+            let a = parse(&strings(list)).unwrap();
+            (a.query, a.limit)
+        };
+        assert!(
+            parse(&strings(&["docs", "search", "x", "--full"]))
+                .unwrap()
+                .full
+        );
+        assert!(!parse(&strings(&["docs", "search", "x"])).unwrap().full);
         assert_eq!(
             ok(&["docs", "search", "route", "macros"]),
             ("route macros".into(), 5)

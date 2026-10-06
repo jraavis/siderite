@@ -174,8 +174,10 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
   CLI) built from the website's start/guides/reference/tutorials pages; a
   unit test fails when it drifts from the guides or the crate version. Hits
   carry framework version, path:line, site URL and the cargo features a
-  section names. Project `Cargo.lock` mismatch warns. Gap: doc snippets are
-  not compiled; only the workspace `examples/` are.
+  section names; `--full` returns the section text. Queries drop stop words,
+  stem endings and fall back to partial matches (`match_mode`). Project
+  `Cargo.lock` mismatch (`siderite`, else `siderite-core`) warns. Gap: doc
+  snippets are not compiled; only the workspace `examples/` are.
 
 - [ ] **X12 — Explain framework diagnostics.**
   Depends: X11, C02. Scope: `explain CODE` for stable framework error codes.

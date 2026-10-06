@@ -485,16 +485,16 @@ pub fn command_catalog() -> Vec<CommandMeta> {
                  path and line, site URL and the cargo features a section names. \
                  Warns when the project's Cargo.lock pins another siderite version."
                 .into(),
-            usage: "siderite docs search QUERY... [--limit N] [--json]".into(),
+            usage: "siderite docs search QUERY... [--limit N] [--full] [--json]".into(),
             category: "meta".into(),
             values: vec![],
             subcommands: vec![CommandMeta {
                 name: "search".into(),
                 summary: "Keyword search over the packaged guides".into(),
-                description: "Every query word must occur in a section; results are \
-                     ranked by heading, page title and body matches."
+                description: "Ignores stop words and stems endings; sections with \
+                     every query word rank first, else partial matches are shown."
                     .into(),
-                usage: "siderite docs search QUERY... [--limit N] [--json]".into(),
+                usage: "siderite docs search QUERY... [--limit N] [--full] [--json]".into(),
                 category: "meta".into(),
                 values: vec![],
                 subcommands: vec![],
@@ -504,6 +504,7 @@ pub fn command_catalog() -> Vec<CommandMeta> {
                 output_modes: vec![OutputMode::Text, OutputMode::Json],
                 flags: vec![
                     FlagMeta::opt("--limit", None, "N", "Maximum results (1-50, default 5)"),
+                    FlagMeta::flag("--full", None, "Include the full section text"),
                     FlagMeta::flag("--json", None, "Output as structured JSON envelope"),
                 ],
             }],

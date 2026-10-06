@@ -77,7 +77,7 @@ AppCli::new(build_app)
 | `setup [--json]` | Checks Rust prerequisites and prints next steps (standalone binary). |
 | `doctor [--json]` | Offline toolchain, project and configuration checks (standalone binary). |
 | `completions SHELL` | Prints a bash, zsh or fish completion script (standalone binary). |
-| `docs search QUERY [--limit N] [--json]` | Searches the packaged framework guides offline (standalone binary). |
+| `docs search QUERY [--limit N] [--full] [--json]` | Searches the packaged framework guides offline (standalone binary). |
 | `commands [--json]` | Lists commands with their metadata (standalone binary). |
 
 See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
@@ -231,24 +231,33 @@ script after upgrading `siderite`.
 
 ## Documentation search
 
-`siderite docs search QUERY... [--limit N] [--json]` searches the guides of
-the installed framework version offline. The guides (getting started, guides,
-reference and tutorials from the documentation site) are packaged with the
-CLI; nothing is fetched and no project source is read. Query words are
-letters, digits and `_` (search `addr`, not `--addr`), matched at the start
-of a word. Every query word must occur in a section; hits are ranked by heading, page title and body matches,
-with ties ordered by path and line. `--limit` takes 1 to 50 (default 5).
+`siderite docs search QUERY... [--limit N] [--full] [--json]` searches the
+guides of the installed framework version offline. The guides (getting
+started, guides, reference and tutorials from the documentation site) are
+packaged with the CLI; nothing is fetched and no project source is read.
+
+Query words are letters, digits and `_` (search `addr`, not `--addr`).
+Common words such as `how`, `do`, `to` and `the` are ignored, and a plural or
+`-ed`/`-ing` ending is dropped, so `how do I run tests` searches `run test`.
+Words match at the start of a word (`route` finds `routes`); whole-word
+matches and rare words count more. Sections with every word are listed
+first; when none has all of them, partial matches are shown and labelled
+(JSON `match_mode`: `all` or `any`). Ties are ordered by path and line.
+`--limit` takes 1 to 50 (default 5).
 
 Each result carries the page and heading, the repository path and line, the
-site URL and the cargo features the section names (for example `postgres`).
-The JSON data has `format_version` 1 and `framework_version`. Inside a project,
-the `siderite` version in the nearest `Cargo.lock` is compared with the index:
-a different version prints a warning (JSON: `version_check.status`
-`mismatch` and a `DOCS_VERSION_MISMATCH` diagnostic). Without a lock file the
-status is `unknown`. No results is not an error (exit `0`).
+site URL and the cargo features the section names (for example `postgres`),
+plus a snippet. `--full` prints the whole section, code included, so it can
+be read offline. The JSON data has `format_version` 1 and `framework_version`.
 
-Snippets are documentation text; code in them is not compiled by the search.
-The compiled counterparts are the workspace `examples/`.
+Inside a project, the version of `siderite` (or `siderite-core`, when the
+facade is not used) in the nearest `Cargo.lock` is compared with the index: a
+different version prints a warning (JSON: `version_check.status` `mismatch`
+and a `DOCS_VERSION_MISMATCH` diagnostic). Without a lock file the status is
+`unknown`. No results is not an error (exit `0`).
+
+Code in the guides is not compiled by the search. The compiled counterparts
+are the workspace `examples/`.
 
 ## `check`
 
