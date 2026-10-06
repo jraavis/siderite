@@ -121,8 +121,9 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
   if individual test results are unavailable, report aggregate status instead
   of inventing a fragile terminal-output parser or requiring nightly Rust.
   Summary: `verify --json` runs lint/build with `--message-format=json` and
-  reports deduplicated compiler/Clippy diagnostics (level, code, spans with
-  suggested replacements, child notes, rendered text; capped at 100 per step)
+  reports deduplicated compiler/Clippy diagnostics (level including ICEs,
+  code, spans with byte offsets, suggested replacements and applicability,
+  child notes, rendered text; capped at 100 per step)
   under `format_version` 1 and `diagnostics_format`
   `cargo-json-diagnostics/1`. rustc's long `--explain` text is dropped on
   purpose. Tests are `test_results: aggregate` (stable libtest has no JSON).

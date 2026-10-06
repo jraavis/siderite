@@ -12,6 +12,12 @@
   reports each step's command, status, duration and exit code. Test and
   check are skipped when the build fails; nothing is formatted, fixed or
   migrated.
+- **CLI (verify diagnostics):** `verify --json` reports compiler and Clippy
+  diagnostics for `lint` and `build` (codes, spans with byte offsets,
+  suggested replacements and their applicability, rendered text), versioned
+  by `format_version` and `diagnostics_format`. Tests stay an aggregate
+  status (`test_results: aggregate`). `VerifyReport` and its parts now
+  deserialize.
 - **CLI (check/routes JSON):** `routes --json` and `check --json` print one
   versioned JSON envelope on stdout, from both `siderite` and `AppCli`, with
   `--json` before or after the command. `check` keeps its issues in `data`

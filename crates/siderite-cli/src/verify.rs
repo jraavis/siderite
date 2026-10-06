@@ -57,41 +57,41 @@ pub const MAX_DIAGNOSTICS: usize = 100;
 /// `rustc --explain CODE`), span source text and macro expansions.
 /// Duplicates (one lint reported per target) are kept once, and span-less
 /// summaries such as `aborting due to 2 previous errors` are omitted.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerDiagnostic {
     /// `error`, `warning`, ...
     pub level: String,
     /// Error or lint code, e.g. `E0308` or `clippy::len_zero`.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     /// One-line message.
     pub message: String,
     /// Source locations; the primary span is marked.
     pub spans: Vec<DiagnosticSpan>,
     /// Attached `note` / `help` messages, with their own spans.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<ChildDiagnostic>,
     /// The diagnostic as rustc prints it in a terminal.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rendered: Option<String>,
 }
 
 /// A `note` or `help` attached to a [`CompilerDiagnostic`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChildDiagnostic {
     /// `note`, `help`, ...
     pub level: String,
     /// Message text.
     pub message: String,
     /// Source locations, often a suggested replacement.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spans: Vec<DiagnosticSpan>,
 }
 
 /// A source location. `file` is as cargo reports it: relative to the
 /// workspace root for workspace members, absolute otherwise. Lines and
 /// columns are 1-based; end columns are exclusive.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticSpan {
     /// Source file path.
     pub file: String,
@@ -105,12 +105,22 @@ pub struct DiagnosticSpan {
     pub column_end: u64,
     /// Whether this is the main location of the diagnostic.
     pub is_primary: bool,
+    /// Byte offset of the span start in the file (0-based), for tools
+    /// that edit bytes rather than characters.
+    pub byte_start: u64,
+    /// Byte offset just past the span end.
+    pub byte_end: u64,
     /// Text rustc shows under the span.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// Replacement text for a machine-applicable or suggested fix.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Replacement text for a suggested fix.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_replacement: Option<String>,
+    /// How safe `suggested_replacement` is to apply, as rustc reports it:
+    /// `MachineApplicable`, `MaybeIncorrect`, `HasPlaceholders` or
+    /// `Unspecified`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion_applicability: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -144,8 +154,11 @@ struct RawSpan {
     column_start: u64,
     column_end: u64,
     is_primary: bool,
+    byte_start: u64,
+    byte_end: u64,
     label: Option<String>,
     suggested_replacement: Option<String>,
+    suggestion_applicability: Option<String>,
 }
 
 impl From<RawSpan> for DiagnosticSpan {
@@ -157,8 +170,11 @@ impl From<RawSpan> for DiagnosticSpan {
             column_start: s.column_start,
             column_end: s.column_end,
             is_primary: s.is_primary,
+            byte_start: s.byte_start,
+            byte_end: s.byte_end,
             label: s.label,
             suggested_replacement: s.suggested_replacement,
+            suggestion_applicability: s.suggestion_applicability,
         }
     }
 }
@@ -172,7 +188,8 @@ fn parse_line(line: &str) -> Option<CompilerDiagnostic> {
         return None;
     }
     let msg = raw.message?;
-    if !matches!(msg.level.as_str(), "error" | "warning")
+    // `error: internal compiler error` is an error level too.
+    if !(msg.level.starts_with("error") || msg.level == "warning")
         || (msg.spans.is_empty() && msg.message.starts_with("aborting due to"))
     {
         return None;
@@ -226,7 +243,7 @@ impl Collector {
 }
 
 /// Outcome of one [`VerifyStep`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StepStatus {
     /// The step succeeded.
@@ -248,10 +265,10 @@ impl StepStatus {
 }
 
 /// One step of a [`VerifyReport`].
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VerifyStep {
     /// Step name: `fmt`, `lint`, `build`, `test` or `check`.
-    pub name: &'static str,
+    pub name: String,
     /// The exact command line run, starting with `cargo`.
     pub command: Vec<String>,
     /// Outcome.
@@ -261,17 +278,17 @@ pub struct VerifyStep {
     /// The child's exit code, when it ran and exited normally.
     pub exit_code: Option<i32>,
     /// Why the step failed or was skipped.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
     /// For `check`, the `data` of its JSON envelope (issues and counts).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report: Option<serde_json::Value>,
     /// For `lint` and `build` with `--json`, compiler diagnostics in
     /// [`DIAGNOSTICS_FORMAT`].
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<CompilerDiagnostic>,
     /// Diagnostics dropped beyond [`MAX_DIAGNOSTICS`].
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub diagnostics_truncated: usize,
 }
 
@@ -281,16 +298,16 @@ fn is_zero(n: &usize) -> bool {
 }
 
 /// The `data` of `verify --json`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VerifyReport {
     /// [`VERIFY_FORMAT_VERSION`].
-    pub format_version: &'static str,
+    pub format_version: String,
     /// [`DIAGNOSTICS_FORMAT`].
-    pub diagnostics_format: &'static str,
+    pub diagnostics_format: String,
     /// [`TEST_RESULTS`].
-    pub test_results: &'static str,
+    pub test_results: String,
     /// Verification profile; always `offline`.
-    pub profile: &'static str,
+    pub profile: String,
     /// Steps in execution order.
     pub steps: Vec<VerifyStep>,
     /// Number of passed steps.
@@ -305,10 +322,10 @@ impl VerifyReport {
     fn new(steps: Vec<VerifyStep>) -> Self {
         let count = |s: StepStatus| steps.iter().filter(|x| x.status == s).count();
         Self {
-            format_version: VERIFY_FORMAT_VERSION,
-            diagnostics_format: DIAGNOSTICS_FORMAT,
-            test_results: TEST_RESULTS,
-            profile: "offline",
+            format_version: VERIFY_FORMAT_VERSION.to_owned(),
+            diagnostics_format: DIAGNOSTICS_FORMAT.to_owned(),
+            test_results: TEST_RESULTS.to_owned(),
+            profile: "offline".to_owned(),
             passed: count(StepStatus::Passed),
             failed: count(StepStatus::Failed),
             skipped: count(StepStatus::Skipped),
@@ -407,7 +424,7 @@ pub(crate) fn verify(
 
 fn skipped(name: &'static str, why: &str) -> VerifyStep {
     VerifyStep {
-        name,
+        name: name.to_owned(),
         command: Vec::new(),
         status: StepStatus::Skipped,
         duration_ms: 0,
@@ -428,7 +445,7 @@ fn command_line(cmd: &Command) -> Vec<String> {
 
 fn failed(name: &'static str, command: Vec<String>, started: Instant, why: String) -> VerifyStep {
     VerifyStep {
-        name,
+        name: name.to_owned(),
         command,
         status: StepStatus::Failed,
         duration_ms: elapsed_ms(started),
@@ -475,7 +492,7 @@ fn run_step(
     };
     match status {
         Ok(status) => VerifyStep {
-            name,
+            name: name.to_owned(),
             command: line,
             status: if status.success() {
                 StepStatus::Passed
@@ -666,7 +683,11 @@ mod tests {
     }
 
     fn statuses(report: &VerifyReport) -> Vec<(&str, StepStatus)> {
-        report.steps.iter().map(|s| (s.name, s.status)).collect()
+        report
+            .steps
+            .iter()
+            .map(|s| (s.name.as_str(), s.status))
+            .collect()
     }
 
     #[test]
@@ -808,6 +829,25 @@ mod tests {
                 .any(|a| a.starts_with("--message-format"))
         );
     }
+}
+
+/// Parsing tests use no stub processes, so they run on every platform.
+#[cfg(test)]
+mod parse_tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    const CLIPPY: &str = include_str!("../tests/fixtures/verify/clippy.jsonl");
+    const BUILD: &str = include_str!("../tests/fixtures/verify/build.jsonl");
+
+    fn collect(stream: &str) -> Collector {
+        let mut c = Collector::default();
+        for line in stream.lines() {
+            c.push_line(line);
+        }
+        c
+    }
 
     #[test]
     fn collector_dedupes_caps_and_skips_noise() {
@@ -834,5 +874,52 @@ mod tests {
         }
         assert_eq!(c.kept.len(), MAX_DIAGNOSTICS);
         assert_eq!(c.truncated, 5 + 1);
+    }
+
+    #[test]
+    fn spans_keep_byte_offsets_and_applicability() {
+        let c = collect(CLIPPY);
+        let d = &c.kept[0];
+        let span = &d.spans[0];
+        assert!(span.byte_end > span.byte_start, "{span:?}");
+        let fix = d.children.iter().flat_map(|c| &c.spans).next().unwrap();
+        assert_eq!(fix.suggested_replacement.as_deref(), Some("v.is_empty()"));
+        assert_eq!(
+            fix.suggestion_applicability.as_deref(),
+            Some("MachineApplicable")
+        );
+    }
+
+    #[test]
+    fn internal_compiler_errors_are_kept() {
+        let line = serde_json::json!({"reason":"compiler-message","message":{
+            "level":"error: internal compiler error","message":"unexpected panic",
+            "code":null,"spans":[],"children":[],"rendered":"error: internal compiler error\n"}})
+        .to_string();
+        let mut c = Collector::default();
+        assert!(c.push_line(&line).is_some());
+        assert_eq!(c.kept[0].level, "error: internal compiler error");
+        let note = r#"{"reason":"compiler-message","message":{"level":"failure-note","message":"For more information","code":null,"spans":[],"children":[],"rendered":"x"}}"#;
+        assert!(c.push_line(note).is_none());
+    }
+
+    #[test]
+    fn report_round_trips_through_json() {
+        let step = VerifyStep {
+            name: "build".to_owned(),
+            command: vec!["cargo".to_owned(), "build".to_owned()],
+            status: StepStatus::Failed,
+            duration_ms: 5,
+            exit_code: Some(101),
+            message: Some("cargo build failed".to_owned()),
+            report: None,
+            diagnostics: collect(BUILD).kept,
+            diagnostics_truncated: 0,
+        };
+        let report = VerifyReport::new(vec![step]);
+        let json = serde_json::to_string(&report).unwrap();
+        let back: VerifyReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, report);
+        assert_eq!(back.steps[0].diagnostics[0].code.as_deref(), Some("E0308"));
     }
 }

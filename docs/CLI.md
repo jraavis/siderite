@@ -163,6 +163,20 @@ output goes to stderr. A package with several binaries needs `--bin`. The
 check step fails, rather than guessing, when the app's stdout is not one
 check envelope (for example when the app factory prints).
 
+The report carries `format_version` (`1`), `diagnostics_format`
+(`cargo-json-diagnostics/1`) and `test_results` (`aggregate`). With `--json`,
+`lint` and `build` run with `--message-format=json` and each step lists its
+compiler and Clippy `diagnostics`: `level`, `code` (such as `E0308` or
+`clippy::len_zero`), `message`, `rendered` text and `spans` with `file`,
+1-based lines and columns, `byte_start`/`byte_end`, `is_primary`, `label`,
+`suggested_replacement` and `suggestion_applicability`. Attached notes and
+help appear as `children`. Duplicates across targets are kept once, at most
+100 diagnostics are kept per step (the rest are counted in
+`diagnostics_truncated`), and rustc's long `--explain` text is omitted. Each
+diagnostic's rendered text is also echoed to stderr. Stable Rust has no
+machine-readable test output, so tests report only overall status and exit
+code. Text mode runs the plain commands.
+
 ## `setup` and `doctor`
 
 Both commands are offline and read-only. They never install anything, run
