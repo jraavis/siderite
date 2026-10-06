@@ -1,5 +1,10 @@
 # siderite
 
+> **siderite** /ˈsaɪ.də.raɪt/ — *SY-də-ryte* · [🔊 listen](assets/siderite.mp3)
+>
+> Siderite is a common iron carbonate mineral with the chemical formula
+> FeCO₃ that serves as an ore of iron.
+
 An async-first Rust web framework with FastAPI-style routing,
 Pydantic-style validation and a Django-style ORM. Targets stable Rust,
 edition 2024, with a declared MSRV of 1.99.
