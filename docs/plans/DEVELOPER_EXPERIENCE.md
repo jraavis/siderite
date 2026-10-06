@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: X01-X04 (and parent C03, C06, C08) implemented; other tasks proposed.
+Updated: 2026-10-05. Status: X01-X05 (and parent C03, C06, C08) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -114,12 +114,19 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
   are skipped after a build failure and contaminated check stdout fails the
   step. Offline only: no live profile until C05/C07 provide live checks.
 
-- [ ] **X05 — Normalize compiler and test reports for agents.**
+- [x] **X05 — Normalize compiler and test reports for agents.**
   Depends: C02, X04. Scope: Cargo structured diagnostics and test reporting.
   Done: preserve error codes, source spans and rendered explanations with
   explicit format versions. Use a supported stable test-report mechanism;
   if individual test results are unavailable, report aggregate status instead
   of inventing a fragile terminal-output parser or requiring nightly Rust.
+  Summary: `verify --json` runs lint/build with `--message-format=json` and
+  reports deduplicated compiler/Clippy diagnostics (level, code, spans with
+  suggested replacements, child notes, rendered text; capped at 100 per step)
+  under `format_version` 1 and `diagnostics_format`
+  `cargo-json-diagnostics/1`. rustc's long `--explain` text is dropped on
+  purpose. Tests are `test_results: aggregate` (stable libtest has no JSON).
+  Text mode is unchanged. Fixtures are real cargo output. C02 remains open.
 
 - [ ] **X06 — Add a verified API project template.**
   Depends: D05. Scope: `new --template api` and a template version manifest.
@@ -266,7 +273,7 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
   verification duration on documented fixtures before setting numeric targets.
 
 This document adds 20 tasks to the parent's 46. Implemented so far: X01
-(command contract), X02 (setup diagnostics), X03 (shell completions) and
-X04 (verify),
+(command contract), X02 (setup diagnostics), X03 (shell completions),
+X04 (verify) and X05 (structured diagnostics),
 plus the parent's C03 (`check`/`routes` JSON), C06 (`doctor`) and C08
 (`fmt`/`lint`/`clean`).
