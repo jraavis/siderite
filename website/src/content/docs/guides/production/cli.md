@@ -123,6 +123,56 @@ count as unset.
 for the `default` alias only, `DATABASE_URL`. With none of those, the
 command fails with a “no database” error naming the alias.
 
+## `setup` and `doctor`
+
+Both commands are offline and read-only. They never install anything, run
+`rustup`, edit shell profiles or connect to a database, and they read no
+input, so terminal and scripted runs give the same report. Each check is
+`pass`, `warn`, `fail` or `skip`; any `fail` exits with `1`. With `--json`
+the report is the `data` of the standard envelope, and `ok` is `false` when
+a check failed.
+
+`siderite setup` checks the prerequisites for building any Siderite app:
+`rustc` and `cargo` (with their versions compared against this framework's
+minimum Rust version), whether `rustup` manages them, and a C linker (Xcode
+Command Line Tools on macOS, `cc` elsewhere; not checked on Windows). It
+ends with numbered next steps such as the rustup install command,
+`rustup update stable` or `xcode-select --install`.
+
+`siderite doctor` runs the same toolchain checks from inside a project,
+comparing against the package's `rust-version`, and then checks:
+
+| Check | Fails when | Advisory (`warn`) when |
+|---|---|---|
+| `project` | `Cargo.toml` is invalid or the package is ambiguous | |
+| `config` | `siderite.toml` or `SIDERITE_*` variables do not load | |
+| `features.ALIAS` | | a configured backend's feature (`postgres`, `mysql`) is not enabled on a direct siderite dependency |
+| `clients.NAME` | | `sqlite3`, `psql` or `mysql` is missing (only `dbshell` needs it) |
+| `network.addr` | | the listen address cannot be bound right now |
+
+Database URLs are never printed, including in configuration parse errors.
+A free port is only true at the moment of the check, and `--addr` is
+honored. `rustc` and `cargo` are queried with `RUSTUP_AUTO_INSTALL=0`, so a
+toolchain file never triggers a download; a pinned toolchain that is not
+installed is reported with the hint `rustup toolchain install`. Without a
+package `rust-version`, doctor compares against the framework's minimum.
+
+## Shell completions
+
+The standalone `siderite` binary prints a completion script for Bash (3.2
+or newer), Zsh or Fish, derived from the same command metadata as
+`siderite commands --json`. It only writes to standard output and never
+edits a shell profile:
+
+```bash
+eval "$(siderite completions bash)"                                # add to ~/.bashrc to keep
+mkdir -p ~/.zfunc && siderite completions zsh > ~/.zfunc/_siderite     # add fpath=(~/.zfunc $fpath) before compinit
+siderite completions fish > ~/.config/fish/completions/siderite.fish
+```
+
+An unknown or missing shell name exits with `2`. Regenerate the script
+after upgrading `siderite`.
+
 ## `check`
 
 `check` runs without starting a server or opening a database. Each issue

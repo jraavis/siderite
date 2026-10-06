@@ -43,17 +43,29 @@ pub struct ResolvedProject {
 }
 
 #[derive(Deserialize)]
-struct MetadataOutput {
-    packages: Vec<PackageInfo>,
+pub(crate) struct MetadataOutput {
+    pub(crate) packages: Vec<PackageInfo>,
     workspace_members: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct PackageInfo {
-    name: String,
+pub(crate) struct PackageInfo {
+    pub(crate) name: String,
     id: String,
-    manifest_path: String,
+    pub(crate) manifest_path: String,
     targets: Vec<TargetInfo>,
+    /// `rust-version`, with workspace inheritance resolved by Cargo.
+    #[serde(default)]
+    pub(crate) rust_version: Option<String>,
+    #[serde(default)]
+    pub(crate) dependencies: Vec<DependencyInfo>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct DependencyInfo {
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) features: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -130,16 +142,41 @@ fn resolve_with_metadata(
     let meta: MetadataOutput = serde_json::from_slice(&output.stdout)
         .map_err(|err| CliError::Io(format!("failed to parse cargo metadata: {err}")))?;
 
+    let selected_pkg = select_package(&meta, start_dir, global.package.as_deref())?;
+
+    let manifest_path = PathBuf::from(&selected_pkg.manifest_path);
+    let package_dir = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+
+    let binary_name = resolve_binary(selected_pkg, global, command)?;
+
+    Ok(ResolvedProject {
+        package_dir,
+        manifest_path: Some(manifest_path),
+        package_name: Some(selected_pkg.name.clone()),
+        binary_name,
+    })
+}
+
+/// Pick the workspace member a command targets: `--package`, else the
+/// package whose directory is `start_dir`, else the only member.
+pub(crate) fn select_package<'a>(
+    meta: &'a MetadataOutput,
+    start_dir: &Path,
+    package: Option<&str>,
+) -> Result<&'a PackageInfo, CliError> {
     let members: Vec<&PackageInfo> = meta
         .packages
         .iter()
         .filter(|p| meta.workspace_members.contains(&p.id))
         .collect();
 
-    let selected_pkg = if let Some(pkg_name) = &global.package {
+    let selected = if let Some(pkg_name) = package {
         members
             .iter()
-            .find(|p| &p.name == pkg_name)
+            .find(|p| p.name == pkg_name)
             .copied()
             .ok_or_else(|| {
                 let available: Vec<&str> = members.iter().map(|p| p.name.as_str()).collect();
@@ -158,27 +195,13 @@ fn resolve_with_metadata(
         members[0]
     } else {
         let names: Vec<&str> = members.iter().map(|p| p.name.as_str()).collect();
-        return Err(CliError::usage(format!(
+        Err(CliError::usage(format!(
             "workspace has multiple packages ({}); specify one with -p \
              or --package <NAME>",
             names.join(", ")
-        )));
+        )))?
     };
-
-    let manifest_path = PathBuf::from(&selected_pkg.manifest_path);
-    let package_dir = manifest_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
-
-    let binary_name = resolve_binary(selected_pkg, global, command)?;
-
-    Ok(ResolvedProject {
-        package_dir,
-        manifest_path: Some(manifest_path),
-        package_name: Some(selected_pkg.name.clone()),
-        binary_name,
-    })
+    Ok(selected)
 }
 
 fn resolve_binary(

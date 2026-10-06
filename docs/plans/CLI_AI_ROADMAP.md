@@ -1,7 +1,7 @@
 # Framework reliability, CLI and AI tooling roadmap
 
 Reviewed: 2026-10-05. Source baseline: `0f30c32` plus the local gap plan.
-Status: planning only; all implementation tasks below remain open.
+Status: planning; C06 implemented (see checked tasks), others open.
 
 The [developer experience expansion](DEVELOPER_EXPERIENCE.md) adds the
 complete Siderite-only daily workflow, 20 additional tasks and AI-focused
@@ -233,11 +233,13 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   success.
   Do not derive status by scraping printed migration lines.
 
-- [ ] **C06 — Add offline doctor diagnostics.**
+- [x] **C06 — Add offline doctor diagnostics.**
   Depends: C01, C02. Scope: toolchain, configuration and feature checks.
   Done: compare actual toolchain with manifest MSRV; malformed config and
   missing tools produce actionable text/JSON. DB clients are advisory unless
   requested by dbshell. Port checks are advisory and acknowledge races.
+  Summary: `siderite doctor [--json]` (2026-10-05). C01/C02 remain open but
+  their project-selection flags and JSON envelope already shipped with X01.
 
 - [ ] **C07 — Add opt-in doctor live probes.**
   Depends: C05, C06. Scope: timeout-limited alias checks and migration status.

@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: proposed features, not implemented commands.
+Updated: 2026-10-05. Status: X01-X03 (and parent C06) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -48,7 +48,7 @@ remain explicit commands; development reload never applies them implicitly.
 | Developer need | Target interface | Baseline / delivery |
 |---|---|---|
 | New application | `new --template api` | `new` exists; templates are new |
-| First-time setup | `setup`, `doctor` | Proposed |
+| First-time setup | `setup`, `doctor` | Exist (X02, C06) |
 | Start application | `run` | Exists |
 | Rebuild on changes | `dev` | Proposed D01-D02 |
 | Build and test | `build`, `test` | Exist; richer reports proposed |
@@ -74,7 +74,7 @@ points. Do not require developers to relearn working migration commands.
 ## Recommended additions and small tasks
 
 Dependencies refer to task IDs in the parent roadmap or this document. Each
-checkbox is a separate reviewable change. All tasks are currently open.
+checkbox is a separate reviewable change. Checked tasks are implemented.
 
 ### Make the CLI sufficient for daily work
 
@@ -84,16 +84,24 @@ checkbox is a separate reviewable change. All tasks are currently open.
   supported output modes. Provide a versioned machine-readable command list
   for AI clients. Preserve Cargo argument forwarding and exit semantics.
 
-- [ ] **X02 — Add setup diagnostics.**
+- [x] **X02 — Add setup diagnostics.**
   Depends: C06. Scope: `setup` as a guided prerequisite check.
   Done: identify missing compiler/linker/platform prerequisites and compatible
   versions; show exact next steps. Interactive and non-interactive runs agree;
   no shell profile or global toolchain change without explicit installation.
+  Summary: `siderite setup [--json]` reuses C06's toolchain checks against the
+  framework MSRV and prints ordered next steps. It reads no input and never
+  installs; tests use stub toolchains on a fake PATH. Windows linker: skipped.
 
-- [ ] **X03 — Add shell completions.**
+- [x] **X03 — Add shell completions.**
   Depends: X01. Scope: Bash, Zsh and Fish completion generation.
   Done: derive completions from command metadata, test nested subcommands,
   and never edit shell profiles by default.
+  Summary: `siderite completions <bash|zsh|fish>` prints a script built from
+  `command_catalog()` and `global_flags()`; metadata gains optional `values`
+  and `subcommands`. Tests execute the Bash (3.2+) script and the Zsh script
+  (with stubbed compsys functions) on a nested fixture; Fish output is checked
+  as text, plus `fish -n` when installed. No real interactive-shell test yet.
 
 - [ ] **X04 — Add one-command verification.**
   Depends: C03, C08. Scope: `verify` orchestration.
@@ -253,5 +261,6 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 - Measure first successful run, edit-to-restart latency, context size and
   verification duration on documented fixtures before setting numeric targets.
 
-This document adds 20 proposed tasks to the parent's 46. No new command or
-feature has been implemented by this planning update.
+This document adds 20 tasks to the parent's 46. Implemented so far: X01
+(command contract), X02 (setup diagnostics) and X03 (shell completions),
+plus the parent's C06 (`doctor`).

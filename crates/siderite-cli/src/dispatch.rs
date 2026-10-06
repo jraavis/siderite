@@ -1,7 +1,8 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
 use crate::args::{self, GlobalArgs};
-use crate::commands::{command_catalog, render_commands_text};
+use crate::commands::{command_catalog, global_flags, render_commands_text};
+use crate::completions::{self, Shell};
 use crate::envelope::CliEnvelope;
 use crate::error::CliError;
 use crate::project::{self, CARGO_COMMANDS, is_app_command};
@@ -47,6 +48,15 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     }
     if command == "commands" {
         return handle_commands(&global);
+    }
+    if command == "setup" {
+        return crate::setup::run(cwd, &global);
+    }
+    if command == "doctor" {
+        return crate::doctor::run(cwd, &global);
+    }
+    if command == "completions" {
+        return handle_completions(raw);
     }
     if command == "new" {
         return scaffold::run(raw);
@@ -106,6 +116,31 @@ fn handle_commands(global: &GlobalArgs) -> Result<u8, CliError> {
     } else {
         print!("{}", render_commands_text(&command_catalog()));
     }
+    Ok(0)
+}
+
+fn handle_completions(raw: &[String]) -> Result<u8, CliError> {
+    // Global flags and their values may precede the command; drop them first.
+    let (_, rest) = args::split_global(raw)?;
+    let mut positionals = rest
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .skip_while(|a| *a != "completions")
+        .skip(1);
+    let shell = positionals
+        .next()
+        .ok_or_else(|| CliError::Usage("usage: siderite completions <bash|zsh|fish>".into()))?
+        .parse::<Shell>()
+        .map_err(CliError::Usage)?;
+    if let Some(extra) = positionals.next() {
+        return Err(CliError::Usage(format!(
+            "unexpected argument `{extra}`; usage: siderite completions <bash|zsh|fish>"
+        )));
+    }
+    print!(
+        "{}",
+        completions::render(shell, &command_catalog(), &global_flags())
+    );
     Ok(0)
 }
 
@@ -175,6 +210,9 @@ Create and run an app:
   build [--release ...]         cargo build in the app package
   test                          cargo test in the app package
   commands [--json]             List available commands and metadata
+  setup [--json]                Check Rust prerequisites; print next steps
+  doctor [--json]               Offline toolchain, project and config checks
+  completions SHELL             Print a bash, zsh or fish completion script
 
 Migrations:
   makemigrations [--name SLUG] [--empty] [--dry-run]
@@ -250,6 +288,54 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn completions_work_outside_a_project() {
+        let dir = std::env::temp_dir().join(format!("siderite-compl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for shell in ["bash", "zsh", "fish"] {
+            assert_eq!(
+                dispatch(&args(&["completions", shell]), &dir)
+                    .await
+                    .unwrap(),
+                0
+            );
+        }
+        for prefixed in [
+            &["-p", "demo", "completions", "bash"][..],
+            &["--manifest-path", "Cargo.toml", "completions", "zsh"],
+            &["completions", "--bin=app", "fish"],
+        ] {
+            assert_eq!(
+                dispatch(&args(prefixed), &dir).await.unwrap(),
+                0,
+                "{prefixed:?}"
+            );
+        }
+        for bad in [
+            &["completions"][..],
+            &["completions", "tcsh"],
+            &["completions", "zsh", "x"],
+        ] {
+            let err = dispatch(&args(bad), &dir).await.unwrap_err();
+            assert_eq!(err.exit_code(), 2, "{bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn setup_and_doctor_run_outside_a_project() {
+        let dir = std::env::temp_dir().join(format!("siderite-setup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for cmd in [
+            &["setup"][..],
+            &["setup", "--json"],
+            &["doctor"],
+            &["doctor", "--json"],
+        ] {
+            let code = dispatch(&args(cmd), &dir).await.unwrap();
+            assert!(code <= 1, "{cmd:?} -> {code}");
+        }
     }
 
     #[tokio::test]

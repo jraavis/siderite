@@ -120,6 +120,12 @@ pub struct CommandMeta {
     pub output_modes: Vec<OutputMode>,
     /// Command-specific flags and options.
     pub flags: Vec<FlagMeta>,
+    /// Accepted values of the first positional argument, if it is a fixed set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<String>,
+    /// Nested subcommands (e.g. `services up`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subcommands: Vec<CommandMeta>,
 }
 
 /// Return metadata for all standard developer commands.
@@ -132,6 +138,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Scaffolds a new Siderite API project with routing and config.".into(),
             usage: "siderite new <NAME>".into(),
             category: "app".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::None,
             mutation: MutationKind::Filesystem,
             live_access: LiveAccess::None,
@@ -144,6 +152,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Connects databases and runs the HTTP server listener.".into(),
             usage: "siderite run [--addr ADDR]".into(),
             category: "app".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::Process,
             live_access: LiveAccess::DatabaseAndNetwork,
@@ -161,6 +171,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Prints documented HTTP routes in the application.".into(),
             usage: "siderite routes [--json]".into(),
             category: "app".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::None,
             live_access: LiveAccess::None,
@@ -177,6 +189,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Runs framework diagnostic checks without starting server.".into(),
             usage: "siderite check [--json]".into(),
             category: "app".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::None,
             live_access: LiveAccess::None,
@@ -193,6 +207,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Launches sqlite3, psql, or mysql with connection env.".into(),
             usage: "siderite dbshell [--database ALIAS]".into(),
             category: "app".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::Database,
             live_access: LiveAccess::Database,
@@ -212,6 +228,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
                 .into(),
             usage: "siderite build [--release ...]".into(),
             category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::Filesystem,
             live_access: LiveAccess::None,
@@ -224,6 +242,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Runs package unit and integration tests via cargo test.".into(),
             usage: "siderite test [...]".into(),
             category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::Process,
             live_access: LiveAccess::None,
@@ -236,6 +256,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Computes schema diff from compiled models and creates JSON.".into(),
             usage: "siderite makemigrations [--name SLUG] [--empty] [--dry-run]".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageRequired,
             mutation: MutationKind::Filesystem,
             live_access: LiveAccess::None,
@@ -252,6 +274,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Applies pending migrations up to target or latest.".into(),
             usage: "siderite migrate [TARGET] [--dry-run]".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::Database,
             live_access: LiveAccess::Database,
@@ -268,6 +292,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Rolls back applied migrations by steps or target.".into(),
             usage: "siderite rollback [--steps N | TARGET] [--dry-run]".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::Database,
             live_access: LiveAccess::Database,
@@ -283,6 +309,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Displays available migrations and indicates applied state.".into(),
             usage: "siderite showmigrations".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::None,
             live_access: LiveAccess::Database,
@@ -295,6 +323,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Inspects migration state, intents and crash boundaries.".into(),
             usage: "siderite inspectmigrations".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::None,
             live_access: LiveAccess::Database,
@@ -307,6 +337,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Squashes historical migrations into a consolidated migration.".into(),
             usage: "siderite squashmigrations FROM TO [--name SLUG]".into(),
             category: "migration".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::PackageOrStandalone,
             mutation: MutationKind::Filesystem,
             live_access: LiveAccess::None,
@@ -324,6 +356,8 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             description: "Returns machine-readable developer command catalog.".into(),
             usage: "siderite commands [--json]".into(),
             category: "meta".into(),
+            values: vec![],
+            subcommands: vec![],
             project_requirement: ProjectRequirement::None,
             mutation: MutationKind::None,
             live_access: LiveAccess::None,
@@ -334,6 +368,83 @@ pub fn command_catalog() -> Vec<CommandMeta> {
                 "Output as structured JSON envelope",
             )],
         },
+        CommandMeta {
+            name: "setup".into(),
+            summary: "Check Rust prerequisites; print next steps".into(),
+            description: "Checks rustc, cargo, rustup and a C linker against the \
+                 framework's minimum Rust version and prints exact next steps. Never \
+                 installs anything or edits shell profiles."
+                .into(),
+            usage: "siderite setup [--json]".into(),
+            category: "meta".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::None,
+            mutation: MutationKind::None,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text, OutputMode::Json],
+            flags: vec![FlagMeta::flag(
+                "--json",
+                None,
+                "Output as structured JSON envelope",
+            )],
+        },
+        CommandMeta {
+            name: "doctor".into(),
+            summary: "Offline toolchain, project and config checks".into(),
+            description: "Checks rustc/cargo against the package rust-version, a C \
+                 linker, the project manifest, siderite.toml, backend features, \
+                 database clients and the listen port without connecting to services."
+                .into(),
+            usage: "siderite doctor [--json]".into(),
+            category: "meta".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::None,
+            mutation: MutationKind::None,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text, OutputMode::Json],
+            flags: vec![FlagMeta::flag(
+                "--json",
+                None,
+                "Output as structured JSON envelope",
+            )],
+        },
+        CommandMeta {
+            name: "completions".into(),
+            summary: "Print a shell completion script".into(),
+            description: "Writes a Bash, Zsh or Fish completion script to standard \
+                 output; never edits shell profiles."
+                .into(),
+            usage: "siderite completions <bash|zsh|fish>".into(),
+            category: "meta".into(),
+            values: crate::completions::Shell::ALL
+                .iter()
+                .map(|s| s.name().to_owned())
+                .collect(),
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::None,
+            mutation: MutationKind::None,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text],
+            flags: vec![],
+        },
+    ]
+}
+
+/// Flags accepted by every command, before or after the command name.
+#[must_use]
+pub fn global_flags() -> Vec<FlagMeta> {
+    vec![
+        FlagMeta::opt("--addr", None, "ADDR", "Listen address (run)"),
+        FlagMeta::opt("--database", None, "ALIAS", "Database alias"),
+        FlagMeta::opt("--database-url", None, "URL", "Database URL"),
+        FlagMeta::opt("--migrations-dir", None, "DIR", "Migration JSON directory"),
+        FlagMeta::opt("--manifest-path", None, "PATH", "Path to Cargo.toml"),
+        FlagMeta::opt("--package", Some('p'), "PKG", "Target package in workspace"),
+        FlagMeta::opt("--bin", None, "BIN", "Target binary"),
+        FlagMeta::flag("--json", None, "Produce structured JSON output"),
+        FlagMeta::flag("--help", Some('h'), "Show help"),
     ]
 }
 
@@ -417,6 +528,31 @@ mod tests {
         assert_eq!(new_cmd.project_requirement, ProjectRequirement::None);
         assert_eq!(new_cmd.mutation, MutationKind::Filesystem);
         assert_eq!(new_cmd.live_access, LiveAccess::None);
+    }
+
+    #[test]
+    fn value_taking_global_flags_are_parsed_globally() {
+        for flag in global_flags() {
+            if flag.arg_name.is_none() {
+                continue;
+            }
+            let mut spellings = vec![flag.name.clone()];
+            spellings.extend(flag.short.map(|c| format!("-{c}")));
+            for spelling in spellings {
+                let args = vec![spelling.clone(), "v".to_owned(), "run".to_owned()];
+                let (_, rest) = crate::args::split_global(&args).unwrap();
+                assert_eq!(rest, ["run"], "{spelling} is not a global value flag");
+            }
+        }
+    }
+
+    #[test]
+    fn nested_fields_are_omitted_from_json_when_empty() {
+        let json = serde_json::to_value(find_command("routes").unwrap()).unwrap();
+        assert!(json.get("subcommands").is_none());
+        assert!(json.get("values").is_none());
+        let json = serde_json::to_value(find_command("completions").unwrap()).unwrap();
+        assert_eq!(json["values"], serde_json::json!(["bash", "zsh", "fish"]));
     }
 
     #[test]

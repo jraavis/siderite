@@ -17,9 +17,11 @@ mod app_cli;
 pub mod args;
 pub mod check;
 pub mod commands;
+pub mod completions;
 pub mod connect;
 pub mod dbshell;
 mod dispatch;
+pub mod doctor;
 pub mod envelope;
 mod error;
 #[cfg(test)]
@@ -28,13 +30,15 @@ pub mod project;
 pub mod routes;
 mod scaffold;
 pub mod settings;
+pub mod setup;
 mod standalone;
+pub mod toolchain;
 
 pub use app_cli::AppCli;
 pub use check::{CheckIssue, CheckLevel, check};
 pub use commands::{
     CommandMeta, FlagMeta, LiveAccess, MutationKind, OutputMode, ProjectRequirement,
-    command_catalog, find_command, render_commands_text,
+    command_catalog, find_command, global_flags, render_commands_text,
 };
 pub use connect::connect_url;
 pub use dbshell::ShellCommand;

@@ -12,6 +12,18 @@
   modes. Added explicit project resolution (`--manifest-path`, `-p`/`--package`,
   `--bin`) supporting virtual workspaces, nested packages and deterministic
   errors.
+- **CLI (Shell completions):** `siderite completions <bash|zsh|fish>` prints a
+  completion script generated from the command metadata, including nested
+  subcommands, fixed argument values and global flags. It never edits shell
+  profiles. Command metadata gains optional `values` and `subcommands` fields
+  (omitted from `commands --json` when empty).
+- **CLI (Doctor):** `siderite doctor [--json]` runs offline checks of the
+  toolchain against the package `rust-version`, a C linker, the project
+  manifest, `siderite.toml`, backend features, database clients and the
+  listen port. Clients and port are advisory; any failed check exits `1`.
+- **CLI (Setup):** `siderite setup [--json]` checks Rust prerequisites against
+  the framework's minimum Rust version and prints exact next steps. It never
+  installs anything or edits shell profiles.
 
 ### Changed
 - **SQLite:** writers of one `SqliteBackend` (statements, raw writes,
@@ -108,6 +120,8 @@
 - GitHub Pages documentation site (`website/`, Astro Starlight) covering getting started, tutorials, HTTP/data/production guides, reference, internals, and contributing. Deployed from `.github/workflows/pages.yml` with rustdoc at `/api/`.
 
 ### Fixed
+- **Config:** TOML syntax errors no longer echo the offending source line,
+  which could contain a database URL or other secret.
 - **Lifespan:** startup/bind failures unwind initialized resources; caller
   cancellation and last test-client drop retain cleanup ownership. Hook
   panics and timeouts do not skip remaining cleanup attempts. Original
