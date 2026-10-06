@@ -186,7 +186,8 @@ fn stem(word: &str) -> String {
     word.to_owned()
 }
 
-/// Query words without stop words (kept when the query has nothing else).
+/// Query words without stop words or single letters (kept when the query
+/// has nothing else).
 fn terms(query: &str) -> Vec<Term> {
     let mut words: Vec<String> = Vec::new();
     for word in query
@@ -198,8 +199,13 @@ fn terms(query: &str) -> Vec<Term> {
             words.push(word);
         }
     }
-    if words.iter().any(|w| !STOP_WORDS.contains(&w.as_str())) {
-        words.retain(|w| !STOP_WORDS.contains(&w.as_str()));
+    // Stop words and single letters, such as the `s` of `user's`.
+    let noise = |w: &String| {
+        STOP_WORDS.contains(&w.as_str())
+            || (w.chars().count() == 1 && w.chars().all(char::is_alphabetic))
+    };
+    if words.iter().any(|w| !noise(w)) {
+        words.retain(|w| !noise(w));
     }
     words
         .into_iter()
@@ -962,6 +968,9 @@ mod tests {
         let words = |q: &str| -> Vec<String> { terms(q).into_iter().map(|t| t.stem).collect() };
         assert_eq!(words("How do I run the tests?"), ["run", "test"]);
         assert_eq!(words("how to"), ["how", "to"]);
+        assert_eq!(words("user's guide"), ["user", "guide"]);
+        assert_eq!(words("x 2"), ["2"]);
+        assert_eq!(words("x"), ["x"]);
         assert_eq!(
             words("connections tested routing"),
             ["connection", "test", "rout"]
