@@ -273,7 +273,9 @@ and `explanation`; a different `siderite` version in the project's
 Compiler codes such as `E0308` point to `rustc --explain E0308` (offline,
 matching the installed toolchain) and Clippy lints such as
 `clippy::needless_return` to the Clippy lint list, and rustc lint names such
-as `unused_variables` to `rustc -W help`; siderite does not paraphrase them. Any other code exits `1` (JSON: `ok: false` and an
+as `unused_variables` (or `unused-variables`) to `rustc -W help`; siderite
+does not paraphrase them. One-word lint names and groups such as `unused`
+are not recognized. Any other code exits `1` (JSON: `ok: false` and an
 `UNKNOWN_CODE` error) and names known ids with the same prefix.
 
 ## `check`

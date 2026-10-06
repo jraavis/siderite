@@ -418,9 +418,11 @@ pub fn known_codes() -> Vec<&'static str> {
 fn normalize(raw: &str) -> String {
     let code = raw
         .trim()
-        .trim_matches(|c: char| matches!(c, '[' | ']' | '`' | ':' | ','));
-    if let Some(lint) = code.strip_prefix("clippy::") {
-        return format!("clippy::{}", lint.to_ascii_lowercase());
+        .trim_matches(|c: char| matches!(c, '[' | ']' | '`' | ':' | ','))
+        .trim();
+    let lower = code.to_ascii_lowercase();
+    if let Some(lint) = lower.strip_prefix("clippy::") {
+        return format!("clippy::{}", lint.replace('-', "_"));
     }
     match code.split_once('.') {
         Some((prefix, rest)) => format!(
@@ -429,6 +431,10 @@ fn normalize(raw: &str) -> String {
             rest.to_ascii_uppercase()
         ),
         None if is_rustc_code(&code.to_ascii_uppercase()) => code.to_ascii_uppercase(),
+        // Lint names are also written kebab-case (`-W unused-variables`).
+        None if lower.contains('-') && is_rustc_lint(&lower.replace('-', "_")) => {
+            lower.replace('-', "_")
+        }
         None => code.to_owned(),
     }
 }
@@ -439,11 +445,16 @@ fn is_rustc_code(code: &str) -> bool {
 
 fn is_clippy_lint(code: &str) -> bool {
     code.strip_prefix("clippy::").is_some_and(|lint| {
-        !lint.is_empty() && lint.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+        !lint.is_empty()
+            && lint
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     })
 }
 
 /// Bare snake_case names, the form rustc lint codes take in `verify --json`.
+/// One-word lints and groups (`unused`, `warnings`) are not recognized: they
+/// cannot be told apart from a mistyped code.
 fn is_rustc_lint(code: &str) -> bool {
     code.contains('_')
         && code.starts_with(|c: char| c.is_ascii_lowercase())
@@ -681,16 +692,29 @@ fn parse(rest: &[String]) -> Result<Request, CliError> {
     }
 }
 
-fn print_json<T: Serialize>(env: &CliEnvelope<T>, to_stderr: bool) -> Result<(), CliError> {
+fn print_json<T: Serialize>(env: &CliEnvelope<T>) -> Result<(), CliError> {
     let json = env
         .to_json_pretty()
         .map_err(|err| CliError::Io(format!("failed to serialize JSON: {err}")))?;
-    if to_stderr {
-        eprintln!("{json}");
-    } else {
-        println!("{json}");
-    }
+    println!("{json}");
     Ok(())
+}
+
+/// The `--json` envelope for `report`: `ok` is false for an unknown code.
+fn envelope(report: ExplainReport) -> CliEnvelope<ExplainReport> {
+    let mismatch = mismatch_message(&report);
+    let unknown = (report.kind == CodeKind::Unknown).then(|| unknown_message(&report));
+    let mut env = CliEnvelope::success("explain", report);
+    if let Some(msg) = mismatch {
+        env.diagnostics
+            .push(CliDiagnostic::warning("DOCS_VERSION_MISMATCH", msg));
+    }
+    if let Some(msg) = unknown {
+        env.ok = false;
+        env.diagnostics
+            .push(CliDiagnostic::error("UNKNOWN_CODE", msg));
+    }
+    env
 }
 
 /// `siderite explain CODE [--json]` and `siderite explain --list [--json]`.
@@ -720,7 +744,7 @@ pub fn run(cwd: &Path, global: &GlobalArgs, raw: &[String]) -> Result<u8, CliErr
                         })
                         .collect(),
                 };
-                print_json(&CliEnvelope::success("explain", data), false)?;
+                print_json(&CliEnvelope::success("explain", data))?;
             } else {
                 print!("{}", render_list());
             }
@@ -732,19 +756,7 @@ pub fn run(cwd: &Path, global: &GlobalArgs, raw: &[String]) -> Result<u8, CliErr
     let report = explain_report(&start, &code)?;
     let unknown = report.kind == CodeKind::Unknown;
     if global.json {
-        let mismatch = mismatch_message(&report);
-        let unknown_msg = unknown.then(|| unknown_message(&report));
-        let mut env = CliEnvelope::success("explain", report);
-        if let Some(msg) = mismatch {
-            env.diagnostics
-                .push(CliDiagnostic::warning("DOCS_VERSION_MISMATCH", msg));
-        }
-        if let Some(msg) = unknown_msg {
-            env.ok = false;
-            env.diagnostics
-                .push(CliDiagnostic::error("UNKNOWN_CODE", msg));
-        }
-        print_json(&env, false)?;
+        print_json(&envelope(report))?;
     } else if unknown {
         eprint!("{}", render(&report));
     } else {
@@ -873,6 +885,17 @@ mod tests {
         assert_eq!(normalize("`migrations.w001`"), "migrations.W001");
         assert_eq!(normalize("e0308"), "E0308");
         assert_eq!(normalize("bogus"), "bogus");
+        assert_eq!(normalize("[ models.E003 ]"), "models.E003");
+        assert_eq!(
+            normalize("CLIPPY::Char_Lit_As_U8"),
+            "clippy::char_lit_as_u8"
+        );
+        assert_eq!(normalize("unused-variables"), "unused_variables");
+        assert_eq!(
+            normalize("Clippy::needless-return"),
+            "clippy::needless_return"
+        );
+        assert!(is_clippy_lint("clippy::char_lit_as_u8"));
         assert_eq!(
             normalize("clippy::Needless_Return"),
             "clippy::needless_return"
@@ -941,6 +964,44 @@ mod tests {
         assert!(parse(&a(&["explain", "a", "b"])).is_err());
         assert!(parse(&a(&["explain", "--list", "a"])).is_err());
         assert!(parse(&a(&["explain", "--bogus", "a"])).is_err());
+    }
+
+    #[test]
+    fn run_returns_exit_codes() {
+        let dir = temp_dir("run");
+        let a = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        for json in [false, true] {
+            let global = GlobalArgs {
+                json,
+                ..GlobalArgs::default()
+            };
+            assert_eq!(run(&dir, &global, &a(&["explain", "--list"])).unwrap(), 0);
+            assert_eq!(
+                run(&dir, &global, &a(&["explain", "models.E001"])).unwrap(),
+                0
+            );
+            assert_eq!(run(&dir, &global, &a(&["explain", "E0308"])).unwrap(), 0);
+            assert_eq!(
+                run(&dir, &global, &a(&["explain", "models.E999"])).unwrap(),
+                1
+            );
+            assert!(run(&dir, &global, &a(&["explain"])).is_err());
+        }
+        assert!(render_list().contains("backend.W001"));
+    }
+
+    #[test]
+    fn json_envelope_marks_unknown_codes() {
+        let dir = temp_dir("env");
+        let env = envelope(explain_report(&dir, "models.E003").unwrap());
+        assert!(env.ok && env.diagnostics.is_empty());
+        let json = serde_json::to_value(&env).unwrap();
+        assert_eq!(json["data"]["kind"], "framework");
+        assert_eq!(json["data"]["format_version"], 1);
+        assert_eq!(json["data"]["explanation"]["verify"], "siderite check");
+        let env = envelope(explain_report(&dir, "nope.E001").unwrap());
+        assert!(!env.ok);
+        assert_eq!(env.diagnostics[0].code, "UNKNOWN_CODE");
     }
 
     #[test]
