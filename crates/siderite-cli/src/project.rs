@@ -361,13 +361,20 @@ pub(crate) fn cargo_command(
     require_component(&probe, sub)?;
     let mut command = probe.cargo();
     command.arg(sub);
-    let has_pkg = forwarded
-        .iter()
-        .any(|a| a == "-p" || a.starts_with("-p=") || a.starts_with("--package"));
-    if !has_pkg && let Some(pkg) = &project.package_name {
+    // Only cargo's own options count: anything after `--` belongs to the
+    // test binary, rustfmt or Clippy (`siderite test -- -p` is a filter).
+    let own: Vec<&String> = forwarded.iter().take_while(|a| *a != "--").collect();
+    let selects_pkg = own.iter().any(|a| {
+        *a == "-p"
+            || a.starts_with("-p=")
+            || a.starts_with("--package")
+            || *a == "--workspace"
+            || *a == "--all"
+    });
+    if !selects_pkg && let Some(pkg) = &project.package_name {
         command.arg("--package").arg(pkg);
     }
-    let has_manifest = forwarded.iter().any(|a| a.starts_with("--manifest-path"));
+    let has_manifest = own.iter().any(|a| a.starts_with("--manifest-path"));
     if !has_manifest && let Some(manifest) = &project.manifest_path {
         command.arg("--manifest-path").arg(manifest);
     }
@@ -384,11 +391,17 @@ fn require_component(probe: &Probe, sub: &str) -> Result<(), CliError> {
     let output = probe.cargo().args([sub, "--version"]).output();
     match output {
         Ok(out) if out.status.success() => Ok(()),
-        Ok(out) => Err(CliError::Io(format!(
-            "cargo {sub} is not available ({}); install it with \
-             `rustup component add {component}`",
-            first_line(&String::from_utf8_lossy(&out.stderr))
-        ))),
+        Ok(out) => {
+            let hint = if probe.on_path("rustup") {
+                format!("install it with `rustup component add {component}`")
+            } else {
+                format!("install {component} with the package manager that provided Rust")
+            };
+            Err(CliError::Io(format!(
+                "cargo {sub} is not available ({}); {hint}",
+                first_line(&String::from_utf8_lossy(&out.stderr))
+            )))
+        }
         Err(err) => Err(CliError::Io(format!(
             "cannot run cargo {sub} (is cargo on PATH?): {err}"
         ))),
@@ -501,15 +514,39 @@ mod tests {
         let (out, _) = stdout_of(cargo_command(&probe, &project, "clean", &own).unwrap());
         assert!(out.starts_with("clean --manifest-path"), "{out}");
         assert!(out.ends_with("-p=other"), "{out}");
+
+        // `--workspace` selects packages itself.
+        let ws = vec!["--workspace".to_owned()];
+        let (out, _) = stdout_of(cargo_command(&probe, &project, "clean", &ws).unwrap());
+        assert!(!out.contains("--package"), "{out}");
+
+        // `-p` after `--` is for the test binary, not cargo.
+        let filter: Vec<String> = ["--", "-p"].iter().map(|a| (*a).to_owned()).collect();
+        let (out, _) = stdout_of(cargo_command(&probe, &project, "test", &filter).unwrap());
+        assert!(out.starts_with("test --package demo"), "{out}");
     }
 
     #[cfg(unix)]
     #[test]
     fn missing_rustfmt_is_an_actionable_error() {
         let (probe, dir) = stub_probe("fmt");
+        let with_rustup = crate::toolchain::tests::stub_bin(
+            "fmt-rustup",
+            &[
+                ("cargo", "echo 'error: no such command: `fmt`' >&2; exit 1"),
+                ("rustup", "exit 0"),
+            ],
+        );
+        let rp = Probe::with_path(&with_rustup, &with_rustup);
+        let err = cargo_command(&rp, &stub_project(&dir), "fmt", &[]).unwrap_err();
+        assert!(
+            err.to_string().contains("rustup component add rustfmt"),
+            "{err}"
+        );
         let err = cargo_command(&probe, &stub_project(&dir), "fmt", &[]).unwrap_err();
         let text = err.to_string();
-        assert!(text.contains("rustup component add rustfmt"), "{text}");
+        // The stub PATH has no rustup.
+        assert!(text.contains("package manager"), "{text}");
         assert!(text.contains("no such command"), "{text}");
         assert_eq!(err.exit_code(), 1);
     }
