@@ -44,7 +44,7 @@
 - JSON responses stream ordinary derived models and containers directly,
   avoiding an intermediate JSON tree while preserving dump hooks, custom
   implementations, field exclusions, and numeric conversion semantics.
-- **Breaking:** MSRV is Rust 1.99, the stable compiler CI already uses.
+- **Breaking:** MSRV is Rust 1.99 (released October 2026), the stable compiler CI already uses.
 - **Breaking (Migrations):** bounded PostgreSQL/MySQL advisory acquisition and read-only
   recovery inspection. Pending-step intents reject automatic replay of
   uncertain non-transactional scripts/callbacks. Callback replay requires

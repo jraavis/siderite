@@ -7,7 +7,7 @@
 
 An async-first Rust web framework with FastAPI-style routing,
 Pydantic-style validation and a Django-style ORM. Targets stable Rust,
-edition 2024, with a declared MSRV of 1.99.
+edition 2024, with a declared MSRV of 1.99 (released October 2026).
 
 **Documentation:** [jraavis.github.io/siderite](https://jraavis.github.io/siderite/)
 
