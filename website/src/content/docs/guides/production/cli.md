@@ -24,7 +24,7 @@ replaces `cargo build --release -p myapp`). Without a package, `migrate` / `roll
 | | `siderite` in a package | Standalone (no package) | `AppCli` in your binary |
 |---|---|---|---|
 | Needs your `App` and models | compiles them via cargo | no | yes |
-| Commands | `new`, `run`, `routes`, `check`, `dbshell`, migrations, `build`, `test`, `fmt`, `lint`, `clean` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
+| Commands | `new`, `run`, `routes`, `check`, `dbshell`, migrations, `build`, `test`, `fmt`, `lint`, `clean`, `verify` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
 
 Exit codes: `0` success, `1` failure (or `check` found an error), `2` usage
 error.
@@ -160,6 +160,33 @@ framework configuration, models, migrations and routes. When `rustfmt` or
 Clippy is not installed, the command fails with the matching
 `rustup component add` hint. `clean` deletes build artifacts only when you
 run it; no other command cleans.
+
+## `verify`
+
+`siderite verify` runs the offline checks of the selected package in one
+command and prints a per-step summary:
+
+| Step | Runs |
+|---|---|
+| `fmt` | `cargo fmt --check` |
+| `lint` | `cargo clippy --all-targets -- -D warnings` |
+| `build` | `cargo build --all-targets` |
+| `test` | `cargo test` |
+| `check` | `cargo run --quiet -- check --json` (framework checks) |
+
+Every step runs even after an earlier failure, so one pass shows every
+problem; only `test` and `check` are skipped when `build` fails. The exit
+code is `0` when every step passed, else `1`. `verify` never formats files,
+applies Clippy fixes, connects to a database or applies migrations. The only
+profile is offline; live checks (connectivity, migration status) are not
+available yet.
+
+With `--json`, stdout holds one envelope whose `data` lists each step's
+`name`, exact `command`, `status` (`passed`, `failed`, `skipped`),
+`duration_ms`, `exit_code` and `message`, plus the `check` report; child
+output goes to stderr. A package with several binaries needs `--bin`. The
+check step fails, rather than guessing, when the app's stdout is not one
+check envelope (for example when the app factory prints).
 
 ## `setup` and `doctor`
 

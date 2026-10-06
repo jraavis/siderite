@@ -7,6 +7,11 @@
   and joined before resource teardown.
 
 ### Added
+- **CLI (verify):** `siderite verify [--json]` runs `fmt --check`, Clippy
+  with `-D warnings`, build, tests and the framework `check` offline and
+  reports each step's command, status, duration and exit code. Test and
+  check are skipped when the build fails; nothing is formatted, fixed or
+  migrated.
 - **CLI (check/routes JSON):** `routes --json` and `check --json` print one
   versioned JSON envelope on stdout, from both `siderite` and `AppCli`, with
   `--json` before or after the command. `check` keeps its issues in `data`

@@ -249,7 +249,7 @@ fn resolve_binary(
         return Ok(Some(bin.clone()));
     }
 
-    if command == "run" && bin_targets.len() > 1 {
+    if matches!(command, "run" | "verify") && bin_targets.len() > 1 {
         let names: Vec<&str> = bin_targets.iter().map(|t| t.name.as_str()).collect();
         return Err(CliError::usage(format!(
             "package `{}` has multiple binaries ({}); specify one with \

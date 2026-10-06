@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: X01-X03 (and parent C03, C06, C08) implemented; other tasks proposed.
+Updated: 2026-10-05. Status: X01-X04 (and parent C03, C06, C08) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -55,7 +55,7 @@ remain explicit commands; development reload never applies them implicitly.
 | Add libraries | `add`, `remove` | Proposed D03-D04 |
 | Generate application code | `generate route/model/crud` | Proposed D05-D10 |
 | Format and lint | `fmt`, `lint`, `clean` | Exist (C08) |
-| Complete local verification | `verify` | New X04 |
+| Complete local verification | `verify` | Exists (X04) |
 | Framework checks | `check --json` | Exists (C03) |
 | Database changes | `makemigrations`, `migrate`, `rollback` | Exist |
 | Demo data | `seed --dataset demo` | New X09 |
@@ -103,12 +103,16 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
   (with stubbed compsys functions) on a nested fixture; Fish output is checked
   as text, plus `fish -n` when installed. No real interactive-shell test yet.
 
-- [ ] **X04 — Add one-command verification.**
+- [x] **X04 — Add one-command verification.**
   Depends: C03, C08. Scope: `verify` orchestration.
   Done: run formatting checks, lint, compilation, tests and framework checks
   through existing runners; return one aggregate report with per-step status,
   durations and failures. Offline is default; required live checks are an
   explicit profile. No automatic formatting edits or migrations.
+  Summary: `siderite verify [--json]` runs fmt --check, clippy -D warnings,
+  build, test and `check --json` through the passthrough runner; test/check
+  are skipped after a build failure and contaminated check stdout fails the
+  step. Offline only: no live profile until C05/C07 provide live checks.
 
 - [ ] **X05 — Normalize compiler and test reports for agents.**
   Depends: C02, X04. Scope: Cargo structured diagnostics and test reporting.
@@ -262,6 +266,7 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
   verification duration on documented fixtures before setting numeric targets.
 
 This document adds 20 tasks to the parent's 46. Implemented so far: X01
-(command contract), X02 (setup diagnostics) and X03 (shell completions),
+(command contract), X02 (setup diagnostics), X03 (shell completions) and
+X04 (verify),
 plus the parent's C03 (`check`/`routes` JSON), C06 (`doctor`) and C08
 (`fmt`/`lint`/`clean`).

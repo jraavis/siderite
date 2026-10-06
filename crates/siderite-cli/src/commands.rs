@@ -297,6 +297,27 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             flags: vec![],
         },
         CommandMeta {
+            name: "verify".into(),
+            summary: "Run fmt --check, lint, build, test and check".into(),
+            description: "Runs cargo fmt --check, Clippy with -D warnings, cargo build, \
+                 cargo test and the framework check offline, and reports each step's \
+                 status, duration and failures. Never formats, fixes or migrates."
+                .into(),
+            usage: "siderite verify [--json]".into(),
+            category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::PackageRequired,
+            mutation: MutationKind::Process,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text, OutputMode::Json],
+            flags: vec![FlagMeta::flag(
+                "--json",
+                None,
+                "Output as structured JSON envelope",
+            )],
+        },
+        CommandMeta {
             name: "makemigrations".into(),
             summary: "Write a new migration from models".into(),
             description: "Computes schema diff from compiled models and creates JSON.".into(),
@@ -549,6 +570,7 @@ mod tests {
         assert!(names.contains(&"fmt"));
         assert!(names.contains(&"lint"));
         assert!(names.contains(&"clean"));
+        assert!(names.contains(&"verify"));
         assert!(names.contains(&"commands"));
         assert!(names.contains(&"migrate"));
         assert!(names.contains(&"makemigrations"));

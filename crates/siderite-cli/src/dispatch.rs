@@ -58,6 +58,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "completions" {
         return handle_completions(raw);
     }
+    if command == "verify" {
+        return crate::verify::run(cwd, &global, raw);
+    }
     if command == "new" {
         return scaffold::run(raw);
     }
@@ -212,6 +215,7 @@ Create and run an app:
   fmt [--check]                 cargo fmt in the app package
   lint [-- -D warnings]         cargo clippy (Rust lints, not `check`)
   clean                         cargo clean in the app package
+  verify [--json]               fmt --check, lint, build, test and check
   commands [--json]             List available commands and metadata
   setup [--json]                Check Rust prerequisites; print next steps
   doctor [--json]               Offline toolchain, project and config checks
@@ -355,7 +359,7 @@ mod tests {
     async fn cargo_commands_without_a_package_are_usage() {
         let dir = std::env::temp_dir().join(format!("siderite-fmt-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        for cmd in ["fmt", "lint", "clean"] {
+        for cmd in ["fmt", "lint", "clean", "verify"] {
             let err = dispatch(&args(&[cmd]), &dir).await.unwrap_err();
             assert_eq!(err.exit_code(), 2, "{cmd}");
             assert!(err.to_string().contains(&format!("`{cmd}` needs")));

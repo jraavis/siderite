@@ -33,6 +33,7 @@ pub mod settings;
 pub mod setup;
 mod standalone;
 pub mod toolchain;
+pub mod verify;
 
 pub use app_cli::AppCli;
 pub use check::{CheckIssue, CheckLevel, CheckReport, check};
