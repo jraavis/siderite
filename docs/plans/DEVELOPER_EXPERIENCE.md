@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: X01-X05, X11 (and parent C03, C06, C08) implemented; other tasks proposed.
+Updated: 2026-10-06. Status: X01-X05, X11, X12 (and parent C03, C06, C08) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -63,7 +63,7 @@ remain explicit commands; development reload never applies them implicitly.
 | Effective config | `config show --redacted` | New X07 |
 | Route/spec inspection | `routes --json`, `openapi export` | `routes --json` exists (C03); export C04 |
 | API compatibility | `openapi diff BASE CURRENT` | New X16 |
-| Framework help | `docs search`, `explain CODE` | New X11-X12 |
+| Framework help | `docs search`, `explain CODE` | Exist (X11, X12) |
 | AI setup/context | `ai init`, `ai context --task TEXT` | A03 and X13 |
 | AI tools | `mcp` | Proposed A05-A07 |
 | Release artifact | `package --release` | New X17 |
@@ -179,11 +179,19 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
   `Cargo.lock` mismatch (`siderite`, else `siderite-core`) warns. Gap: doc
   snippets are not compiled; only the workspace `examples/` are.
 
-- [ ] **X12 — Explain framework diagnostics.**
+- [x] **X12 — Explain framework diagnostics.**
   Depends: X11, C02. Scope: `explain CODE` for stable framework error codes.
   Done: each entry describes cause, minimal valid correction and verification
   command, tied to supported versions. Unknown/compiler codes link or point
   to the appropriate source rather than invent framework explanations.
+  Summary: `siderite explain CODE [--json]` and `explain --list` cover every
+  `check` id (cause, minimal correction using real macro syntax, verify
+  command, `since` version, guide links resolved from the X11 index). Input
+  copied as `[models.E003]` works, any case. rustc `E####` points to
+  `rustc --explain`, `clippy::lint` to the lint list; other codes exit 1
+  (`UNKNOWN_CODE`). Lock-file mismatch reuses `DOCS_VERSION_MISMATCH`. Tests
+  keep catalog, ids emitted in `src/check` and both guide id tables in sync
+  (`migrations.E004` was missing from the tables). C02 remains open.
 
 - [ ] **X13 — Produce task-focused AI context.**
   Depends: A02, X11. Scope: `ai context --task TEXT --budget N`.
@@ -284,6 +292,7 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 
 This document adds 20 tasks to the parent's 46. Implemented so far: X01
 (command contract), X02 (setup diagnostics), X03 (shell completions),
-X04 (verify), X05 (structured diagnostics) and X11 (docs search),
+X04 (verify), X05 (structured diagnostics), X11 (docs search) and
+X12 (`explain`),
 plus the parent's C03 (`check`/`routes` JSON), C06 (`doctor`) and C08
 (`fmt`/`lint`/`clean`).

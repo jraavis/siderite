@@ -25,6 +25,7 @@ pub mod docs;
 pub mod doctor;
 pub mod envelope;
 mod error;
+pub mod explain;
 #[cfg(test)]
 mod fixtures;
 pub mod project;

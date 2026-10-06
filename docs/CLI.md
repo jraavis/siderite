@@ -78,6 +78,7 @@ AppCli::new(build_app)
 | `doctor [--json]` | Offline toolchain, project and configuration checks (standalone binary). |
 | `completions SHELL` | Prints a bash, zsh or fish completion script (standalone binary). |
 | `docs search QUERY [--limit N] [--full] [--json]` | Searches the packaged framework guides offline (standalone binary). |
+| `explain CODE [--json]`, `explain --list` | Explains a `check` id: cause, fix, verification command (standalone binary). |
 | `commands [--json]` | Lists commands with their metadata (standalone binary). |
 
 See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
@@ -259,6 +260,22 @@ and a `DOCS_VERSION_MISMATCH` diagnostic). Without a lock file the status is
 Code in the guides is not compiled by the search. The compiled counterparts
 are the workspace `examples/`.
 
+## Explaining check ids
+
+`siderite explain CODE` describes a `check` id: its cause, the smallest valid
+correction, the command that verifies the fix and links to the guides, for the
+installed framework version. The code can be copied as printed
+(`[models.E003]`); case does not matter. `siderite explain --list` lists every
+id. With `--json` the data has `format_version` 1, `framework_version`, `kind`
+and `explanation`; a different `siderite` version in the project's
+`Cargo.lock` adds a `DOCS_VERSION_MISMATCH` warning, as for docs search.
+
+Compiler codes such as `E0308` point to `rustc --explain E0308` (offline,
+matching the installed toolchain) and Clippy lints such as
+`clippy::needless_return` to the Clippy lint list, and rustc lint names such
+as `unused_variables` to `rustc -W help`; siderite does not paraphrase them. Any other code exits `1` (JSON: `ok: false` and an
+`UNKNOWN_CODE` error) and names known ids with the same prefix.
+
 ## `check`
 
 `check` runs without starting a server or opening a database. Each issue prints as `error: [models.E003] message` or `warning: [id] message`, followed by a summary line. Messages never contain database URLs.
@@ -278,6 +295,7 @@ are the workspace `examples/`.
 | `migrations.E001` | error | the migration files cannot be loaded |
 | `migrations.E002` | error | the migration dependency graph is invalid |
 | `migrations.E003` | error | the migrations do not replay cleanly |
+| `migrations.E004` | error | the model changes are ambiguous (same-shape remove and add); `makemigrations` needs a rename hint |
 | `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |
 | `openapi.E001` | error | the OpenAPI document cannot be generated (duplicate operations or operation ids) |
 | `routes.E001` | error | the app cannot be built into a router (duplicate routes, malformed paths) |

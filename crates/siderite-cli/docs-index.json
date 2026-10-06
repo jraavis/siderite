@@ -1293,18 +1293,27 @@
     },
     {
       "page": "CLI",
-      "heading": "check",
+      "heading": "Explaining check ids",
       "path": "website/src/content/docs/guides/production/cli.md",
       "line": 285,
+      "url": "https://jraavis.github.io/siderite/guides/production/cli/#explaining-check-ids",
+      "features": [],
+      "text": "`siderite explain CODE` describes a `check` id: its cause, the smallest valid\ncorrection, the command that verifies the fix and links to the guides, for the\ninstalled framework version. The code can be copied as printed\n(`[models.E003]`); case does not matter. `siderite explain --list` lists every\nid. With `--json` the data has `format_version` 1, `framework_version`, `kind`\nand `explanation`; a different `siderite` version in the project's\n`Cargo.lock` adds a `DOCS_VERSION_MISMATCH` warning, as for docs search.\n\nCompiler codes such as `E0308` point to `rustc --explain E0308` (offline,\nmatching the installed toolchain) and Clippy lints such as\n`clippy::needless_return` to the Clippy lint list, and rustc lint names such\nas `unused_variables` to `rustc -W help`; siderite does not paraphrase them. Any other code exits `1` (JSON: `ok: false` and an\n`UNKNOWN_CODE` error) and names known ids with the same prefix."
+    },
+    {
+      "page": "CLI",
+      "heading": "check",
+      "path": "website/src/content/docs/guides/production/cli.md",
+      "line": 301,
       "url": "https://jraavis.github.io/siderite/guides/production/cli/#check",
       "features": [],
-      "text": "`check` runs without starting a server or opening a database. Each issue\nprints as `error: [models.E003] message` or `warning: [id] message`.\nMessages never contain database URLs.\n\n| Id | Level | Meaning |\n|---|---|---|\n| `config.E001` | error | models are registered but no `default` database is configured |\n| `config.E002` | error | a database URL has no scheme or does not parse |\n| `config.E003` | error | a database URL uses an unsupported scheme |\n| `models.E001` | error | two models use the same table |\n| `models.E002` | error | a model name is registered more than once |\n| `models.E003` | error | a model has no primary key |\n| `models.E004` | error | a foreign key points to a model that is not registered |\n| `models.E005` | error | a many-to-many relation (or its through model) targets an unregistered model |\n| `models.E006` | error | two fields map to the same column |\n| `models.E007` | error | a model has more than one primary-key field |\n| `migrations.E001` | error | the migration files cannot be loaded |\n| `migrations.E002` | error | the migration dependency graph is invalid |\n| `migrations.E003` | error | the migrations do not replay cleanly |\n| `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |\n| `openapi.E001` | error | the OpenAPI document cannot be generated |\n| `routes.E001` | error | the app cannot be built into a router |\n| `backend.E001` | error | the `default` database is Redis, which cannot hold models |\n| `backend.E002` | error | a model needs joins the `default` backend does not support |\n| `backend.E003` | error | the schema cannot be created on the `default` backend |\n| `backend.W001` | warning | the backend has no schema migrations; `migrate` will refuse to run |\n\nMigration checks are skipped when no migrations directory is passed to\n`siderite_cli::check`; `AppCli` always passes its own."
+      "text": "`check` runs without starting a server or opening a database. Each issue\nprints as `error: [models.E003] message` or `warning: [id] message`.\nMessages never contain database URLs.\n\n| Id | Level | Meaning |\n|---|---|---|\n| `config.E001` | error | models are registered but no `default` database is configured |\n| `config.E002` | error | a database URL has no scheme or does not parse |\n| `config.E003` | error | a database URL uses an unsupported scheme |\n| `models.E001` | error | two models use the same table |\n| `models.E002` | error | a model name is registered more than once |\n| `models.E003` | error | a model has no primary key |\n| `models.E004` | error | a foreign key points to a model that is not registered |\n| `models.E005` | error | a many-to-many relation (or its through model) targets an unregistered model |\n| `models.E006` | error | two fields map to the same column |\n| `models.E007` | error | a model has more than one primary-key field |\n| `migrations.E001` | error | the migration files cannot be loaded |\n| `migrations.E002` | error | the migration dependency graph is invalid |\n| `migrations.E003` | error | the migrations do not replay cleanly |\n| `migrations.E004` | error | the model changes are ambiguous (same-shape remove and add); `makemigrations` needs a rename hint |\n| `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |\n| `openapi.E001` | error | the OpenAPI document cannot be generated |\n| `routes.E001` | error | the app cannot be built into a router |\n| `backend.E001` | error | the `default` database is Redis, which cannot hold models |\n| `backend.E002` | error | a model needs joins the `default` backend does not support |\n| `backend.E003` | error | the schema cannot be created on the `default` backend |\n| `backend.W001` | warning | the backend has no schema migrations; `migrate` will refuse to run |\n\nMigration checks are skipped when no migrations directory is passed to\n`siderite_cli::check`; `AppCli` always passes its own."
     },
     {
       "page": "CLI",
       "heading": "dbshell",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 317,
+      "line": 334,
       "url": "https://jraavis.github.io/siderite/guides/production/cli/#dbshell",
       "features": [
         "mysql"
@@ -1315,7 +1324,7 @@
       "page": "CLI",
       "heading": "See also",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 329,
+      "line": 346,
       "url": "https://jraavis.github.io/siderite/guides/production/cli/#see-also",
       "features": [],
       "text": "- [Migrations](/siderite/guides/data/migrations/)\n- [Configuration](/siderite/guides/production/config/)\n- [Signals](/siderite/guides/data/signals/)"

@@ -61,6 +61,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "docs" {
         return crate::docs::run(cwd, &global, raw);
     }
+    if command == "explain" {
+        return crate::explain::run(cwd, &global, raw);
+    }
     if command == "verify" {
         return crate::verify::run(cwd, &global, raw);
     }
@@ -225,6 +228,7 @@ Create and run an app:
   doctor [--json]               Offline toolchain, project and config checks
   completions SHELL             Print a bash, zsh or fish completion script
   docs search QUERY [--limit N] Search the offline framework guides
+  explain CODE | --list         Explain a `check` issue id and its fix
 
 Migrations:
   makemigrations [--name SLUG] [--empty] [--dry-run]

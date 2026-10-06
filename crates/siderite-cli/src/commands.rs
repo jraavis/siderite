@@ -515,6 +515,30 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             flags: vec![],
         },
         CommandMeta {
+            name: "explain".into(),
+            summary: "Explain a `check` issue id and how to fix it".into(),
+            description: "Prints the cause, minimal correction, verification command \
+                 and guide links for a stable `check` id such as `models.E003`, for \
+                 the installed framework version. rustc codes and Clippy lints point \
+                 to `rustc --explain` and the Clippy lint list; unknown codes exit 1."
+                .into(),
+            usage: "siderite explain CODE [--json] | siderite explain --list [--json]".into(),
+            category: "meta".into(),
+            values: crate::explain::known_codes()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::None,
+            mutation: MutationKind::None,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text, OutputMode::Json],
+            flags: vec![
+                FlagMeta::flag("--list", None, "List every known code"),
+                FlagMeta::flag("--json", None, "Output as structured JSON envelope"),
+            ],
+        },
+        CommandMeta {
             name: "completions".into(),
             summary: "Print a shell completion script".into(),
             description: "Writes a Bash, Zsh or Fish completion script to standard \

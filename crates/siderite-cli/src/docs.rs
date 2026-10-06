@@ -606,6 +606,27 @@ pub fn search_report(
     })
 }
 
+/// Directory to search upward from for `Cargo.lock`: the `--manifest-path`
+/// directory, else `cwd`.
+///
+/// # Errors
+/// When `--manifest-path` is not a file.
+pub fn search_start(cwd: &Path, global: &GlobalArgs) -> Result<PathBuf, CliError> {
+    let Some(manifest) = global.manifest_path.as_deref() else {
+        return Ok(cwd.to_path_buf());
+    };
+    let manifest = cwd.join(manifest);
+    if !manifest.is_file() {
+        return Err(CliError::usage(format!(
+            "manifest path `{}` is not a file",
+            manifest.display()
+        )));
+    }
+    Ok(manifest
+        .parent()
+        .map_or_else(|| cwd.to_path_buf(), Path::to_path_buf))
+}
+
 /// `siderite docs search QUERY... [--limit N] [--full] [--json]`.
 ///
 /// # Errors
@@ -617,21 +638,7 @@ pub fn run(cwd: &Path, global: &GlobalArgs, raw: &[String]) -> Result<u8, CliErr
         return Ok(0);
     }
     let SearchArgs { query, limit, full } = parse(&rest)?;
-    let start: PathBuf = match global.manifest_path.as_deref() {
-        None => cwd.to_path_buf(),
-        Some(manifest) => {
-            let manifest = cwd.join(manifest);
-            if !manifest.is_file() {
-                return Err(CliError::usage(format!(
-                    "manifest path `{}` is not a file",
-                    manifest.display()
-                )));
-            }
-            manifest
-                .parent()
-                .map_or_else(|| cwd.to_path_buf(), Path::to_path_buf)
-        }
-    };
+    let start = search_start(cwd, global)?;
     let report = search_report(&start, &query, limit, full)?;
     if global.json {
         let mut env = CliEnvelope::success("docs search", report);

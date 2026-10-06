@@ -7,6 +7,11 @@
   and joined before resource teardown.
 
 ### Added
+- **CLI (explain):** `siderite explain CODE [--json]` describes a `check` id
+  (cause, minimal correction, verification command, guide links) for the
+  installed framework version; `explain --list` lists every id. rustc error
+  codes, rustc lints and Clippy lints point to `rustc --explain`,
+  `rustc -W help` and the Clippy lint list. Unknown codes exit `1`.
 - **CLI (docs):** `siderite docs search QUERY [--limit N] [--full] [--json]`
   searches the framework guides offline from an index packaged with the CLI.
   Stop words are ignored, endings stemmed, and partial matches shown when no
