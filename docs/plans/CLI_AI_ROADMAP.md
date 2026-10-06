@@ -1,7 +1,7 @@
 # Framework reliability, CLI and AI tooling roadmap
 
 Reviewed: 2026-10-05. Source baseline: `0f30c32` plus the local gap plan.
-Status: planning; C06 implemented (see checked tasks), others open.
+Status: planning; C06 and C08 implemented (see checked tasks), others open.
 
 The [developer experience expansion](DEVELOPER_EXPERIENCE.md) adds the
 complete Siderite-only daily workflow, 20 additional tasks and AI-focused
@@ -247,11 +247,14 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   redacted errors; absence of services fails only the explicitly requested
   checks. Document connection-time driver side effects where applicable.
 
-- [ ] **C08 — Add fmt/lint/clean passthroughs.**
+- [x] **C08 — Add fmt/lint/clean passthroughs.**
   Depends: C01. Scope: existing Cargo command runner.
   Done: preserve argument boundaries and child exit status; lint delegates
   to Clippy and is never confused with framework `check`; missing components
   have useful errors. Clean runs only when explicitly invoked.
+  Summary: `siderite fmt|lint|clean` reuse the build/test passthrough;
+  `lint` maps to `cargo clippy`. Missing rustfmt/Clippy is detected with
+  `cargo <sub> --version` and reported with a rustup hint (2026-10-06).
 
 ### C. Watch mode and safe project edits
 

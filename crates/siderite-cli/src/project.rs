@@ -2,6 +2,7 @@
 
 use crate::args::GlobalArgs;
 use crate::error::CliError;
+use crate::toolchain::{Probe, first_line};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -20,8 +21,29 @@ pub const APP_COMMANDS: &[&str] = &[
     "squashmigrations",
 ];
 
-/// Cargo subcommands `siderite` forwards verbatim in the app package.
-pub const CARGO_COMMANDS: &[&str] = &["build", "test"];
+/// Commands `siderite` forwards to a cargo subcommand in the app package,
+/// with every argument after the command passed through verbatim.
+pub const CARGO_COMMANDS: &[&str] = &["build", "test", "fmt", "lint", "clean"];
+
+/// The cargo subcommand behind a [`CARGO_COMMANDS`] entry: `lint` runs
+/// Clippy; every other command shares its cargo name.
+#[must_use]
+pub fn cargo_subcommand(command: &str) -> &str {
+    match command {
+        "lint" => "clippy",
+        other => other,
+    }
+}
+
+/// Rustup component providing `cargo <sub>`, for subcommands that are not
+/// built into cargo.
+fn component_for(sub: &str) -> Option<&'static str> {
+    match sub {
+        "fmt" => Some("rustfmt"),
+        "clippy" => Some("clippy"),
+        _ => None,
+    }
+}
 
 /// Whether `command` is forwarded to the application binary.
 #[must_use]
@@ -293,24 +315,55 @@ pub fn cargo_run(project: &ResolvedProject, args: &[String]) -> Result<u8, CliEr
     let status = command
         .status()
         .map_err(|err| CliError::Io(format!("cannot run cargo run (is cargo on PATH?): {err}")))?;
-    Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
+    Ok(exit_code(status))
 }
 
-/// `cargo <cargo_cmd>` with forwarded arguments for `project`.
+/// Run the cargo subcommand behind `command` (see [`cargo_subcommand`])
+/// for `project`, forwarding every argument after `command`. Returns the
+/// child's exit code.
 ///
 /// # Errors
-/// Return IO error when cargo fails to launch.
+/// IO error when cargo cannot start or the rustup component providing the
+/// subcommand (`rustfmt`, `clippy`) is not installed.
 pub fn cargo_passthrough(
     project: &ResolvedProject,
-    cargo_cmd: &str,
+    command: &str,
     args: &[String],
 ) -> Result<u8, CliError> {
-    let mut command = Command::new("cargo");
-    command.arg(cargo_cmd).current_dir(&project.package_dir);
-    let forwarded = args_after(cargo_cmd, args);
+    let probe = Probe::system(&project.package_dir);
+    let forwarded = args_after(command, args);
+    let mut cmd = cargo_command(&probe, project, cargo_subcommand(command), &forwarded)?;
+    let status = cmd
+        .stdin(std::process::Stdio::inherit())
+        .status()
+        .map_err(|err| {
+            CliError::Io(format!(
+                "cannot run cargo {} (is cargo on PATH?): {err}",
+                cargo_subcommand(command)
+            ))
+        })?;
+    Ok(exit_code(status))
+}
+
+/// `cargo <sub> [--package P] [--manifest-path M] <forwarded>` from the
+/// package directory. The package and manifest are added only when
+/// `forwarded` does not choose its own.
+///
+/// # Errors
+/// IO error when `sub` needs a rustup component that is missing.
+pub(crate) fn cargo_command(
+    probe: &Probe,
+    project: &ResolvedProject,
+    sub: &str,
+    forwarded: &[String],
+) -> Result<Command, CliError> {
+    let probe = probe.in_dir(&project.package_dir);
+    require_component(&probe, sub)?;
+    let mut command = probe.cargo();
+    command.arg(sub);
     let has_pkg = forwarded
         .iter()
-        .any(|a| a == "-p" || a.starts_with("--package"));
+        .any(|a| a == "-p" || a.starts_with("-p=") || a.starts_with("--package"));
     if !has_pkg && let Some(pkg) = &project.package_name {
         command.arg("--package").arg(pkg);
     }
@@ -318,13 +371,33 @@ pub fn cargo_passthrough(
     if !has_manifest && let Some(manifest) = &project.manifest_path {
         command.arg("--manifest-path").arg(manifest);
     }
-    command.args(&forwarded);
-    let status = command.status().map_err(|err| {
-        CliError::Io(format!(
-            "cannot run cargo {cargo_cmd} (is cargo on PATH?): {err}"
-        ))
-    })?;
-    Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
+    command.args(forwarded);
+    Ok(command)
+}
+
+/// Fail with an install hint when `cargo <sub>` comes from a missing
+/// rustup component.
+fn require_component(probe: &Probe, sub: &str) -> Result<(), CliError> {
+    let Some(component) = component_for(sub) else {
+        return Ok(());
+    };
+    let output = probe.cargo().args([sub, "--version"]).output();
+    match output {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(CliError::Io(format!(
+            "cargo {sub} is not available ({}); install it with \
+             `rustup component add {component}`",
+            first_line(&String::from_utf8_lossy(&out.stderr))
+        ))),
+        Err(err) => Err(CliError::Io(format!(
+            "cannot run cargo {sub} (is cargo on PATH?): {err}"
+        ))),
+    }
+}
+
+/// A child's exit status as a process exit code; signals map to `1`.
+pub(crate) fn exit_code(status: std::process::ExitStatus) -> u8 {
+    u8::try_from(status.code().unwrap_or(1)).unwrap_or(1)
 }
 
 fn args_after(cargo_cmd: &str, args: &[String]) -> Vec<String> {
@@ -359,6 +432,86 @@ mod tests {
             .collect();
         assert_eq!(args_after("build", &args), args[1..].to_vec());
         assert!(args_after("test", &args[..1]).is_empty());
+    }
+
+    #[test]
+    fn lint_runs_clippy_and_other_commands_keep_their_name() {
+        assert_eq!(cargo_subcommand("lint"), "clippy");
+        for cmd in ["build", "test", "fmt", "clean"] {
+            assert_eq!(cargo_subcommand(cmd), cmd);
+        }
+    }
+
+    fn stub_project(dir: &Path) -> ResolvedProject {
+        ResolvedProject {
+            package_dir: dir.to_path_buf(),
+            manifest_path: Some(dir.join("Cargo.toml")),
+            package_name: Some("demo".into()),
+            binary_name: None,
+        }
+    }
+
+    /// A stub cargo that prints its arguments; `fmt` is not installed.
+    #[cfg(unix)]
+    fn stub_probe(tag: &str) -> (Probe, PathBuf) {
+        let bin = crate::toolchain::tests::stub_bin(
+            tag,
+            &[(
+                "cargo",
+                "if [ \"$2\" = --version ]; then\n\
+                 [ \"$1\" = fmt ] && { echo 'error: no such command: `fmt`' >&2; exit 1; }\n\
+                 echo ok; exit 0; fi\necho \"$@\"; exit 3",
+            )],
+        );
+        (Probe::with_path(&bin, &bin), bin)
+    }
+
+    #[cfg(unix)]
+    fn stdout_of(mut cmd: Command) -> (String, Option<i32>) {
+        let out = cmd.output().unwrap();
+        (
+            String::from_utf8_lossy(&out.stdout).trim().to_owned(),
+            out.status.code(),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn passthrough_preserves_argument_boundaries_and_status() {
+        let (probe, dir) = stub_probe("lint");
+        let project = stub_project(&dir);
+        let forwarded: Vec<String> = ["--all-targets", "--", "-D", "warnings"]
+            .iter()
+            .map(|a| (*a).to_owned())
+            .collect();
+        let cmd = cargo_command(&probe, &project, "clippy", &forwarded).unwrap();
+        let (out, code) = stdout_of(cmd);
+        let manifest = dir.join("Cargo.toml");
+        assert_eq!(
+            out,
+            format!(
+                "clippy --package demo --manifest-path {} --all-targets -- -D warnings",
+                manifest.display()
+            )
+        );
+        assert_eq!(code, Some(3));
+
+        // A package chosen after the command wins over the resolved one.
+        let own = vec!["-p=other".to_owned()];
+        let (out, _) = stdout_of(cargo_command(&probe, &project, "clean", &own).unwrap());
+        assert!(out.starts_with("clean --manifest-path"), "{out}");
+        assert!(out.ends_with("-p=other"), "{out}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_rustfmt_is_an_actionable_error() {
+        let (probe, dir) = stub_probe("fmt");
+        let err = cargo_command(&probe, &stub_project(&dir), "fmt", &[]).unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("rustup component add rustfmt"), "{text}");
+        assert!(text.contains("no such command"), "{text}");
+        assert_eq!(err.exit_code(), 1);
     }
 
     #[test]

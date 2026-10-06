@@ -251,6 +251,52 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             flags: vec![],
         },
         CommandMeta {
+            name: "fmt".into(),
+            summary: "cargo fmt in the app package".into(),
+            description: "Formats the package with rustfmt; pass --check to only report \
+                 differences."
+                .into(),
+            usage: "siderite fmt [--check ...]".into(),
+            category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::PackageRequired,
+            mutation: MutationKind::Filesystem,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Passthrough],
+            flags: vec![],
+        },
+        CommandMeta {
+            name: "lint".into(),
+            summary: "cargo clippy in the app package".into(),
+            description: "Runs Clippy Rust lints. Not the framework `check`, which validates \
+                 config, models, migrations and routes."
+                .into(),
+            usage: "siderite lint [... -- -D warnings]".into(),
+            category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::PackageRequired,
+            mutation: MutationKind::Process,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Passthrough],
+            flags: vec![],
+        },
+        CommandMeta {
+            name: "clean".into(),
+            summary: "cargo clean in the app package".into(),
+            description: "Removes the package's build artifacts from the target directory.".into(),
+            usage: "siderite clean [...]".into(),
+            category: "cargo".into(),
+            values: vec![],
+            subcommands: vec![],
+            project_requirement: ProjectRequirement::PackageRequired,
+            mutation: MutationKind::Filesystem,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Passthrough],
+            flags: vec![],
+        },
+        CommandMeta {
             name: "makemigrations".into(),
             summary: "Write a new migration from models".into(),
             description: "Computes schema diff from compiled models and creates JSON.".into(),
@@ -500,6 +546,9 @@ mod tests {
         assert!(names.contains(&"check"));
         assert!(names.contains(&"build"));
         assert!(names.contains(&"test"));
+        assert!(names.contains(&"fmt"));
+        assert!(names.contains(&"lint"));
+        assert!(names.contains(&"clean"));
         assert!(names.contains(&"commands"));
         assert!(names.contains(&"migrate"));
         assert!(names.contains(&"makemigrations"));

@@ -14,8 +14,9 @@ siderite run
 
 `new` writes an API crate. In a Cargo package, `run`, `routes`, `check`,
 `dbshell`, `makemigrations` and the other migration commands invoke
-`cargo run -- <command>` so `AppCli` in your binary sees the app. `build`
-and `test` are `cargo build` / `cargo test` in the package, with every
+`cargo run -- <command>` so `AppCli` in your binary sees the app. `build`,
+`test`, `fmt`, `lint` and `clean` run `cargo build` / `test` / `fmt` /
+`clippy` / `clean` in the package, with every
 argument after the command passed through (`siderite build --release`
 replaces `cargo build --release -p myapp`). Without a package, `migrate` / `rollback` /
 `showmigrations` / `squashmigrations` run against JSON files.
@@ -23,7 +24,7 @@ replaces `cargo build --release -p myapp`). Without a package, `migrate` / `roll
 | | `siderite` in a package | Standalone (no package) | `AppCli` in your binary |
 |---|---|---|---|
 | Needs your `App` and models | compiles them via cargo | no | yes |
-| Commands | `new`, `run`, `routes`, `check`, `dbshell`, migrations, `build`, `test` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
+| Commands | `new`, `run`, `routes`, `check`, `dbshell`, migrations, `build`, `test`, `fmt`, `lint`, `clean` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
 
 Exit codes: `0` success, `1` failure (or `check` found an error), `2` usage
 error.
@@ -122,6 +123,24 @@ count as unset.
 `--database-url`, then the URL configured for the selected alias, then,
 for the `default` alias only, `DATABASE_URL`. With none of those, the
 command fails with a “no database” error naming the alias.
+
+## `fmt`, `lint` and `clean`
+
+These run `cargo fmt`, `cargo clippy` and `cargo clean` in the selected
+package and return the child's exit code. Arguments after the command are
+forwarded unchanged, including `--` boundaries:
+
+```bash
+siderite fmt --check
+siderite lint --all-targets -- -D warnings
+siderite clean
+```
+
+`lint` is Rust linting through Clippy. It is not `check`, which validates the
+framework configuration, models, migrations and routes. When `rustfmt` or
+Clippy is not installed, the command fails with the matching
+`rustup component add` hint. `clean` deletes build artifacts only when you
+run it; no other command cleans.
 
 ## `setup` and `doctor`
 

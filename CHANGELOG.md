@@ -7,6 +7,11 @@
   and joined before resource teardown.
 
 ### Added
+- **CLI (fmt/lint/clean):** `siderite fmt`, `siderite lint` and
+  `siderite clean` run `cargo fmt`, `cargo clippy` and `cargo clean` in the
+  selected package, forwarding arguments and the child's exit code. `lint`
+  is Clippy, distinct from the framework `check`; a missing `rustfmt` or
+  Clippy component fails with a `rustup component add` hint.
 - **CLI (Developer command contract):** `commands` command and `--json` envelope
   reporting project requirements, mutations, live access and supported output
   modes. Added explicit project resolution (`--manifest-path`, `-p`/`--package`,
