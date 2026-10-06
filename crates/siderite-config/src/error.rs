@@ -80,7 +80,7 @@ fn is_secret_key(key: &str) -> bool {
 
 fn format_kind(kind: &Kind, redact: bool) -> String {
     if !redact {
-        return kind.to_string();
+        return strip_source_excerpt(&kind.to_string());
     }
     match kind {
         Kind::InvalidType(_, expected) => {
@@ -109,6 +109,25 @@ fn format_kind(kind: &Kind, redact: bool) -> String {
             format!("integer out of range, value {REDACTED}")
         }
     }
+}
+
+/// Drop the quoted source lines of a parse error (`2 | url = "..."`, `  |  ^`).
+///
+/// TOML syntax errors carry no key path, so the excerpt could show a secret.
+/// The location (`line 2, column 37`) and the reason are kept.
+fn strip_source_excerpt(message: &str) -> String {
+    message
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.starts_with('|')
+                && !line.split_once('|').is_some_and(|(n, _)| {
+                    !n.trim().is_empty() && n.trim().bytes().all(|b| b.is_ascii_digit())
+                })
+        })
+        .collect::<Vec<_>>()
+        .join(": ")
 }
 
 #[cfg(test)]
@@ -161,6 +180,33 @@ mod tests {
         ] {
             assert!(!is_secret_key(key), "{key} should not be secret");
         }
+    }
+
+    #[test]
+    fn toml_syntax_excerpts_are_dropped() {
+        let message = "TOML parse error at line 2, column 37\n  |\n2 | url = \"postgres://u:hunter2@db/x\n  |                                     ^\ninvalid basic string\n";
+        assert_eq!(
+            strip_source_excerpt(message),
+            "TOML parse error at line 2, column 37: invalid basic string"
+        );
+        assert_eq!(strip_source_excerpt("a | b"), "a | b");
+    }
+
+    #[test]
+    fn toml_syntax_error_from_file_omits_secret() {
+        let dir =
+            std::env::temp_dir().join(format!("siderite-config-syntax-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap_or_default();
+        let file = dir.join("siderite.toml");
+        std::fs::write(
+            &file,
+            "[databases.default]\nurl = \"postgres://u:hunter2@db/x\n",
+        )
+        .unwrap_or_default();
+        let err = crate::ConfigBuilder::new().file(&file).build();
+        let rendered = err.map(|_| String::new()).unwrap_or_else(|e| e.to_string());
+        assert!(rendered.contains("line 2"), "{rendered}");
+        assert!(!rendered.contains("hunter2"), "{rendered}");
     }
 
     #[test]
