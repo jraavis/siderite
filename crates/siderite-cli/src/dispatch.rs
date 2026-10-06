@@ -58,6 +58,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "completions" {
         return handle_completions(raw);
     }
+    if command == "docs" {
+        return crate::docs::run(cwd, &global, raw);
+    }
     if command == "verify" {
         return crate::verify::run(cwd, &global, raw);
     }
@@ -169,6 +172,7 @@ fn first_command(args: &[String]) -> Option<&str> {
                         | "-p"
                         | "--bin"
                         | "--path"
+                        | "--limit"
                 )
             {
                 i += 1;
@@ -220,6 +224,7 @@ Create and run an app:
   setup [--json]                Check Rust prerequisites; print next steps
   doctor [--json]               Offline toolchain, project and config checks
   completions SHELL             Print a bash, zsh or fish completion script
+  docs search QUERY [--limit N] Search the offline framework guides
 
 Migrations:
   makemigrations [--name SLUG] [--empty] [--dry-run]

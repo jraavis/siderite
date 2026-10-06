@@ -478,6 +478,42 @@ pub fn command_catalog() -> Vec<CommandMeta> {
             )],
         },
         CommandMeta {
+            name: "docs".into(),
+            summary: "Search the framework documentation offline".into(),
+            description: "Searches the guides of the installed framework version, \
+                 packaged with the CLI. Results carry the framework version, source \
+                 path and line, site URL and the cargo features a section names. \
+                 Warns when the project's Cargo.lock pins another siderite version."
+                .into(),
+            usage: "siderite docs search QUERY... [--limit N] [--json]".into(),
+            category: "meta".into(),
+            values: vec![],
+            subcommands: vec![CommandMeta {
+                name: "search".into(),
+                summary: "Keyword search over the packaged guides".into(),
+                description: "Every query word must occur in a section; results are \
+                     ranked by heading, page title and body matches."
+                    .into(),
+                usage: "siderite docs search QUERY... [--limit N] [--json]".into(),
+                category: "meta".into(),
+                values: vec![],
+                subcommands: vec![],
+                project_requirement: ProjectRequirement::None,
+                mutation: MutationKind::None,
+                live_access: LiveAccess::None,
+                output_modes: vec![OutputMode::Text, OutputMode::Json],
+                flags: vec![
+                    FlagMeta::opt("--limit", None, "N", "Maximum results (1-50, default 5)"),
+                    FlagMeta::flag("--json", None, "Output as structured JSON envelope"),
+                ],
+            }],
+            project_requirement: ProjectRequirement::None,
+            mutation: MutationKind::None,
+            live_access: LiveAccess::None,
+            output_modes: vec![OutputMode::Text, OutputMode::Json],
+            flags: vec![],
+        },
+        CommandMeta {
             name: "completions".into(),
             summary: "Print a shell completion script".into(),
             description: "Writes a Bash, Zsh or Fish completion script to standard \

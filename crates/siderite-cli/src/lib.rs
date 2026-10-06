@@ -21,6 +21,7 @@ pub mod completions;
 pub mod connect;
 pub mod dbshell;
 mod dispatch;
+pub mod docs;
 pub mod doctor;
 pub mod envelope;
 mod error;

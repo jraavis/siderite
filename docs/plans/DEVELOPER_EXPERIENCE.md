@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: X01-X05 (and parent C03, C06, C08) implemented; other tasks proposed.
+Updated: 2026-10-05. Status: X01-X05, X11 (and parent C03, C06, C08) implemented; other tasks proposed.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -163,12 +163,19 @@ checkbox is a separate reviewable change. Checked tasks are implemented.
 
 ### Help AI tools produce code that actually compiles
 
-- [ ] **X11 — Ship version-matched framework documentation.**
+- [x] **X11 — Ship version-matched framework documentation.**
   Depends: X01. Scope: `docs search QUERY` over a packaged local index.
   Done: results carry framework version, feature requirements and source
   locations; runnable examples are compiled during release verification.
   Local search works offline; installed-version mismatch is clearly reported.
   Index only maintained public API documentation, not user secrets/source.
+  Summary: `siderite docs search QUERY [--limit N] [--json]` searches a
+  checked-in `docs-index.json` (crate-local, so it ships with the published
+  CLI) built from the website's start/guides/reference/tutorials pages; a
+  unit test fails when it drifts from the guides or the crate version. Hits
+  carry framework version, path:line, site URL and the cargo features a
+  section names. Project `Cargo.lock` mismatch warns. Gap: doc snippets are
+  not compiled; only the workspace `examples/` are.
 
 - [ ] **X12 — Explain framework diagnostics.**
   Depends: X11, C02. Scope: `explain CODE` for stable framework error codes.
@@ -275,6 +282,6 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 
 This document adds 20 tasks to the parent's 46. Implemented so far: X01
 (command contract), X02 (setup diagnostics), X03 (shell completions),
-X04 (verify) and X05 (structured diagnostics),
+X04 (verify), X05 (structured diagnostics) and X11 (docs search),
 plus the parent's C03 (`check`/`routes` JSON), C06 (`doctor`) and C08
 (`fmt`/`lint`/`clean`).

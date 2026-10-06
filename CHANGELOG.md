@@ -7,6 +7,11 @@
   and joined before resource teardown.
 
 ### Added
+- **CLI (docs):** `siderite docs search QUERY [--limit N] [--json]` searches
+  the framework guides offline from an index packaged with the CLI. Results
+  carry the framework version, source path and line, site URL and named cargo
+  features; a project whose `Cargo.lock` pins another `siderite` version gets
+  a warning.
 - **CLI (verify):** `siderite verify [--json]` runs `fmt --check`, Clippy
   with `-D warnings`, build, tests and the framework `check` offline and
   reports each step's command, status, duration and exit code. Test and
