@@ -216,6 +216,12 @@ Every DDL statement in MySQL commits implicitly, so the executor does
   statement and fails loudly. Confirm its effect is present, advance the row
   by hand (`stmt_index + 1`, or `op_index + 1, stmt_index = 0` for a
   `RunRust`) and re-run. Keep `RunRust` code idempotent on MySQL.
+  Live tests kill the process right after DDL commits on MySQL and on
+  non-atomic PostgreSQL: the migration stays unapplied, `migrate` stops with
+  the database's "already exists" error (or `UncertainSqlStep` for a
+  `RunSQL` script) instead of replaying, and dropping the unrecorded object
+  (plus clearing a verified script intent) lets the next `migrate` finish.
+  Atomic PostgreSQL migrations roll back entirely in the same crash.
 - `RunSQL` statements are not rolled back either.
 
 ### Keyed `TEXT` needs `max_length`

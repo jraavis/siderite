@@ -21,6 +21,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite", "mysql", "postgres"] }
 chrono.workspace = true
 sqlx = { workspace = true, features = ["mysql", "postgres"] }
