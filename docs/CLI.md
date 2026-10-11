@@ -95,11 +95,13 @@ Flags may appear anywhere and take `--flag value` or `--flag=value`.
 
 | Flag | Meaning |
 |---|---|
-| `--manifest-path PATH` | Use the workspace or package of this `Cargo.toml`. |
+| `--manifest-path PATH` | Use the workspace or package of this `Cargo.toml` (or of the directory holding one). |
 | `--package NAME`, `-p NAME` | Use this workspace member. |
 | `--bin NAME` | Run (or, for `build` / `test`, restrict to) this binary of the package. |
 
-Selection is deterministic, using `cargo metadata --no-deps` (so `cargo` must be on `PATH`; otherwise the command fails with exit `1` and says so):
+A plain package (the nearest `Cargo.toml` with a `[package]`, no `[[bin]]`, `autobins`, `default-run` or `src/bin/`) is used directly, exactly as before, without running `cargo metadata`. Project flags, virtual workspace roots and packages with several binaries select through `cargo metadata --no-deps` (so `cargo` must be on `PATH`; otherwise the command fails with exit `1` and says so). Without project flags, when no package manifest is found above the current directory and `cargo metadata` fails (a broken or unreadable workspace, no `cargo`), commands such as `siderite migrate --database-url ...` still run in standalone mode. Only normal dependencies on `siderite` make a package an application (dev and build dependencies do not). Project flags before `new` are a usage error, and `-p=NAME` / `--bin=NAME` forms are accepted.
+
+Selection is deterministic:
 
 1. `--package` and `--manifest-path` win. A manifest of a virtual workspace falls through to rule 3.
 2. Otherwise the package nearest to the current directory (a nested package beats the package around it).
