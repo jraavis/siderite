@@ -5,7 +5,6 @@
   "hard_width": 100,
   "soft_width": 79,
   "oversize_files": {
-    "crates/siderite-backends/tests/mongodb.rs": 1084,
     "crates/siderite-migrations/tests/roundtrip.rs": 1435,
     "crates/siderite/tests/validation.rs": 1310
   },
