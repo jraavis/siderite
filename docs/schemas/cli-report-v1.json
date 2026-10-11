@@ -100,6 +100,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "ai context" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/TaskContext" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "verify" } } },
       "then": {
         "properties": {
@@ -293,6 +303,71 @@
             }
           }
         }
+      }
+    },
+    "TaskContext": {
+      "type": "object",
+      "required": [
+        "task",
+        "siderite",
+        "docs_version",
+        "budget",
+        "parts",
+        "omitted",
+        "missing",
+        "markdown"
+      ],
+      "properties": {
+        "task": { "type": "string", "minLength": 1 },
+        "siderite": { "type": "string" },
+        "docs_version": { "type": "string" },
+        "budget": {
+          "type": "object",
+          "required": ["unit", "limit", "used"],
+          "properties": {
+            "unit": { "const": "bytes" },
+            "limit": { "type": "integer", "minimum": 1 },
+            "used": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "title", "source", "text", "truncated"],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "project",
+                  "models",
+                  "routes",
+                  "file",
+                  "docs",
+                  "example"
+                ]
+              },
+              "title": { "type": "string" },
+              "source": { "type": "string" },
+              "text": { "type": "string" },
+              "truncated": { "type": "boolean" }
+            }
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "title", "source", "bytes"],
+            "properties": {
+              "kind": { "type": "string" },
+              "title": { "type": "string" },
+              "source": { "type": "string" },
+              "bytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "missing": { "type": "array", "items": { "type": "string" } },
+        "markdown": { "type": "string" }
       }
     },
     "VerifyData": {

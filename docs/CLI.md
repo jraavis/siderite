@@ -277,6 +277,16 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--check` writes nothing and exits `1` when the file is missing or stale (for CI); `--dry-run` shows the exact change. The file is written through the shared write plan (no symbolic-link escapes, atomic).
 - It runs in the app binary, so through `siderite` the file lands in the package directory.
 
+## `ai context`
+
+`siderite ai context --task TEXT [--budget BYTES] [--include PATH]... [--json]` builds context for one task. Everything is selected locally by keyword and nothing is sent anywhere.
+
+- Parts, in priority order: a project summary (app, siderite version, database aliases and backends, counts); the models whose name, table or fields match the task words (name matches count double; the rest are listed by name); the matching routes (the rest are counted); the files named with `--include`; the best four documentation sections and two compiled examples of this siderite version (as in `docs search`).
+- The budget unit is bytes of the Markdown output (default 32768, from 4096 to 4194304). Parts are taken in order; the first that does not fit is cut at a line boundary (an open code block is closed) when at least 400 bytes are left, and later parts that do not fit are listed under "Not included" with their size. The whole output, that list included, stays within the budget, and the same inputs always give the same output.
+- Each part names its source and version: compiled app metadata, a docs file and line, an example compiled in siderite's build, or the included file. "Not included" also lists what is missing: migration status (never read here), source files when none were included, and anything that matched nothing.
+- `--include` takes files or directories, relative to where you run `siderite`. Only paths inside the app package are read; files git ignores are skipped (without git, `target`, `node_modules` and hidden directories are), names that usually hold secrets (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.local.toml`, ...) are refused even when tracked, as are binary files and files over 1 MiB, and at most 200 files are read. Contents are redacted like every other output.
+- `--json` writes an `ai context` envelope whose `data` holds `task`, `siderite`, `docs_version`, `budget` (`unit`, `limit`, `used`), `parts`, `omitted`, `missing` and the `markdown` itself.
+
 ## Application snapshot
 
 `siderite_cli::report::snapshot::snapshot(app, models, settings, limits)` builds a bounded, versioned description of an application for tools and AI context (`ai dump-context` renders it). It reads compiled metadata only and opens no connection. The `snapshot` envelope's `data`:

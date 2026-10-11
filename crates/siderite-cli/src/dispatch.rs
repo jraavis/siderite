@@ -156,11 +156,20 @@ fn run_app(
     command: &str,
     cwd: &Path,
 ) -> Result<u8, CliError> {
+    let ai_context = command == "ai" && raw.iter().any(|a| a == "context");
+    let absolute;
+    let raw = if ai_context {
+        absolute = crate::args::absolutize(raw, cwd, &["--include"]);
+        absolute.as_slice()
+    } else {
+        raw
+    };
     if json_requested(raw) {
         let missing = Output::Envelope(command);
         return project::cargo_run_captured(dir, bin, raw, missing);
     }
-    if command == "ai" && raw.iter().any(|a| a == "dump-context") {
+    let ai_output = ["dump-context", "context"];
+    if command == "ai" && raw.iter().any(|a| ai_output.contains(&a.as_str())) {
         // The context is the output: keep factory prints off stdout.
         let output = if format_json(raw) {
             Output::Json

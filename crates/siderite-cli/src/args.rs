@@ -6,9 +6,10 @@
 
 use crate::commands;
 use crate::error::CliError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 type Usage = Result<(), CliError>;
+type Owned = Vec<String>;
 
 /// Flags recognised before a command runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -103,6 +104,36 @@ pub fn check_json_args(args: &[String], command: Option<&str>) -> Usage {
         return Err(CliError::usage("--help cannot be combined with --json"));
     }
     Ok(())
+}
+
+/// `raw` with the values of `flags` (`--flag VALUE` or `--flag=VALUE`)
+/// made absolute against `cwd`, so the app, which runs in its package
+/// directory, sees the paths the user meant.
+pub(crate) fn absolutize(raw: &[String], cwd: &Path, flags: &[&str]) -> Owned {
+    let absolute = |value: &str| {
+        if value.is_empty() || Path::new(value).is_absolute() {
+            value.to_owned()
+        } else {
+            cwd.join(value).display().to_string()
+        }
+    };
+    let mut out = Vec::with_capacity(raw.len());
+    let mut args = raw.iter();
+    while let Some(arg) = args.next() {
+        let known = |(flag, _): &(&str, &str)| flags.contains(flag);
+        let inline = arg.split_once('=').filter(known);
+        if let Some((flag, value)) = inline {
+            out.push(format!("{flag}={}", absolute(value)));
+            continue;
+        }
+        out.push(arg.clone());
+        if flags.contains(&arg.as_str())
+            && let Some(value) = args.next()
+        {
+            out.push(absolute(value));
+        }
+    }
+    out
 }
 
 /// `--flag=value` -> (`--flag`, Some(`value`)); `--flag` -> (`--flag`, None).

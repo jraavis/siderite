@@ -14,7 +14,7 @@ use serde::Serialize;
 use std::fmt::Write;
 use std::path::Path;
 
-mod index;
+pub(crate) mod index;
 mod version;
 
 #[cfg(test)]

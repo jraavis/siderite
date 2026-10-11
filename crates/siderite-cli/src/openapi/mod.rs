@@ -83,28 +83,7 @@ pub(crate) fn writes_file(raw: &[String]) -> bool {
 /// Make a relative `--output` absolute against `cwd`, the directory the
 /// user ran `siderite` in (the application itself runs in its package).
 pub(crate) fn absolute_output(raw: &[String], cwd: &Path) -> Vec<String> {
-    let absolute = |value: &str| {
-        if value.is_empty() || Path::new(value).is_absolute() {
-            value.to_owned()
-        } else {
-            cwd.join(value).display().to_string()
-        }
-    };
-    let mut out = Vec::with_capacity(raw.len());
-    let mut args = raw.iter();
-    while let Some(arg) = args.next() {
-        if let Some(value) = arg.strip_prefix("--output=") {
-            out.push(format!("--output={}", absolute(value)));
-            continue;
-        }
-        out.push(arg.clone());
-        if (arg == "--output" || arg == "-o")
-            && let Some(value) = args.next()
-        {
-            out.push(absolute(value));
-        }
-    }
-    out
+    crate::args::absolutize(raw, cwd, &["--output", "-o"])
 }
 
 /// The OpenAPI document of `app` as pretty JSON with a trailing newline.

@@ -78,7 +78,7 @@ fn every_shell_completes_commands_subcommands_and_flags() {
             assert!(top.contains(&word.to_owned()), "{shell}: {top:?}");
         }
         let ai = offered(shell, &script, "siderite ai ");
-        assert_eq!(ai, ["dump-context", "init"], "{shell}");
+        assert_eq!(ai, ["context", "dump-context", "init"], "{shell}");
         let init = offered(shell, &script, "siderite ai init --");
         assert_eq!(init, ["--check", "--dry-run", "--force"], "{shell}");
         let export = offered(

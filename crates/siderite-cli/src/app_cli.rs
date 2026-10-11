@@ -357,8 +357,10 @@ impl AppCli {
     /// `ai dump-context`: the snapshot as Markdown or JSON, migration
     /// status only with `--live`.
     async fn ai(&self, g: &GlobalArgs, rest: &[String], e: &Env) -> CliResult {
-        if rest.get(1).is_some_and(|sub| sub == "init") {
-            return self.ai_init(rest);
+        match rest.get(1).map(String::as_str) {
+            Some("init") => return self.ai_init(rest),
+            Some("context") => return self.ai_task(g, rest, e),
+            _ => {}
         }
         let options = crate::ai::parse(rest, g.json)?;
         let app = (self.factory)();
@@ -378,6 +380,36 @@ impl AppCli {
             channel::emit(&text, e.report_path.as_deref())?;
         }
         Ok(report.exit_code())
+    }
+
+    /// `ai context --task TEXT`: context for one task within a budget.
+    fn ai_task(&self, g: &GlobalArgs, rest: &[String], e: &Env) -> CliResult {
+        use crate::ai::{Format, task};
+        use crate::report::Envelope;
+        use crate::report::snapshot;
+        let options = task::parse(rest, g.json)?;
+        let app = (self.factory)();
+        let limits = snapshot::Limits::default();
+        let models = &self.models;
+        let snap = snapshot::snapshot(&app, models, &self.settings, limits);
+        let index = crate::docs::index::packaged().map_err(CliError::Io)?;
+        let root = std::env::current_dir()
+            .map_err(|err| CliError::Io(format!("cannot read cwd: {err}")))?;
+        let notes = snap.diagnostics.iter().map(|d| d.message().to_owned());
+        let sources = task::Sources {
+            snapshot: &snap.data,
+            notes: notes.collect(),
+            index: &index,
+            root: &root,
+        };
+        let context = task::build(&sources, &options);
+        if options.format == Format::Json {
+            let report = Envelope::new("ai context", context, Vec::new());
+            emit(&report, e)?;
+        } else {
+            channel::emit(&context.markdown, e.report_path.as_deref())?;
+        }
+        Ok(0)
     }
 
     /// `ai init`: refresh `.siderite/context.md` in the package directory
