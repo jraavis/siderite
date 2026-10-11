@@ -2,6 +2,7 @@
 
 type CacheResult<T> = Result<T, CacheError>;
 
+use crate::cache::ttl_millis;
 use crate::{Cache, CacheError};
 use async_trait::async_trait;
 use lru::LruCache;
@@ -111,6 +112,10 @@ impl Entry {
 /// treated as `1`. Retained key/value bytes are bounded by
 /// [`MemoryCacheLimits`]; writes beyond admission limits fail explicitly.
 /// Expiry is lazy on access; pressure evicts LRU entries without full scans.
+///
+/// [`set_if_absent_with_ttl`](Cache::set_if_absent_with_ttl) is atomic: the
+/// check, deadline and insertion happen under one lock acquisition. TTLs
+/// round up to whole milliseconds and zero is [`CacheError::InvalidTtl`].
 ///
 /// [`increment`](Cache::increment) matches Redis `INCRBY`: a missing or
 /// expired key starts at `0`, the stored form is a decimal integer, and a
@@ -246,6 +251,31 @@ impl Cache for MemoryCache {
             Entry {
                 value: v,
                 expires_at: None,
+            },
+        )?;
+        Ok(true)
+    }
+
+    async fn set_if_absent_with_ttl(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> CacheResult<bool> {
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        // One lock section: liveness check, deadline and insertion share a
+        // single clock reading, so no creator can observe a half-state.
+        let mut cache = self.lock();
+        let now = Instant::now();
+        if cache.peek(key).is_some_and(|entry| !entry.is_expired(now)) {
+            return Ok(false);
+        }
+        let deadline = now.checked_add(ttl).ok_or(CacheError::InvalidTtl)?;
+        cache.put(
+            key.to_owned(),
+            Entry {
+                value,
+                expires_at: Some(deadline),
             },
         )?;
         Ok(true)
@@ -482,6 +512,119 @@ mod tests {
         cache.set("k", b"2".to_vec(), None).await.unwrap();
         tokio::time::sleep(Duration::from_millis(40)).await;
         assert_eq!(cache.get("k").await.unwrap().as_deref(), Some(&b"2"[..]));
+    }
+
+    #[tokio::test]
+    async fn expiring_creation_has_one_winner() {
+        let cache = MemoryCache::new(8);
+        let mut joins = Vec::new();
+        for v in 0..64u8 {
+            let cache = cache.clone();
+            joins.push(tokio::spawn(async move {
+                let ttl = Duration::from_secs(30);
+                cache.set_if_absent_with_ttl("k", vec![v], ttl).await
+            }));
+        }
+        let mut winners = Vec::new();
+        for (v, join) in joins.into_iter().enumerate() {
+            if join.await.unwrap().unwrap() {
+                winners.push(v as u8);
+            }
+        }
+        assert_eq!(winners.len(), 1);
+        assert_eq!(cache.get("k").await.unwrap(), Some(winners));
+    }
+
+    #[tokio::test]
+    async fn expiring_creation_rejects_zero_before_touching_state() {
+        let cache = MemoryCache::new(4);
+        cache.set("k", b"live".to_vec(), None).await.unwrap();
+        let err = cache.set_if_absent_with_ttl("k", vec![1], Duration::ZERO);
+        assert!(matches!(err.await, Err(CacheError::InvalidTtl)));
+        let err = cache.set_if_absent_with_ttl("new", vec![1], Duration::ZERO);
+        assert!(matches!(err.await, Err(CacheError::InvalidTtl)));
+        assert_eq!(cache.get("k").await.unwrap().as_deref(), Some(&b"live"[..]));
+        assert_eq!(cache.get("new").await.unwrap(), None);
+        let huge = cache.set_if_absent_with_ttl("new", vec![1], Duration::MAX);
+        assert!(matches!(huge.await, Err(CacheError::InvalidTtl)));
+    }
+
+    #[tokio::test]
+    async fn expiring_creation_rounds_subunit_ttl_up() {
+        let cache = MemoryCache::new(4);
+        let before = Instant::now();
+        let tiny = Duration::from_nanos(1);
+        assert!(
+            cache
+                .set_if_absent_with_ttl("k", vec![1], tiny)
+                .await
+                .unwrap()
+        );
+        let deadline = cache.lock().peek("k").and_then(|e| e.expires_at);
+        let deadline = deadline.expect("entry has a deadline");
+        assert!(deadline >= before + Duration::from_millis(1));
+        let odd = Duration::from_micros(1500);
+        assert!(
+            cache
+                .set_if_absent_with_ttl("j", vec![1], odd)
+                .await
+                .unwrap()
+        );
+        let before = Instant::now();
+        let deadline = cache.lock().peek("j").and_then(|e| e.expires_at);
+        assert!(deadline.expect("deadline") <= before + Duration::from_millis(2));
+    }
+
+    #[tokio::test]
+    async fn expiring_creation_replaces_expired_and_expires() {
+        let cache = MemoryCache::new(4);
+        let ms = Duration::from_millis(5);
+        assert!(
+            cache
+                .set_if_absent_with_ttl("k", vec![1], ms)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !cache
+                .set_if_absent_with_ttl("k", vec![2], ms)
+                .await
+                .unwrap()
+        );
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        // Expired entries are absent for creation even before a get evicts.
+        let long = Duration::from_secs(30);
+        assert!(
+            cache
+                .set_if_absent_with_ttl("k", vec![3], long)
+                .await
+                .unwrap()
+        );
+        assert_eq!(cache.get("k").await.unwrap(), Some(vec![3]));
+        // The loser never extends the winner's deadline.
+        let one = Duration::from_millis(5);
+        assert!(
+            !cache
+                .set_if_absent_with_ttl("k", vec![4], one)
+                .await
+                .unwrap()
+        );
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert_eq!(cache.get("k").await.unwrap(), Some(vec![3]));
+    }
+
+    #[tokio::test]
+    async fn expiring_creation_obeys_byte_admission() {
+        let lim = MemoryCacheLimits {
+            max_total_bytes: 8,
+            max_value_bytes: 4,
+            max_key_bytes: 4,
+        };
+        let cache = MemoryCache::with_limits(4, lim).unwrap();
+        let ttl = Duration::from_secs(1);
+        let err = cache.set_if_absent_with_ttl("k", vec![0; 5], ttl).await;
+        assert!(matches!(err, Err(CacheError::SizeLimit)));
+        assert_eq!(cache.get("k").await.unwrap(), None);
     }
 
     #[test]

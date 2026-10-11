@@ -13,6 +13,7 @@ two backends, and a response-caching middleware.
 | `get(key)` | `Option<Vec<u8>>`; expired entries count as missing |
 | `set(key, value, ttl)` | store bytes; `None` TTL keeps the entry until evicted |
 | `set_if_absent(key, value)` | atomic non-expiring creation; optional for custom backends |
+| `set_if_absent_with_ttl(key, value, ttl)` | atomic expiring creation (zero TTL rejected, sub-millisecond rounded up); optional, default is `CacheError::Unsupported` |
 | `delete(key)` | `true` when an entry was removed |
 | `increment(key, by)` | Redis `INCRBY` semantics: a missing key starts at `0`, a non-integer value is an error |
 | `clear()` | remove every entry (Redis: only this cache’s key prefix) |
