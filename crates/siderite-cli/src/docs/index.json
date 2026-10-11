@@ -859,14 +859,23 @@
       "path": "website/src/content/docs/guides/http/extractors.md",
       "line": 33,
       "features": [],
-      "text": "| Type | Status | Body |\n|---|---|---|\n| `Json<T>` | 200 | JSON through `Dump` (not raw Serde) |\n| `JsonDump<T>` | 200 | JSON with `DumpOptions` (`exclude_none`, field sets, …) |\n| `PlainText<T>` | 200 | `text/plain` |\n| `Html<T>` | 200 | `text/html` |\n| `NoContent` | 204 | empty |\n| `Redirect` | 3xx | Location |\n| `WithStatus<R>` | chosen | wraps another response |\n| `WithHeaders<R>` | inner | extra headers |\n| `WithCookies<R>` | inner | `Set-Cookie` |\n| `StreamingResponse` | 200 | streaming body |\n| `FileResponse` | 200 | file / static |\n\n`App::docs` serves Swagger UI and ReDoc; static files are\n`App` helpers in `siderite-core` (`static_files`)."
+      "text": "| Type | Status | Body |\n|---|---|---|\n| `Json<T>` | 200 | JSON through `Dump` (not raw Serde) |\n| `JsonDump<T>` | 200 | JSON with `DumpOptions` (`exclude_none`, field sets, …) |\n| `PlainText<T>` | 200 | `text/plain` |\n| `Html<T>` | 200 | `text/html` |\n| `NoContent` | 204 | empty |\n| `Redirect` | 3xx | Location |\n| `WithStatus<R>` | chosen | wraps another response |\n| `WithHeaders<R>` | inner | extra headers |\n| `WithCookies<R>` | inner | `Set-Cookie` |\n| `StreamingResponse` | 200 | streaming body |\n| `FileResponse` | 200 | file / static |\n\n`App::docs` serves Swagger UI and ReDoc; static files and single-page\napps are `App` helpers (see below)."
+    },
+    {
+      "id": "guides/http/extractors#static-files-and-single-page-apps",
+      "kind": "guide",
+      "title": "Extractors and responses > Static files and single-page apps",
+      "path": "website/src/content/docs/guides/http/extractors.md",
+      "line": 52,
+      "features": [],
+      "text": "`App::static_files(\"/assets\", \"public\")` serves a directory under a prefix (`\"/\"` makes it the fallback for every unmatched path); missing files are the 404 problem document. The mount is not in the OpenAPI document.\n\n`App::spa(\"/app\", \"dist\")` serves a single-page application: files as they are, and `dist/index.html` for browser navigations to any other path below the prefix, so client-side routes such as `/app/settings` load the app (`\"/\"` mounts it for the whole site). It stays out of the way of everything else:\n\n- Explicit routes win, including routes under the prefix (`/app/api/...`).\n- Only `GET` and `HEAD` requests whose `Accept` names `text/html` and whose last segment has no extension fall back. A missing asset (`/app/assets/gone.js`), a request for JSON and a missing `index.html` get the 404 problem document; other methods get `405` with `Allow: GET, HEAD`.\n- Paths are resolved inside the canonical directory: `..` segments (also percent-encoded), backslashes and NUL are refused, and a file reached through a symbolic link must also lie inside the directory.\n- The fallback `index.html` is sent with `Cache-Control: no-cache`, so a new deploy is picked up; files keep `ServeFile`'s conditional and range handling."
     },
     {
       "id": "guides/http/extractors#optional-extractors",
       "kind": "guide",
       "title": "Extractors and responses > Optional extractors",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 52,
+      "line": 63,
       "features": [],
       "text": "Wrap an extractor in `Option` to accept requests without that input.\n`Option<T>` is `None` only when the input is **absent**; input that is\npresent but invalid still fails the request with `T`'s error:\n\n| Extractor | `None` when | Still an error |\n|---|---|---|\n| `Header<H>` | the header is not sent | an undecodable value (`422`) |\n| `Query<T>` | there is no query string and `T` rejects the empty input | any query string `T` rejects (`422`) |\n| `HttpBearer`, `OAuth2PasswordBearer<S>` | no `Authorization` header, or another scheme | a malformed token (`401`) |\n| `HttpBasic` | no `Authorization` header, or another scheme | undecodable credentials (`401`) |\n| `ApiKey<S>` | the key is not sent | |\n| `Security<T, S>` | its credentials are absent | `T::authenticate` fails (`401`) |\n\n`State<T>`, `Provided<T>` and `Resource<T>` never become `None`: a missing\nvalue is a server misconfiguration and stays an error."
     },
@@ -875,7 +884,7 @@
       "kind": "guide",
       "title": "Extractors and responses > Server-sent events",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 70,
+      "line": 81,
       "features": [],
       "text": "`Sse::new(stream)` answers with a `text/event-stream` body from a stream of `Result<Event, E>`; `siderite::sse::Event` encodes one event:\n\n```rust\nuse siderite::sse::{Event, Sse};\n\nlet event = Event::data(\"line one\\nline two\").event(\"update\")?.id(\"7\")?;\nlet keepalive = Event::comment(\"still here\");\n```\n\n- `Event::data(text)` takes any text: each line (`\\n`, `\\r\\n` or `\\r` ends one) becomes its own `data:` line, so the client gets the text back with `\\n` line ends. `Event::json(&value)` sends JSON. `.retry(duration)` sets the reconnection delay in whole milliseconds, and `Event::comment(text)` sends a comment line that clients ignore.\n- `.event(name)` and `.id(id)` reject a CR or LF (and a NUL in an id, which clients ignore) with `SseError`, so a value can never split or forge an event.\n- Responses carry `Cache-Control: no-store`, so caches never store or replay a stream, and the OpenAPI response is documented as `text/event-stream`.\n- An `Err` from the stream ends the body abruptly and is never sent to the client, which sees the connection close and may reconnect (sending `Last-Event-ID`). Send an event first if the client should know why.\n- Lifecycle: events are pulled only as fast as the connection takes them, so a slow reader never makes the server buffer events (feed the stream from a bounded channel, never an unbounded one); a client that disconnects drops the stream and the work behind it. `.keep_alive(interval)` sends a comment after `interval` without events, so idle connections are not closed. `.until(readiness.stopping())` ends the stream cleanly when shutdown begins (`Readiness::stopping()` resolves at Draining), so a graceful shutdown does not wait for the timeout and force-close it:\n\n  ```rust\n  async fn feed(readiness: Readiness) -> Sse<Events> {\n      Sse::new(events())\n          .keep_alive(Duration::from_secs(15))\n          .until(async move { readiness.stopping().await })\n  }\n  ```\n\n- Middleware: `Timeout` covers producing the response, not its body, so it does not cut streams; `Compression` leaves `text/event-stream` uncompressed, so events are not held back by the encoder. Both are tested through the server.\n- Proxies must pass events through unbuffered: with nginx set `proxy_buffering off;` for the route (or add the `X-Accel-Buffering: no` header) and do not compress `text/event-stream`; set read timeouts above the keep-alive interval. Browsers allow about six HTTP/1.1 connections per host, so serve event streams over HTTP/2 when a page opens several."
     },
@@ -884,7 +893,7 @@
       "kind": "guide",
       "title": "Extractors and responses > Pagination",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 98,
+      "line": 109,
       "features": [],
       "text": "`Query<PageParams>` (`use siderite::{Page, PageParams};`; they are not in the prelude, so an application's own `Page` type does not clash) reads `?page=N&per_page=M`: a 1-based page (default 1) and a page size from 1 to 100 (default 20). Choose other bounds with `PageParams<MAX, DEFAULT>`, for example `Query<PageParams<500, 50>>`; `1 <= DEFAULT <= MAX` is checked at compile time. Zero, negative, non-numeric or too large values are answered with 422 before the handler runs, other query keys are left to other extractors, and the OpenAPI parameters state the minimum, maximum and defaults.\n\n`Page<T>` is the response body: `items`, `total`, `page`, `per_page` and `total_pages`. `params.fetch(queryset)` runs `QuerySet::paginate` (unchanged: one `COUNT`, then one fetch with `OFFSET`/`LIMIT`) and returns a `Page<M>`; `page.map(f)` and `page.try_map(f)` convert the items (for example to response types), and `Page::from(orm_page)` adapts an ORM page. Its schema is inlined, not named, so pages of different item types never collide in `components.schemas`.\n\n```rust\n#[get(\"/items\")]\nasync fn list_items(\n    State(dbs): State<Databases>,\n    Query(params): Query<PageParams>,\n) -> ApiResult<Json<Page<ItemOut>>> {\n    let rows = dbs.objects::<Item>()?.order_by([Item::id.asc()]);\n    Ok(Json(params.fetch(rows).await?.map(ItemOut::from)))\n}\n```\n\nThe count and the fetch are two statements: rows written between them can make `total` disagree with the items, and an unordered queryset can show a row on two pages or on none. Order by a unique key, and run both inside a transaction with a snapshot (for example `REPEATABLE READ` on PostgreSQL) when the two must agree. A page past the end has no items and the real `total`."
     },
@@ -893,7 +902,7 @@
       "kind": "guide",
       "title": "Extractors and responses > Custom extractors",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 117,
+      "line": 128,
       "features": [],
       "text": "Implement `FromRequestParts` (or `FromRequest`) and optionally `describe` so\nthe extractor documents itself:\n\n```rust\nstruct ApiKey;\n\nimpl FromRequestParts for ApiKey {\n    async fn from_request_parts(parts: &mut Parts) -> Result<Self, ApiError> { /* .. */ }\n\n    fn describe(op: &mut Operation, r: &mut SchemaRegistry) {\n        op.add_parameter(Parameter::new(\n            \"x-api-key\", ParameterLocation::Header, true, r.subschema::<String>(),\n        ));\n    }\n}\n```\n\n`IntoResponse::describe` works the same way (`op.add_response(..)`). The\ndefault `describe` documents nothing, so an undocumented extractor still\nruns.\n\nFor `Option<YourExtractor>` to be `None` when the input is missing, mark\nthat error with `ApiError::absent()`. Unmarked errors propagate through the\n`Option`:\n\n```rust\nlet key = parts.headers.get(\"x-api-key\").ok_or_else(|| {\n    ApiError::new(StatusCode::UNAUTHORIZED, \"Not authenticated.\").absent()\n})?;\n```\n\nTypes used in bodies, queries, and responses derive `Schema`. Nested types\ngo through `registry.subschema::<T>()`, so named types become\n`components.schemas` entries referenced by `$ref`."
     },
@@ -902,7 +911,7 @@
       "kind": "guide",
       "title": "Extractors and responses > `#[derive(Schema)]`",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 154,
+      "line": 165,
       "features": [],
       "text": "Generates `Schema` for structs and enums. It honours common serde\nattributes (`rename`, `rename_all`, `skip*`, `default`,\n`deny_unknown_fields`, `tag` / `content` / `untagged`) plus `#[field(..)]`\nconstraints (`min_length`, `max_length`, `pattern` / `regex`, `gt`, `ge`,\n`lt`, `le`, `multiple_of`, `email`, `url`, `title`, `description`,\n`examples(..)`, `alias`). Doc comments become descriptions.\n\n- Non-generic types are named after the type; generic types are inline\n  unless `#[schema(name = \"..\")]`. `#[schema(inline)]` always inlines.\n- Constraints added to a `$ref` property wrap it as\n  `{\"allOf\": [{\"$ref\": ..}], ...}`.\n- `flatten`, `transparent`, `from` / `into` / `try_from`, `remote`,\n  `with`, `serialize_with` / `deserialize_with`, split\n  `rename(serialize = ..)` forms, `other`, variant-level `untagged`, and\n  tuple variants of internally tagged enums are compile errors rather than\n  described wrongly."
     },
@@ -911,7 +920,7 @@
       "kind": "guide",
       "title": "Extractors and responses > See also",
       "path": "website/src/content/docs/guides/http/extractors.md",
-      "line": 173,
+      "line": 184,
       "features": [],
       "text": "- [Routing](/siderite/guides/http/routing/)\n- [Validation](/siderite/guides/http/validation/)\n- [OpenAPI 3.1](/siderite/guides/http/openapi/)"
     },
