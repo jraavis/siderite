@@ -49,8 +49,9 @@ pub mod prelude {
     pub use siderite_orm::{
         Db, DbType, Expr, Field, ForeignKey, Model, ModelOps, OneToOne, OrmError, QuerySet, Related,
     };
+    pub use siderite_validation::Change;
     pub use siderite_validation::{
-        Change, Schema, SchemaObject, SchemaRegistry, Validate, ValidationError, ValidationResult,
+        Schema, SchemaObject, SchemaRegistry, Validate, ValidationError, ValidationResult,
     };
 }
 
