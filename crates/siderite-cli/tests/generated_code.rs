@@ -22,10 +22,12 @@ mod routes {
     pub(crate) use super::resource_book as book;
 }
 
+use http::{Method, Request, header};
 use models::book;
 
+use siderite::Body;
 use siderite::prelude::*;
-use siderite_testkit::{TestClient, TestDatabase};
+use siderite_testkit::{TestClient, TestDatabase, TestResponse};
 use std::sync::atomic::AtomicU32;
 
 #[tokio::test]
@@ -62,6 +64,23 @@ async fn migrated() -> TestDatabase {
     test
 }
 
+/// A JSON request with `method`, which the test client has no shortcut
+/// for.
+async fn send(
+    client: &TestClient,
+    method: Method,
+    path: &str,
+    body: &serde_json::Value,
+) -> TestResponse {
+    let request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(body).unwrap()))
+        .unwrap();
+    client.send(request).await.unwrap()
+}
+
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
 #[tokio::test]
@@ -95,9 +114,28 @@ async fn the_generated_resource_creates_fetches_and_validates() {
         .database("default", test.db().clone())
         .routes(routes::book::routes());
     let text = serde_json::to_string(&app.openapi().unwrap()).unwrap();
-    for id in ["create_book", "get_book", "NewBook", "BookOut"] {
+    let names = [
+        "create_book",
+        "get_book",
+        "replace_book",
+        "update_book",
+        "delete_book",
+        "NewBook",
+        "BookPatch",
+        "BookOut",
+    ];
+    for id in names {
         assert!(text.contains(id), "{id}");
     }
+    // Every PATCH field may be left out; the creation body needs some.
+    let document = serde_json::to_value(app.openapi().unwrap()).unwrap();
+    let schemas = &document["components"]["schemas"];
+    let required = |name: &str| schemas[name]["required"].clone();
+    assert_eq!(required("BookPatch"), serde_json::Value::Null);
+    let new_book = required("NewBook");
+    assert!(new_book.as_array().unwrap().contains(&"title".into()));
+    let title = &schemas["BookPatch"]["properties"]["title"];
+    assert_eq!(title["type"], "string", "{title}");
     let client = TestClient::new(app);
     let body = serde_json::json!({
         "title": "Dune",
@@ -131,4 +169,74 @@ async fn the_generated_resource_creates_fetches_and_validates() {
     }
     let rows = book::Book::objects(test.db()).count().await.unwrap();
     assert_eq!(rows, 1, "invalid requests stored nothing");
+}
+
+#[tokio::test]
+async fn updates_keep_the_key_and_follow_absent_versus_null() {
+    let test = migrated().await;
+    let app = App::new()
+        .database("default", test.db().clone())
+        .routes(routes::book::routes());
+    let client = TestClient::new(app);
+    let body = serde_json::json!({
+        "title": "Dune", "pages": 412, "views": 1, "price": 9.5,
+        "in_stock": true,
+    });
+    let created = client.post_json("/books", &body).await.unwrap();
+    let created: serde_json::Value = created.json().unwrap();
+    let id = created["id"].as_i64().unwrap();
+    let url = format!("/books/{id}");
+    // PATCH: absent fields keep their value; `null` clears a nullable one.
+    let patch = serde_json::json!({"views": 2, "pages": null});
+    let patched = send(&client, Method::PATCH, &url, &patch).await;
+    assert_eq!(patched.status, 200);
+    let patched: serde_json::Value = patched.json().unwrap();
+    assert_eq!(patched["views"], 2);
+    assert_eq!(patched["pages"], serde_json::Value::Null);
+    assert_eq!(patched["title"], "Dune");
+    assert_eq!(patched["price"], 9.5);
+    assert_eq!(patched["id"], id);
+    // `null` for a required field, an empty title, the key or any other
+    // unknown field is rejected and changes nothing.
+    for bad in [
+        serde_json::json!({"title": null}),
+        serde_json::json!({"title": ""}),
+        serde_json::json!({"id": id + 1}),
+        serde_json::json!({"views": 3, "id": 7}),
+        serde_json::json!({"__proto__": {"views": 9}}),
+        serde_json::json!({"title; DROP TABLE books": "x"}),
+    ] {
+        let response = send(&client, Method::PATCH, &url, &bad).await;
+        assert_eq!(response.status, 422, "{bad}");
+    }
+    let unchanged = client.get(&url).await.unwrap();
+    let unchanged: serde_json::Value = unchanged.json().unwrap();
+    assert_eq!(unchanged, patched);
+    // PUT replaces every field; the creation rules apply.
+    let replace = serde_json::json!({
+        "title": "Emma", "views": 0, "in_stock": false,
+    });
+    let replaced = send(&client, Method::PUT, &url, &replace).await;
+    assert_eq!(replaced.status, 200);
+    let replaced: serde_json::Value = replaced.json().unwrap();
+    assert_eq!(replaced["title"], "Emma");
+    assert_eq!(replaced["price"], serde_json::Value::Null);
+    assert_eq!(replaced["id"], id);
+    let with_key = serde_json::json!({
+        "id": 99, "title": "x", "views": 0, "in_stock": false,
+    });
+    let rejected = send(&client, Method::PUT, &url, &with_key).await;
+    assert_eq!(rejected.status, 422);
+    // Missing rows are 404 for every operation.
+    let gone = "/books/999999";
+    let patch = serde_json::json!({"views": 1});
+    assert_eq!(send(&client, Method::PATCH, gone, &patch).await.status, 404);
+    assert_eq!(send(&client, Method::PUT, gone, &replace).await.status, 404);
+    assert_eq!(client.delete(gone).await.unwrap().status, 404);
+    // DELETE answers 204, then the row is gone.
+    assert_eq!(client.delete(&url).await.unwrap().status, 204);
+    assert_eq!(client.get(&url).await.unwrap().status, 404);
+    assert_eq!(client.delete(&url).await.unwrap().status, 404);
+    let rows = book::Book::objects(test.db()).count().await.unwrap();
+    assert_eq!(rows, 0);
 }

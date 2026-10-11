@@ -100,7 +100,7 @@ mod route_generator {
         let options = parse(&words(&["items"])).unwrap();
         assert_eq!(file(&options), "src/routes/items.rs");
         let golden = include_str!("../../tests/generated/route_items.rs");
-        assert_eq!(render(&options), golden);
+        assert_eq!(crate::generate::rustfmt(&render(&options)), golden);
     }
 
     #[test]
@@ -167,7 +167,7 @@ mod model_generator {
         let options = parse(&words(&spec)).unwrap();
         assert_eq!(file(&options), "src/models/book.rs");
         let golden = include_str!("../../tests/generated/model_book.rs");
-        assert_eq!(render(&options), golden);
+        assert_eq!(crate::generate::rustfmt(&render(&options)), golden);
     }
 
     #[test]
@@ -232,10 +232,11 @@ mod resource_generator {
         let options = options();
         assert_eq!(file(&options), "src/routes/book.rs");
         let golden = include_str!("../../tests/generated/resource_book.rs");
-        assert_eq!(render(&options), golden);
+        let rustfmt = crate::generate::rustfmt;
+        assert_eq!(rustfmt(&render(&options)), golden);
         // The model half is exactly what `generate model` writes.
         let model = include_str!("../../tests/generated/model_book.rs");
-        assert_eq!(model::render(&options), model);
+        assert_eq!(rustfmt(&model::render(&options)), model);
     }
 
     #[test]

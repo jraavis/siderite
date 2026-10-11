@@ -165,6 +165,22 @@ implementations remain compatible: the default `serialize_dump` method calls
 `DumpSerialize(&value, &options)` in `validation::dump` exposes the same
 serialization path for other Serde consumers.
 
+## Partial updates: `Change<T>`
+
+A `PATCH` body needs to tell a field that was left out from one sent as `null`. `Change<T>` does: mark the field `#[serde(default)]`, and an absent field is `Change::Unchanged` while a present one is `Change::Set(value)`, with the value read as `T` reads it. So `Change<Option<T>>` is `Set(None)` for `null` (clear a nullable column), and for a `T` that does not accept `null` (`String`, numbers, `bool`) the body fails with 422. `prepare`, `validate`, `#[field(...)]` constraints and the schema are `T`'s; the field is not `required` in the schema because of `#[serde(default)]`. `change.apply(&mut row.field)` stores a set value and leaves the field alone otherwise.
+
+```rust
+#[derive(Deserialize, Validate, Schema)]
+#[serde(deny_unknown_fields)]
+pub struct BookPatch {
+    #[field(min_length = 1)]
+    #[serde(default)]
+    pub title: Change<String>,
+    #[serde(default)]
+    pub pages: Change<Option<i32>>,
+}
+```
+
 ## Constrained types
 
 | Type | Accepts |
