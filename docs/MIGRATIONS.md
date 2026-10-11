@@ -222,14 +222,56 @@ returns `MigrationError::LockTimeout`; retry after the holder finishes.
 This limit does not bound pool acquisition, SQLite BEGIN or migration
 execution. Session release is checked, including MySQL lock ownership.
 
-An owned process-kill check verifies PostgreSQL atomic rollback and recorded
-progress resume on PostgreSQL non-atomic migrations/MySQL. Bookkeeping is
-not proof of schema state. A crash after DDL commit but before its progress
-write still requires manual catalog reconciliation before rerunning.
+Owned process-kill checks verify the boundary between executing DDL and
+recording progress. A child process migrates through a test-only backend
+wrapper that aborts at an exact point; the migrator carries no crash hooks.
+Bookkeeping is not proof of schema state. See "Crash boundaries" below for
+the observed outcome and operator procedure per engine.
+
 Arbitrary non-transactional RunRust callbacks may have committed data before
 failure; inspect their effects and establish replay safety explicitly.
 The current inspection command does not certify exactly-once data work.
 
+
+
+### Crash boundaries
+
+`tests/crash_boundaries_live.rs` kills the migrating process (`abort`) at
+deterministic points and then inspects, retries and repairs, against live
+PostgreSQL and MySQL. Two operations are used: generated `CreateModel` DDL
+(no intent) and explicit `RunSQL` scripts (intent recorded). Observed results:
+
+| Kill point | PostgreSQL `atomic: true` | PostgreSQL `atomic: false` / MySQL |
+| --- | --- | --- |
+| Script intent written, script not yet run (`RunSQL`) | Rolled back; no intent, no schema change; retry applies | Intent only, no schema change. Retry fails `UncertainSqlStep` |
+| DDL committed, progress not written (first op) | Rolled back; schema, progress and history empty; plain retry applies | Table exists; inspection shows no partial entry. Retry fails loudly ("already exists"); `RunSQL` fails `UncertainSqlStep` first |
+| DDL committed, progress not written (later op) | Rolled back as above | Inspection shows the earlier ops as `partial`; retry fails loudly as above |
+| Progress written (`RunSQL`: intent not yet cleared) | Not applicable | Progress shows the statement complete. Generated DDL resumes with a plain retry; `RunSQL` still fails `UncertainSqlStep` |
+| Intent cleared after progress | Not applicable | No uncertainty; plain retry resumes without replay |
+
+Rules the tests enforce:
+
+- A retry never silently replays DDL or scripts whose completion is
+  unrecorded. It stops with `UncertainSqlStep` or the database's own
+  "already exists" error, and does not run later operations.
+- A changed migration file is refused while recorded progress or an intent
+  exists (`changed since a partial ...`); inspection shows
+  `file_matches: false`. The checksum safeguard does not apply to the window
+  where nothing was recorded yet (first row above), which is why that row
+  needs catalog reconciliation.
+- PostgreSQL atomic migrations are all-or-nothing; the history row commits
+  with the schema, so there is nothing to reconcile.
+- MySQL and PostgreSQL non-atomic runs cannot be made exactly-once: DDL
+  commits first and progress is a separate write.
+
+Operator procedure for an unrecorded committed statement: stop migration
+writers; inspect with `inspectmigrations`; compare the catalog with the
+migration file; drop the object the unrecorded statement created (or advance
+the progress row by hand); for `RunSQL`, delete the matching row from
+`siderite_migration_intents` only after the schema and data are verified;
+then re-run `migrate`, which resumes at the first unfinished operation.
+The tests exercise the drop-and-retry form of this procedure, and the
+delete-intent-then-resume form when progress already records the statement.
 
 ### Unconfirmed explicit work
 
