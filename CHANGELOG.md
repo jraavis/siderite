@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite_cli::report::snapshot`: a bounded, versioned
+  application snapshot (framework version, compiled features, database
+  aliases with backend kinds only, models, documented routes and the
+  redacted OpenAPI document) with per-section completeness markers and
+  deterministic truncation under configurable limits.
 - **CLI:** `siderite dev` watches the app's inputs: the source files in
   the binary's dep-info (path dependencies included), manifests,
   `Cargo.lock`, `siderite.toml` and `migrations/`, never the target or
