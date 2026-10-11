@@ -8,6 +8,9 @@
 
 
 ### Added
+- **CLI:** `siderite completions bash|zsh|fish` prints completion scripts
+  derived from the command contract (commands, subcommands and flags);
+  shell profiles are never edited.
 - **CLI:** `siderite setup [--json] [--install]` checks rustup, `rustc`
   against siderite's `rust-version`, `cargo`, `rustfmt`, `clippy` and a C
   linker, with the exact fix per operating system. `--install` runs only

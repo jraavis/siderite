@@ -153,6 +153,18 @@ Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, 
 
 `siderite commands` prints it as a table; `siderite commands --json` writes a `commands` envelope (`data.version` 1, `data.siderite`, `data.commands`) for AI clients and scripts, described by the report schema.
 
+## Shell completions
+
+`siderite completions bash|zsh|fish` prints a completion script built from the command contract: commands, subcommands (`openapi export`, `ai init`) and each command's flags as declared in its usage, plus the global flags. Nothing is installed and no shell profile is edited; load it yourself, for example:
+
+```bash
+siderite completions bash > ~/.local/share/bash-completion/completions/siderite
+siderite completions zsh > "${fpath[1]}/_siderite"     # then restart zsh
+siderite completions fish > ~/.config/fish/completions/siderite.fish
+```
+
+The scripts are tested by running them in bash, zsh and fish.
+
 ## `new`
 
 `siderite new NAME [--database sqlite|postgres|mysql] [--path DIR] [--dry-run]` writes an API crate in `NAME/`, which must not exist or be empty. `--dry-run` prints every file it would create with its full contents (as a diff from nothing) and writes nothing.
