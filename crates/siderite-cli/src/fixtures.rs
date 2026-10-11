@@ -177,3 +177,33 @@ static UNMANAGED: ModelMeta = ModelMeta {
 pub(crate) fn unmanaged() -> &'static ModelMeta {
     &UNMANAGED
 }
+
+/// A uniquely named temporary directory, removed on drop.
+pub(crate) struct ScratchDir(std::path::PathBuf);
+
+impl ScratchDir {
+    /// Create `siderite-cli-<tag>-<pid>-<n>` under the system temp dir.
+    pub(crate) fn new(tag: &str) -> Self {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let name = format!("siderite-cli-{tag}-{}-{n}", std::process::id());
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            panic!("cannot create {}: {err}", dir.display());
+        }
+        Self(dir)
+    }
+
+    /// The directory.
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}

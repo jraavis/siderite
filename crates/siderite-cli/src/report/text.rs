@@ -1,11 +1,17 @@
 //! Text renderers. They reproduce the historical terminal output of
 //! `check` and `routes` byte for byte.
 
-use super::{CheckSummary, Diagnostic, Envelope, RouteReport};
+use super::{CheckSummary, Diagnostic, Envelope, RouteReport, redact_text};
 
-/// One line of a diagnostic: `error: [models.E003] message`.
+/// One line of a diagnostic: `error: [models.E003] message`. The
+/// message is redacted again, whatever produced the diagnostic.
 pub fn diagnostic_line(d: &Diagnostic) -> String {
-    format!("{}: [{}] {}", d.severity.as_str(), d.code, d.message)
+    format!(
+        "{}: [{}] {}",
+        d.severity().as_str(),
+        d.code(),
+        redact_text(d.message())
+    )
 }
 
 /// Render a `check` report: one line per diagnostic, then a summary line.
