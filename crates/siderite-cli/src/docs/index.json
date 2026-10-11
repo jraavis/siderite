@@ -1503,11 +1503,20 @@
       "text": "```bash\nsiderite openapi export > openapi.json\nsiderite openapi export --output openapi.json --force\n```\n\nThe document is the one `/openapi.json` serves (`App::openapi()`),\npretty-printed and deterministic, and export works with the HTTP docs\ndisabled. Only the app factory runs, so keep it free of side effects. A\nrelative `--output` is resolved against your current directory; the file\nis written atomically and an existing file is replaced only with `--force`."
     },
     {
+      "id": "guides/production/cli#release-packages",
+      "kind": "guide",
+      "title": "CLI > Release packages",
+      "path": "website/src/content/docs/guides/production/cli.md",
+      "line": 415,
+      "features": [],
+      "text": "```toml\n# Cargo.toml\n[package.metadata.siderite.package]\nassets = [\"static\"]        # migrations/ is included when it exists\n```\n\n```bash\nsiderite build                  # once, to create Cargo.lock; commit it\nsiderite package --release      # target/siderite-package/NAME-VERSION-HOST\n```\n\nThe package is a directory with the release binary (`bin/NAME`), the\ndeclared assets, the migrations, `manifest.json` (versions, target,\n`rustc`, every file's size and SHA-256, the shared libraries the binary\nneeds) and `SHA256SUMS` for `sha256sum -c`. The build uses\n`--locked`, so it uses exactly the versions in `Cargo.lock`. `.env*`\nfiles, databases, keys, `.git*`, `target` and `.siderite` are always left\nout, and a declared file that holds a credential stops packaging. The\nbinary is run once with an empty `PATH` to show it works without Cargo.\nNothing is deployed and no migration is applied."
+    },
+    {
       "id": "guides/production/cli#comparing-openapi-documents",
       "kind": "guide",
       "title": "CLI > Comparing OpenAPI documents",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 415,
+      "line": 438,
       "features": [],
       "text": "```bash\nsiderite openapi export --output openapi.json   # on the old version\nsiderite openapi diff openapi.json new.json     # exit 1 on breaking\n```\n\n`openapi diff BASE CURRENT` reads two local JSON documents and lists what\nchanged for existing clients. Changes are breaking (removed operations,\nnewly required inputs, narrower request schemas, response properties that\ndisappear), unknown (things it does not compare) or additive. Each change\nnames its JSON pointer in either document. Only `#/` references are\nfollowed; nothing is fetched. Unknown counts as incompatible, so the exit\nstatus is `1` for breaking or unknown changes, which suits a CI check."
     },
@@ -1516,7 +1525,7 @@
       "kind": "guide",
       "title": "CLI > `check`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 430,
+      "line": 453,
       "features": [],
       "text": "`check` runs without starting a server or opening a database. Each issue\nprints as `error: [models.E003] message` or `warning: [id] message`.\nMessages never contain database URLs.\n\n| Id | Level | Meaning |\n|---|---|---|\n| `config.E001` | error | models are registered but no `default` database is configured |\n| `config.E002` | error | a database URL has no scheme or does not parse |\n| `config.E003` | error | a database URL uses an unsupported scheme |\n| `models.E001` | error | two models use the same table |\n| `models.E002` | error | a model name is registered more than once |\n| `models.E003` | error | a model has no primary key |\n| `models.E004` | error | a foreign key points to a model that is not registered |\n| `models.E005` | error | a many-to-many relation (or its through model) targets an unregistered model |\n| `models.E006` | error | two fields map to the same column |\n| `models.E007` | error | a model has more than one primary-key field |\n| `migrations.E001` | error | the migration files cannot be loaded |\n| `migrations.E002` | error | the migration dependency graph is invalid |\n| `migrations.E003` | error | the migrations do not replay cleanly |\n| `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |\n| `openapi.E001` | error | the OpenAPI document cannot be generated |\n| `routes.E001` | error | the app cannot be built into a router |\n| `backend.E001` | error | the `default` database is Redis, which cannot hold models |\n| `backend.E002` | error | a model needs joins the `default` backend does not support |\n| `backend.E003` | error | the schema cannot be created on the `default` backend |\n| `backend.W001` | warning | the backend has no schema migrations; `migrate` will refuse to run |\n\nMigration checks are skipped when no migrations directory is passed to\n`siderite_cli::check`; `AppCli` always passes its own."
     },
@@ -1525,7 +1534,7 @@
       "kind": "guide",
       "title": "CLI > Seed datasets",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 462,
+      "line": 485,
       "features": [],
       "text": "```rust\nAppCli::new(build_app)\n    .seed(\"demo\", \"A user with two posts\", |s| async move {\n        // s.db is the selected database, inside one transaction\n        demo_data(&s.db).await?;\n        Ok(())\n    })\n```\n\n```bash\nsiderite seed --list\nsiderite seed --dataset demo                # the `default` database\nsiderite --database analytics seed --dataset demo\n```\n\nA dataset runs only when you name it: never on startup, after\nmigrations or by default. The report says which dataset went into which\ndatabase alias, with the URL's password removed. The whole dataset runs in\none transaction (SQLite, PostgreSQL and MySQL), so a failure\n(`seed.E001`) leaves nothing behind. Seeding never deletes or resets\ndata, never reads SQL files, and is not a migration: nothing is recorded\nand there is nothing to roll back. Write datasets so a second run is\nharmless, for example by looking rows up before inserting them."
     },
@@ -1534,7 +1543,7 @@
       "kind": "guide",
       "title": "CLI > `dbshell`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 488,
+      "line": 511,
       "features": [],
       "text": "`dbshell` starts `sqlite3`, `psql`, or `mysql` on the selected database and\nreturns the client’s exit code. Passwords never appear on the command line\nor in output: `psql` receives `PGPASSWORD` and `mysql` receives `MYSQL_PWD`\nin its environment. A userinfo password and a PostgreSQL `?password=` query\nparameter both move into `PGPASSWORD` and are stripped from the URL passed\nto `psql`. A URL that carries `sslpassword` is refused. For MySQL only\nhost, port, user, and database are forwarded. An in-memory SQLite URL, an\nunknown scheme, or a client that is not on `PATH` is an error. MongoDB and\nRedis are not supported."
     },
@@ -1543,7 +1552,7 @@
       "kind": "guide",
       "title": "CLI > See also",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 500,
+      "line": 523,
       "features": [],
       "text": "- [Migrations](/siderite/guides/data/migrations/)\n- [Configuration](/siderite/guides/production/config/)\n- [Signals](/siderite/guides/data/signals/)"
     },

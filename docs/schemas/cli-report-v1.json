@@ -145,6 +145,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "package" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/PackageData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "explain" } } },
       "then": {
         "properties": {
@@ -470,6 +480,56 @@
               "message": { "type": "string" },
               "base": { "type": ["string", "null"] },
               "current": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "PackageData": {
+      "type": "object",
+      "required": ["output", "manifest"],
+      "properties": {
+        "output": { "type": "string", "minLength": 1 },
+        "manifest": {
+          "type": "object",
+          "required": [
+            "format",
+            "package",
+            "version",
+            "binary",
+            "target",
+            "profile",
+            "locked",
+            "rustc",
+            "siderite",
+            "files",
+            "excluded",
+            "native"
+          ],
+          "properties": {
+            "format": { "const": 1 },
+            "profile": { "const": "release" },
+            "locked": { "const": true },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["path", "bytes", "sha256"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "bytes": { "type": "integer", "minimum": 0 },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                }
+              }
+            },
+            "excluded": { "type": "array", "items": { "type": "string" } },
+            "native": {
+              "type": "object",
+              "required": ["tool", "libraries"],
+              "properties": {
+                "tool": { "type": ["string", "null"] },
+                "libraries": { "type": "array", "items": { "type": "string" } }
+              }
             }
           }
         }

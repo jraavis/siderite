@@ -19,6 +19,9 @@ pub(crate) struct BuildSpec {
     pub dir: PathBuf,
     /// `--bin`, when the package has several binaries.
     pub bin: Option<String>,
+    /// `--release --locked`: the optimized build of the locked
+    /// dependency versions.
+    pub release: bool,
 }
 
 /// The result of one build.
@@ -45,6 +48,9 @@ pub(crate) async fn build(spec: &BuildSpec) -> Result<Built, CliError> {
     process::own(&mut command);
     if let Some(bin) = &spec.bin {
         command.arg("--bin").arg(bin);
+    }
+    if spec.release {
+        command.args(["--release", "--locked"]);
     }
     let mut child = command
         .spawn()

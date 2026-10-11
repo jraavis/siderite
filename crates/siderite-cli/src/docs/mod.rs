@@ -15,7 +15,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 pub(crate) mod index;
-mod version;
+pub(crate) mod version;
 
 #[cfg(test)]
 mod generate;

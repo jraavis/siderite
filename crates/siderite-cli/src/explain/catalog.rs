@@ -24,6 +24,7 @@ pub(crate) struct Explanation {
 const CHECK: &str = "guides/production/cli#check";
 const CONFIG: &str = "guides/production/cli#configuration";
 const OPENAPI_DIFF: &str = "guides/production/cli#comparing-openapi-documents";
+const PACKAGE: &str = "guides/production/cli#release-packages";
 const SEED: &str = "guides/production/cli#seed-datasets";
 const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
@@ -548,6 +549,43 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite openapi diff BASE CURRENT",
         OPENAPI_DIFF,
+    ),
+    entry(
+        "package.E001",
+        "Release build not possible",
+        [
+            "There is no Cargo.lock, it is out of date (`--locked` \
+             refuses to change it), or the release build failed.",
+            "Run `siderite build` to create or update Cargo.lock, review \
+             and commit it, and fix any compiler errors shown.",
+        ],
+        "siderite package --release",
+        PACKAGE,
+    ),
+    entry(
+        "package.E002",
+        "Credential in a packaged file",
+        [
+            "A declared asset holds something that looks like a \
+             credential (a password in a URL, a secret-looking \
+             `key=value`).",
+            "Move the secret to the environment, or leave the file out \
+             of `[package.metadata.siderite.package] assets`.",
+        ],
+        "siderite package --release",
+        PACKAGE,
+    ),
+    entry(
+        "package.E003",
+        "Packaged binary does not run",
+        [
+            "Running the packaged binary's `routes` command with an empty \
+             PATH failed, so it would not run where Cargo is absent.",
+            "Run the binary from the package directory to see the error; \
+             the app factory must start without Cargo or a database.",
+        ],
+        "siderite package --release",
+        PACKAGE,
     ),
     entry(
         "routes.E001",

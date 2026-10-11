@@ -35,6 +35,7 @@ mod fixtures;
 mod fsio;
 mod generate;
 mod openapi;
+mod package;
 mod project;
 pub mod report;
 pub mod routes;
