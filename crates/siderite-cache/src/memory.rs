@@ -514,14 +514,17 @@ mod tests {
         assert_eq!(cache.get("k").await.unwrap().as_deref(), Some(&b"2"[..]));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn expiring_creation_has_one_winner() {
         let cache = MemoryCache::new(8);
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(64));
         let mut joins = Vec::new();
         for v in 0..64u8 {
             let cache = cache.clone();
+            let barrier = std::sync::Arc::clone(&barrier);
             joins.push(tokio::spawn(async move {
                 let ttl = Duration::from_secs(30);
+                barrier.wait().await;
                 cache.set_if_absent_with_ttl("k", vec![v], ttl).await
             }));
         }
