@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siderite.dev/schemas/cli-report-v1.json",
+  "title": "Siderite CLI report envelope, version 1",
+  "description": "Every structured CLI report. New fields are additive within schema_version 1, so consumers must ignore unknown properties.",
+  "type": "object",
+  "required": ["schema_version", "command", "ok", "data", "diagnostics"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "command": { "type": "string", "minLength": 1 },
+    "ok": { "type": "boolean" },
+    "data": { "type": "object" },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Diagnostic" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "command": { "const": "check" } } },
+      "then": { "properties": { "data": { "$ref": "#/$defs/CheckSummary" } } }
+    },
+    {
+      "if": { "properties": { "command": { "const": "routes" } } },
+      "then": { "properties": { "data": { "$ref": "#/$defs/RoutesData" } } }
+    },
+    {
+      "if": { "properties": { "command": { "const": "models" } } },
+      "then": { "properties": { "data": { "$ref": "#/$defs/ModelsData" } } }
+    }
+  ],
+  "$defs": {
+    "Diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "message": { "type": "string" },
+        "location": { "type": "string" },
+        "hint": { "type": "string" }
+      }
+    },
+    "CheckSummary": {
+      "type": "object",
+      "required": ["errors", "warnings"],
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "RoutesData": {
+      "type": "object",
+      "required": ["routes"],
+      "properties": {
+        "routes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RouteReport" }
+        }
+      }
+    },
+    "RouteReport": {
+      "type": "object",
+      "required": ["method", "path", "operation_id", "tags", "summary"],
+      "properties": {
+        "method": { "type": "string" },
+        "path": { "type": "string" },
+        "operation_id": { "type": ["string", "null"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": ["string", "null"] }
+      }
+    },
+    "ModelsData": {
+      "type": "object",
+      "required": ["models"],
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModelReport" }
+        }
+      }
+    },
+    "ModelReport": {
+      "type": "object",
+      "required": ["name", "table", "managed", "fields"],
+      "properties": {
+        "name": { "type": "string" },
+        "table": { "type": "string" },
+        "managed": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FieldReport" }
+        }
+      }
+    },
+    "FieldReport": {
+      "type": "object",
+      "required": ["name", "column", "type", "nullable", "pk"],
+      "properties": {
+        "name": { "type": "string" },
+        "column": { "type": "string" },
+        "type": { "type": "string" },
+        "nullable": { "type": "boolean" },
+        "pk": { "type": "boolean" }
+      }
+    }
+  }
+}

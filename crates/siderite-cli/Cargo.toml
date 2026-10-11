@@ -13,6 +13,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+serde.workspace = true
 serde_json.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite"] }
 siderite-config.workspace = true
@@ -22,6 +23,9 @@ siderite-orm.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
 
 [features]
 default = []

@@ -121,6 +121,22 @@ siderite --bin serve check
 
 **Database** (`migrate`, `rollback`, `showmigrations`, `dbshell`): `--database-url`, then the URL configured for the selected alias, then, for the `default` alias only, `DATABASE_URL`. With none of those, the command fails with a "no database" error naming the alias.
 
+## Output contract
+
+Commands build typed reports first (`siderite_cli::report::build`, pure functions that open no database connection) and render them second (`report::text`, `report::json`); renderers never parse each other's output. The text output of `check` and `routes` is unchanged and covered by golden tests.
+
+Structured reports share one additive envelope, described by [`docs/schemas/cli-report-v1.json`](schemas/cli-report-v1.json) (JSON Schema draft 2020-12):
+
+```json
+{"schema_version":1,"command":"routes","ok":true,"data":{"routes":[]},"diagnostics":[]}
+```
+
+- `schema_version` changes only for breaking changes; new fields are additive, so consumers ignore unknown properties.
+- `ok` is `false` when any diagnostic has severity `error`. A diagnostic has `code` (the stable `check` ids below), `severity` (`info`, `warning`, `error`), `message` and optional `location` and `hint`. Free text is redacted: passwords in connection strings and secret-looking query parameters become `***`.
+- Reports are sorted deterministically: routes by path then method, models by name then table, fields by name then column, tags alphabetically. `routes` lists documented routes (from OpenAPI; hidden endpoints are omitted), not a complete runtime inventory.
+- Exit codes: `0` success, `1` failure (including a `check` that finds an error), `2` usage error.
+- JSON mode (`--json`, planned) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
+
 ## `check`
 
 `check` runs without starting a server or opening a database. Each issue prints as `error: [models.E003] message` or `warning: [id] message`, followed by a summary line. Messages never contain database URLs.

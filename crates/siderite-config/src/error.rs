@@ -53,7 +53,13 @@ fn path_is_secret(path: &[String]) -> bool {
 
 /// Whether a config key may hold a secret. Errs toward redacting: a false
 /// positive only hides a value in an error message, a false negative leaks it.
-fn is_secret_key(key: &str) -> bool {
+///
+/// Args:
+///   key: A configuration key, query parameter or field name.
+///
+/// Returns:
+///   `true` when values stored under `key` must be redacted.
+pub fn is_secret_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase().replace('-', "_");
     const CONTAINS: [&str; 9] = [
         "secret",

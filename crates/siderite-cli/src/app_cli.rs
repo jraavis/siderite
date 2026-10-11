@@ -1,11 +1,10 @@
 //! [`AppCli`]: the command line of an application binary.
 
 use crate::args::{GlobalArgs, split_global};
-use crate::check::{check, check_build, has_errors};
 use crate::connect::{backend_kind, connect_url, scratch_db};
 use crate::dbshell::ShellCommand;
 use crate::error::CliError;
-use crate::routes::{render_routes, route_table};
+use crate::report::{build, text};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
 use siderite_core::App;
 use siderite_orm::router::DatabaseRouter;
@@ -272,32 +271,20 @@ impl AppCli {
     }
 
     fn routes(&self) -> Result<u8, CliError> {
-        let rows = route_table(&(self.factory)())?;
-        print!("{}", render_routes(&rows));
-        Ok(0)
+        let report = build::routes(&(self.factory)())?;
+        print!("{}", text::render_routes(&report.data.routes));
+        Ok(report.exit_code())
     }
 
     fn check(&self) -> u8 {
-        let mut issues = check(
-            &(self.factory)(),
+        let report = build::check_report(
+            &*self.factory,
             &self.models,
             &self.settings,
             Some(&self.migrations_dir),
         );
-        // A duplicate operation already fails the OpenAPI check; do not
-        // report the same route problem a second time.
-        if !issues.iter().any(|i| i.id.starts_with("openapi.")) {
-            issues.extend(check_build((self.factory)()));
-        }
-        for issue in &issues {
-            println!("{issue}");
-        }
-        if issues.is_empty() {
-            println!("System check identified no issues.");
-        } else {
-            println!("System check identified {} issue(s).", issues.len());
-        }
-        u8::from(has_errors(&issues))
+        print!("{}", text::render_check(&report));
+        report.exit_code()
     }
 
     fn dbshell(&self, global: &GlobalArgs, env: &Env) -> Result<u8, CliError> {
