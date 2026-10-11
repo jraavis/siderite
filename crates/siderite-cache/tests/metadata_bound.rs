@@ -8,12 +8,12 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use async_trait::async_trait;
-use siderite_cache::{Cache, CacheError, MemoryCache, RouteCache};
+use siderite_cache::{Admission, AdmitMarker, Cache, CacheError, MemoryCache, RouteCache};
 use siderite_core::{App, Cached, get};
 use siderite_testkit::TestClient;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 type CacheResult<T> = Result<T, CacheError>;
@@ -75,10 +75,14 @@ impl Tracked {
     }
 
     fn stored_bytes(&self) -> usize {
-        let text = format!("{:?}", self.inner);
-        let tail = text.split("stored_bytes: ").nth(1).unwrap_or("0");
-        let digits: String = tail.chars().take_while(char::is_ascii_digit).collect();
-        digits.parse().unwrap_or(0)
+        self.inner.stored_bytes()
+    }
+
+    /// Window index on the clock the adapter's counter uses: the wall
+    /// clock for the generic path.
+    fn window(&self, ttl: Duration) -> u64 {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        u64::try_from(now.as_millis() / ttl.as_millis()).unwrap()
     }
 }
 
@@ -127,6 +131,88 @@ impl Cache for Tracked {
     }
 }
 
+/// `MemoryCache` with its own atomic admission and rotation (the real
+/// production path), recording the keys it touches. Its windows are
+/// relative to its creation.
+#[derive(Clone)]
+struct Native {
+    tracked: Tracked,
+    created: Instant,
+}
+
+impl Native {
+    fn new(capacity: usize) -> Self {
+        Self {
+            tracked: Tracked::new(capacity),
+            created: Instant::now(),
+        }
+    }
+
+    fn window(&self, ttl: Duration) -> u64 {
+        let elapsed = self.created.elapsed();
+        u64::try_from(elapsed.as_millis() / ttl.as_millis()).unwrap()
+    }
+}
+
+#[async_trait]
+impl Cache for Native {
+    async fn get(&self, key: &str) -> CacheResult<Option<Vec<u8>>> {
+        self.tracked.get(key).await
+    }
+
+    async fn set(&self, k: &str, v: Vec<u8>, t: Option<Duration>) -> CacheResult<()> {
+        self.tracked.set(k, v, t).await
+    }
+
+    async fn set_if_absent_with_ttl(
+        &self,
+        key: &str,
+        v: Vec<u8>,
+        ttl: Duration,
+    ) -> CacheResult<bool> {
+        self.tracked.set_if_absent_with_ttl(key, v, ttl).await
+    }
+
+    async fn delete(&self, key: &str) -> CacheResult<bool> {
+        self.tracked.delete(key).await
+    }
+
+    async fn increment(&self, key: &str, by: i64) -> CacheResult<i64> {
+        self.tracked.increment(key, by).await
+    }
+
+    async fn increment_with_expiry(&self, key: &str, by: i64, ttl: Duration) -> CacheResult<i64> {
+        self.tracked.increment_with_expiry(key, by, ttl).await
+    }
+
+    async fn clear(&self) -> CacheResult<()> {
+        self.tracked.clear().await
+    }
+
+    async fn admit_marker(&self, req: &AdmitMarker<'_>) -> CacheResult<Admission> {
+        // The counter key embeds a window index this adapter cannot see;
+        // note the plausible ones (the census checks liveness).
+        let estimate = self.window(req.window);
+        for index in estimate.saturating_sub(1)..=estimate + 1 {
+            self.tracked.note(&format!("{}{index}", req.budget_prefix));
+        }
+        self.tracked.note(req.marker);
+        self.tracked.inner.admit_marker(req).await
+    }
+
+    async fn invalidate_marker(
+        &self,
+        marker: &str,
+        epoch_key: &str,
+        epoch: &[u8],
+        ttl: Duration,
+    ) -> CacheResult<()> {
+        self.tracked.note(epoch_key);
+        let inner = &self.tracked.inner;
+        inner.invalidate_marker(marker, epoch_key, epoch, ttl).await
+    }
+}
+
 fn client<C: Cache + Clone>(cache: C, ns: &str, budget: u64, ttl: Duration) -> TestClient {
     let layer = RouteCache::new(cache)
         .namespace(ns)
@@ -149,11 +235,15 @@ async fn status(client: &TestClient, path: &str) -> String {
     value.to_str().unwrap().to_owned()
 }
 
+/// Epoch keys are bounded per namespace by the stripe count.
+const STRIPES: usize = 64;
+
 /// Sustained distinct cacheable targets stop at the budget; targets that
 /// were admitted keep hitting and the rest are served as misses.
 async fn distinct_targets<C: Cache + Clone>(cache: C, probe: &Probe) {
     let (budget, total) = (50u64, 400usize);
     let client = client(cache, "distinct", budget, HOUR);
+    let first = probe.window(HOUR).await;
     let mut hits = 0;
     for n in 0..total {
         status(&client, &format!("/pub?n={n}")).await;
@@ -161,12 +251,18 @@ async fn distinct_targets<C: Cache + Clone>(cache: C, probe: &Probe) {
     for n in 0..total {
         hits += usize::from(status(&client, &format!("/pub?n={n}")).await == "hit");
     }
+    let same_window = first == probe.window(HOUR).await;
     let census = probe.census().await;
     let budget = usize::try_from(budget).unwrap();
-    // At most two live windows (a window boundary may fall inside the run).
-    assert!(census.markers >= budget && census.markers <= 2 * budget);
-    assert!(census.counters <= 2, "{census:?}");
-    assert_eq!(census.epochs, 0, "no write happened: {census:?}");
+    if same_window {
+        // One window: exactly the budget, never one more.
+        assert_eq!(census.markers, budget, "{census:?}");
+        assert_eq!(census.counters, 1, "{census:?}");
+    } else {
+        assert!(census.markers >= budget && census.markers <= 2 * budget);
+        assert!(census.counters <= 2, "{census:?}");
+    }
+    assert!(census.epochs <= STRIPES, "stripes bound epochs: {census:?}");
     assert_eq!(census.responses, census.markers, "{census:?}");
     assert_eq!(hits, census.markers, "only admitted targets hit");
 }
@@ -209,6 +305,7 @@ async fn namespace_churn<C: Cache + Clone>(cache: C, probe: &Probe) {
 /// Concurrent first requests cannot overshoot the budget.
 async fn concurrent_burst<C: Cache + Clone>(cache: C, probe: &Probe) {
     let client = client(cache, "burst", 20, HOUR);
+    let first = probe.window(HOUR).await;
     let mut tasks = Vec::new();
     for n in 0..200 {
         let client = client.clone();
@@ -219,12 +316,18 @@ async fn concurrent_burst<C: Cache + Clone>(cache: C, probe: &Probe) {
     for task in tasks {
         task.await.unwrap();
     }
+    let same_window = first == probe.window(HOUR).await;
     let census = probe.census().await;
-    assert!(census.markers >= 20 && census.markers <= 40, "{census:?}");
+    if same_window {
+        assert_eq!(census.markers, 20, "{census:?}");
+    } else {
+        assert!(census.markers >= 20 && census.markers <= 40, "{census:?}");
+    }
 }
 
 /// Expiry rolls the window: live markers never exceed two budgets while
-/// distinct targets keep arriving across several windows.
+/// distinct targets keep arriving across several windows. The census runs
+/// after every request, so the peak is the true peak.
 async fn window_rollover<C: Cache + Clone>(cache: C, probe: &Probe) {
     let ttl = Duration::from_millis(250);
     let client = client(cache, "rollover", 10, ttl);
@@ -234,17 +337,18 @@ async fn window_rollover<C: Cache + Clone>(cache: C, probe: &Probe) {
     while started.elapsed() < Duration::from_millis(1500) {
         status(&client, &format!("/pub?n={n}")).await;
         n += 1;
+        peak = peak.max(probe.census().await.markers);
         if n % 20 == 0 {
-            peak = peak.max(probe.census().await.markers);
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
     }
-    assert!(peak > 0 && peak <= 20, "peak markers {peak}");
+    assert!((10..=20).contains(&peak), "peak markers {peak}");
 }
 
 /// How to count live keys.
 enum Probe {
-    Memory(Tracked),
+    Generic(Tracked),
+    Native(Native),
     #[cfg(feature = "redis")]
     Redis(live::Scanner),
 }
@@ -252,42 +356,67 @@ enum Probe {
 impl Probe {
     async fn census(&self) -> Census {
         match self {
-            Self::Memory(tracked) => tracked.census().await,
+            Self::Generic(tracked) => tracked.census().await,
+            Self::Native(native) => native.tracked.census().await,
             #[cfg(feature = "redis")]
             Self::Redis(scanner) => scanner.census().await,
         }
     }
+
+    /// The window index on the clock the budget counter uses.
+    async fn window(&self, ttl: Duration) -> u64 {
+        match self {
+            Self::Generic(tracked) => tracked.window(ttl),
+            Self::Native(native) => native.window(ttl),
+            #[cfg(feature = "redis")]
+            Self::Redis(scanner) => scanner.window(ttl).await,
+        }
+    }
 }
 
-#[tokio::test]
-async fn memory_distinct_targets_stay_within_budget() {
-    let cache = Tracked::new(100_000);
-    distinct_targets(cache.clone(), &Probe::Memory(cache)).await;
+/// Runs a scenario against both memory paths: the atomic `MemoryCache`
+/// admission and the generic sequence an external adapter gets.
+macro_rules! memory_case {
+    ($native:ident, $generic:ident, $scenario:ident) => {
+        #[tokio::test]
+        async fn $native() {
+            let cache = Native::new(100_000);
+            $scenario(cache.clone(), &Probe::Native(cache)).await;
+        }
+
+        #[tokio::test]
+        async fn $generic() {
+            let cache = Tracked::new(100_000);
+            $scenario(cache.clone(), &Probe::Generic(cache)).await;
+        }
+    };
 }
 
-#[tokio::test]
-async fn memory_uncacheable_responses_create_no_metadata() {
-    let cache = Tracked::new(100_000);
-    uncacheable(cache.clone(), &Probe::Memory(cache)).await;
-}
-
-#[tokio::test]
-async fn memory_namespace_churn_is_bounded_per_namespace() {
-    let cache = Tracked::new(100_000);
-    namespace_churn(cache.clone(), &Probe::Memory(cache)).await;
-}
-
-#[tokio::test]
-async fn memory_concurrent_burst_cannot_overshoot() {
-    let cache = Tracked::new(100_000);
-    concurrent_burst(cache.clone(), &Probe::Memory(cache)).await;
-}
-
-#[tokio::test]
-async fn memory_window_rollover_keeps_two_windows() {
-    let cache = Tracked::new(100_000);
-    window_rollover(cache.clone(), &Probe::Memory(cache)).await;
-}
+memory_case!(
+    memory_distinct_targets_stay_within_budget,
+    generic_distinct_targets_stay_within_budget,
+    distinct_targets
+);
+memory_case!(
+    memory_uncacheable_responses_create_no_metadata,
+    generic_uncacheable_responses_create_no_metadata,
+    uncacheable
+);
+memory_case!(
+    memory_namespace_churn_is_bounded_per_namespace,
+    generic_namespace_churn_is_bounded_per_namespace,
+    namespace_churn
+);
+memory_case!(
+    memory_concurrent_burst_cannot_overshoot,
+    generic_concurrent_burst_cannot_overshoot,
+    concurrent_burst
+);
+memory_case!(
+    memory_window_rollover_keeps_two_windows,
+    generic_window_rollover_keeps_two_windows,
+    window_rollover
+);
 
 #[tokio::test]
 async fn zero_budget_stores_nothing_and_skips_the_backend() -> TestResult {
@@ -319,14 +448,14 @@ async fn exhausted_budget_still_serves_and_admitted_targets_hit() {
 /// Latency and byte accounting evidence (run with `--nocapture`).
 #[tokio::test]
 async fn memory_latency_and_byte_evidence() {
-    let cache = Tracked::new(1_000_000);
+    let cache = Native::new(1_000_000);
     let client = client(cache.clone(), "evidence", 10_000, HOUR);
-    let before = cache.stored_bytes();
+    let before = cache.tracked.stored_bytes();
     let admitted = timed(&client, 0..10_000, "/pub").await;
     let bypassed = timed(&client, 10_000..20_000, "/pub").await;
     let hits = timed(&client, 0..10_000, "/pub").await;
-    let census = cache.census().await;
-    let after = cache.stored_bytes();
+    let census = cache.tracked.census().await;
+    let after = cache.tracked.stored_bytes();
     println!("memory budget=10000 keys={census:?}");
     println!("memory stored_bytes before={before} after={after}");
     for (name, sample) in [("admit", admitted), ("bypass", bypassed), ("hit", hits)] {
@@ -396,6 +525,16 @@ mod live {
                 }
                 cursor = next;
             }
+        }
+
+        /// Window index on the Redis server clock (`TIME`), the clock the
+        /// admission script uses.
+        pub async fn window(&self, ttl: Duration) -> u64 {
+            let mut conn = self.conn.clone();
+            let (secs, micros): (u64, u64) =
+                redis::cmd("TIME").query_async(&mut conn).await.unwrap();
+            let ms = u128::from(secs) * 1000 + u128::from(micros / 1000);
+            u64::try_from(ms / ttl.as_millis()).unwrap()
         }
 
         async fn used_memory(&self) -> u64 {

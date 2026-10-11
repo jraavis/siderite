@@ -198,7 +198,8 @@ async fn representation_ttl_is_clamped_to_the_generation_ttl() -> TestResult {
     let layer = RouteCache::new(recorder.clone()).generation_ttl(cap);
     let client = client(&Origin::default(), layer);
     send(&client, Method::GET, false).await;
-    assert_eq!(*recorder.markers.lock().expect("lock"), [cap]);
+    // The epoch and then the marker are created with the same lifetime.
+    assert_eq!(*recorder.markers.lock().expect("lock"), [cap, cap]);
     assert_eq!(*recorder.fills.lock().expect("lock"), [Some(cap)]);
     Ok(())
 }
@@ -210,7 +211,7 @@ async fn default_generation_ttl_is_one_hour() -> TestResult {
     let client = client(&Origin::default(), layer);
     send(&client, Method::GET, false).await;
     let hour = Duration::from_secs(3600);
-    assert_eq!(*recorder.markers.lock().expect("lock"), [hour]);
+    assert_eq!(*recorder.markers.lock().expect("lock"), [hour, hour]);
     // The 60 s response lifetime is below the cap and is kept.
     let fills = recorder.fills.lock().expect("lock").clone();
     assert_eq!(fills, [Some(Duration::from_secs(60))]);
@@ -275,10 +276,10 @@ async fn legacy_adapters_bypass_without_probing() -> TestResult {
         ("1".into(), Some("miss"))
     );
     assert_eq!(origin.hits.load(Ordering::SeqCst), 3);
-    // Only the first request probed the backend (marker, epoch and
-    // re-check reads before the unsupported increment); nothing
-    // non-expiring was ever written and no round trip repeats.
-    assert_eq!(legacy.calls.load(Ordering::SeqCst), 3);
+    // Only the first request probed the backend (marker and epoch reads
+    // before the unsupported expiring creation); nothing non-expiring was
+    // ever written and no round trip repeats.
+    assert_eq!(legacy.calls.load(Ordering::SeqCst), 2);
     assert_eq!(legacy.inner.get("anything").await?, None);
     Ok(())
 }

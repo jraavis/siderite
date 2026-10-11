@@ -1,23 +1,36 @@
+    Finished `test` profile [unoptimized] target(s) in 0.18s
+     Running tests/metadata_bound.rs (target/debug/deps/metadata_bound-d77f81ca86cd6adc)
+
+running 19 tests
 test exhausted_budget_still_serves_and_admitted_targets_hit ... ok
+test generic_concurrent_burst_cannot_overshoot ... ok
+test generic_distinct_targets_stay_within_budget ... ok
+test generic_namespace_churn_is_bounded_per_namespace ... ok
+test generic_uncacheable_responses_create_no_metadata ... ok
+test generic_window_rollover_keeps_two_windows ... ok
 test live::redis_concurrent_burst_cannot_overshoot ... ok
 test live::redis_distinct_targets_stay_within_budget ... ok
-test live::redis_latency_and_memory_evidence ... redis budget=10000 keys=Census { markers: 10000, counters: 1, epochs: 0, responses: 10000 }
-redis used_memory before=1328760 after=9340624
-redis latency admit: p50=1806us p99=5609us n=10000
-redis latency bypass: p50=1206us p99=4414us n=10000
-redis latency hit: p50=721us p99=3238us n=10000
+test live::redis_latency_and_memory_evidence ... redis budget=10000 keys=Census { markers: 10000, counters: 1, epochs: 64, responses: 10000 }
+redis used_memory before=1509144 after=9502104
+redis latency admit: p50=1608us p99=5154us n=10000
+redis latency bypass: p50=431us p99=1824us n=10000
+redis latency hit: p50=655us p99=2343us n=10000
+ok
 test live::redis_namespace_churn_is_bounded ... ok
 test live::redis_uncacheable_responses_create_no_metadata ... ok
 test live::redis_window_rollover_keeps_two_windows ... ok
 test memory_concurrent_burst_cannot_overshoot ... ok
 test memory_distinct_targets_stay_within_budget ... ok
-test memory_latency_and_byte_evidence ... memory budget=10000 keys=Census { markers: 10000, counters: 1, epochs: 0, responses: 10000 }
-memory stored_bytes before=0 after=4287602
-memory latency admit: p50=83us p99=274us n=10000
-memory latency bypass: p50=45us p99=183us n=10000
-memory latency hit: p50=35us p99=139us n=10000
+test memory_latency_and_byte_evidence ... memory budget=10000 keys=Census { markers: 10000, counters: 1, epochs: 64, responses: 10000 }
+memory stored_bytes before=0 after=4290419
+memory latency admit: p50=86us p99=328us n=10000
+memory latency bypass: p50=20us p99=78us n=10000
+memory latency hit: p50=34us p99=164us n=10000
+ok
 test memory_namespace_churn_is_bounded_per_namespace ... ok
 test memory_uncacheable_responses_create_no_metadata ... ok
 test memory_window_rollover_keeps_two_windows ... ok
 test zero_budget_stores_nothing_and_skips_the_backend ... ok
-test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.68s
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 38.76s
+

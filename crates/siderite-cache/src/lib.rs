@@ -26,6 +26,7 @@
 //! ```
 #![forbid(unsafe_code)]
 
+mod admission;
 mod cache;
 mod error;
 mod memory;
@@ -34,6 +35,7 @@ mod route;
 #[cfg(feature = "redis")]
 mod redis;
 
+pub use admission::{Admission, AdmitMarker};
 pub use cache::{Cache, CacheExt};
 pub use error::CacheError;
 pub use memory::{MemoryCache, MemoryCacheLimits};

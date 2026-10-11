@@ -139,7 +139,8 @@ pub struct RouteCache<C> {
     default_ttl: Option<Duration>,
     max_body: u64,
     bypass: Arc<Vec<HeaderName>>,
-    namespace: Arc<str>,
+    keys: Arc<generation::Keys>,
+    local: Arc<generation::Local>,
     proxies: TrustedProxies,
     flags: Arc<AtomicU8>,
     max_key: usize,
@@ -158,7 +159,8 @@ impl<C: Cache> RouteCache<C> {
             cache: Arc::new(cache),
             default_ttl: None,
             max_body: DEFAULT_MAX_BODY_BYTES,
-            namespace: uuid::Uuid::new_v4().to_string().into(),
+            keys: Arc::new(generation::Keys::new(&uuid::Uuid::new_v4().to_string())),
+            local: Arc::new(generation::Local::new()),
             proxies: TrustedProxies::default(),
             flags: Arc::new(AtomicU8::new(0)),
             max_key: 4096,
@@ -184,7 +186,7 @@ impl<C: Cache> RouteCache<C> {
     ///     Configured layer; the default namespace is unique per instance.
     #[must_use]
     pub fn namespace(mut self, namespace: impl Into<String>) -> Self {
-        self.namespace = namespace.into().into();
+        self.keys = Arc::new(generation::Keys::new(&namespace.into()));
         self
     }
 
@@ -257,16 +259,41 @@ impl<C: Cache> RouteCache<C> {
     ///
     /// At most `max` new target markers are admitted per namespace in each
     /// `generation_ttl` window, counted when a representation is first
-    /// stored for a target. Once the window's budget is spent, further new
-    /// targets bypass the cache (`x-cache: miss`) until the next window;
-    /// targets that already have a marker keep hitting. Because markers
-    /// live one `generation_ttl`, a namespace holds at most `2 * max`
-    /// markers. Zero stores nothing and makes no backend calls.
+    /// stored for a target, and counted exactly: a marker that would exceed
+    /// the budget is never visible. Once the window's budget is spent,
+    /// further new targets bypass the cache (`x-cache: miss`) until the
+    /// next window; targets that already have a marker keep hitting, and
+    /// the layer remembers the spent window locally, so those requests
+    /// cost one backend read.
+    ///
+    /// Windows are `floor(clock / generation_ttl)`. `RedisCache` reads
+    /// the Redis server clock inside the admission script (and expires the
+    /// counter on that same clock after two windows), so every process
+    /// sharing a namespace uses one window whatever its own clock says;
+    /// `MemoryCache` uses its own clock. A marker lives one
+    /// `generation_ttl`, so live markers were created in at most two
+    /// consecutive windows: at most `2 * max` per namespace. A stored
+    /// representation can outlive its marker's creation window by up to
+    /// another `generation_ttl`, so representations come from at most three
+    /// windows: at most `3 * max * v` per namespace, where `v` is the
+    /// number of request variants (method, `Accept`, `Accept-Encoding`)
+    /// seen per target. Fills still in the origin when their marker ages
+    /// out add at most one representation each.
+    ///
+    /// Zero admits nothing: GET and HEAD requests make no backend calls.
+    /// Successful writes still invalidate, which is one backend call each,
+    /// because other processes sharing the namespace may have markers.
     ///
     /// The counter lives in the backend, so the bound holds across
     /// processes sharing a namespace, provided the backend does not evict
-    /// the counter. A [`Cache`] without `increment_with_expiry` cannot
-    /// enforce it, so the layer stops storing (one warning).
+    /// the counter. Third-party [`Cache`] adapters that do not override
+    /// [`Cache::admit_marker`] use the generic sequence, whose window comes
+    /// from each process's own clock: processes whose clocks differ by a
+    /// large fraction of `generation_ttl` can then each spend a full
+    /// budget, up to the number of distinct clock phases times the bound
+    /// above. A [`Cache`] without `increment_with_expiry` or
+    /// `set_if_absent_with_ttl` cannot enforce the budget, so the layer
+    /// stops storing (one warning).
     #[must_use]
     pub fn max_new_targets(mut self, max: u64) -> Self {
         self.max_new_targets = max;
@@ -306,7 +333,8 @@ impl<C: Cache> RouteCache<C> {
             default_ttl: self.default_ttl,
             max_body: self.max_body,
             bypass: Arc::clone(&self.bypass),
-            namespace: Arc::clone(&self.namespace),
+            keys: Arc::clone(&self.keys),
+            local: Arc::clone(&self.local),
             proxies: self.proxies.clone(),
             flags: Arc::clone(&self.flags),
             max_key: self.max_key,
@@ -347,7 +375,8 @@ struct Policy {
     default_ttl: Option<Duration>,
     max_body: u64,
     bypass: Arc<Vec<HeaderName>>,
-    namespace: Arc<str>,
+    keys: Arc<generation::Keys>,
+    local: Arc<generation::Local>,
     proxies: TrustedProxies,
     flags: Arc<AtomicU8>,
     max_key: usize,
@@ -521,9 +550,11 @@ fn push_part(key: &mut String, bytes: &[u8]) {
             let _ = write!(key, "s{}:{text}", text.len());
         }
         Err(_) => {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
             let _ = write!(key, "x{}:", bytes.len());
             for byte in bytes {
-                let _ = write!(key, "{byte:02x}");
+                key.push(char::from(HEX[usize::from(byte >> 4)]));
+                key.push(char::from(HEX[usize::from(byte & 15)]));
             }
         }
     }
@@ -676,7 +707,12 @@ impl<C: Cache> Dispatch<C> {
             }
             // No marker: nothing is reachable, and nothing is created
             // until a response is actually stored.
-            None => match generation::begin(backend, &policy).await {
+            None if policy.local.spent() => {
+                // This window's budget is known spent: skip the epoch and
+                // admission calls, the request would only be refused.
+                return with_x_cache(next.run(req).await, MISS);
+            }
+            None => match generation::begin(backend, &policy, &target).await {
                 Ok(started) => {
                     let suffix = cache_key(&req, scheme);
                     (Slot::Absent(started, suffix), None)

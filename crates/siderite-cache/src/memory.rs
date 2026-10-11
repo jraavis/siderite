@@ -3,6 +3,7 @@
 type CacheResult<T> = Result<T, CacheError>;
 
 use crate::cache::ttl_millis;
+use crate::{Admission, AdmitMarker};
 use crate::{Cache, CacheError};
 use async_trait::async_trait;
 use lru::LruCache;
@@ -40,6 +41,8 @@ struct Store {
     entries: LruCache<String, Entry>,
     bytes: usize,
     limits: MemoryCacheLimits,
+    /// Origin of the budget windows (this cache's own clock).
+    started: Instant,
 }
 
 impl Deref for Store {
@@ -56,6 +59,15 @@ impl DerefMut for Store {
 }
 
 impl Store {
+    /// The live value at `key`, refreshing its LRU position.
+    fn live(&mut self, key: &str, now: Instant) -> Option<&[u8]> {
+        if self.entries.peek(key).is_some_and(|e| e.is_expired(now)) {
+            self.pop(key);
+            return None;
+        }
+        self.entries.get(key).map(|entry| entry.value.as_slice())
+    }
+
     fn pop(&mut self, key: &str) -> Option<Entry> {
         let (key, entry) = self.entries.pop_entry(key)?;
         self.bytes -= key.len() + entry.value.len();
@@ -175,8 +187,18 @@ impl MemoryCache {
                 entries: LruCache::new(cap),
                 bytes: 0,
                 limits,
+                started: Instant::now(),
             })),
         }
+    }
+
+    /// Retained key and value bytes currently counted against
+    /// [`MemoryCacheLimits::max_total_bytes`].
+    ///
+    /// Expired entries still count until they are touched or evicted.
+    #[must_use]
+    pub fn stored_bytes(&self) -> usize {
+        self.lock().bytes
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Store> {
@@ -350,6 +372,76 @@ impl Cache for MemoryCache {
         self.lock().clear();
         Ok(())
     }
+
+    async fn admit_marker(&self, req: &AdmitMarker<'_>) -> CacheResult<Admission> {
+        let window = Duration::from_millis(ttl_millis(req.window)?);
+        let counter_ttl = window.checked_mul(2).ok_or(CacheError::InvalidTtl)?;
+        let mut cache = self.lock();
+        let now = Instant::now();
+        let epoch = cache.live(req.epoch_key, now);
+        if epoch.is_none_or(|current| current != req.epoch) {
+            return Ok(Admission::Stale);
+        }
+        if let Some(live) = cache.live(req.marker, now) {
+            return Ok(Admission::Marker(live.to_vec()));
+        }
+        // The window comes from this cache's own clock (one process).
+        let ms = window.as_millis().max(1);
+        let elapsed = now.saturating_duration_since(cache.started).as_millis();
+        let counter = format!("{}{}", req.budget_prefix, elapsed / ms);
+        let used = match cache.live(&counter, now) {
+            Some(value) => parse_incr_int(value).ok_or_else(|| CacheError::NotInteger {
+                key: counter.clone(),
+            })?,
+            None => 0,
+        };
+        let used = u64::try_from(used).unwrap_or(u64::MAX);
+        if used >= req.max_new {
+            let left = u64::try_from(ms - elapsed % ms).unwrap_or(u64::MAX);
+            let resets_in = Duration::from_millis(left);
+            return Ok(Admission::Exhausted { resets_in });
+        }
+        let counted = Entry {
+            value: (used + 1).to_string().into_bytes(),
+            expires_at: Some(now.checked_add(counter_ttl).ok_or(CacheError::InvalidTtl)?),
+        };
+        // Keep the live counter's deadline: only a new counter gets one.
+        let counted = match cache.peek(&counter) {
+            Some(old) if !old.is_expired(now) => Entry {
+                expires_at: old.expires_at,
+                ..counted
+            },
+            _ => counted,
+        };
+        let deadline = now.checked_add(window).ok_or(CacheError::InvalidTtl)?;
+        let marker = Entry {
+            value: req.token.to_vec(),
+            expires_at: Some(deadline),
+        };
+        cache.put(counter, counted)?;
+        cache.put(req.marker.to_owned(), marker)?;
+        Ok(Admission::Marker(req.token.to_vec()))
+    }
+
+    async fn invalidate_marker(
+        &self,
+        marker: &str,
+        epoch_key: &str,
+        epoch: &[u8],
+        ttl: Duration,
+    ) -> CacheResult<()> {
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        let mut cache = self.lock();
+        let deadline = Instant::now().checked_add(ttl);
+        let deadline = deadline.ok_or(CacheError::InvalidTtl)?;
+        let entry = Entry {
+            value: epoch.to_vec(),
+            expires_at: Some(deadline),
+        };
+        cache.put(epoch_key.to_owned(), entry)?;
+        cache.pop(marker);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -403,6 +495,108 @@ mod tests {
         cache.set("s", b"x".to_vec(), None).await.unwrap();
         let bad = cache.increment_with_expiry("s", 1, Duration::from_secs(1));
         assert!(matches!(bad.await, Err(CacheError::NotInteger { .. })));
+    }
+
+    fn request<'a>(marker: &'a str, token: &'a [u8], epoch: &'a [u8]) -> AdmitMarker<'a> {
+        let window = Duration::from_millis(80);
+        AdmitMarker::new(marker, token, "epoch", epoch).budget("budget:", 2, window)
+    }
+
+    #[tokio::test]
+    async fn admit_marker_checks_epoch_counts_creations_and_rolls_windows() {
+        let cache = MemoryCache::new(64);
+        let epoch: &[u8] = &[7];
+        cache.set("epoch", epoch.to_vec(), None).await.unwrap();
+        let stale = cache.admit_marker(&request("a", &[1], &[8])).await;
+        assert_eq!(stale.unwrap(), Admission::Stale);
+        // A missing epoch counts as changed.
+        let gone = AdmitMarker::new("a", &[1], "elsewhere", epoch);
+        assert_eq!(cache.admit_marker(&gone).await.unwrap(), Admission::Stale);
+        assert_eq!(cache.get("a").await.unwrap(), None, "stale creates nothing");
+        let a = cache
+            .admit_marker(&request("a", &[1], epoch))
+            .await
+            .unwrap();
+        assert_eq!(a, Admission::Marker(vec![1]));
+        // An existing marker is returned and costs no budget.
+        let again = cache
+            .admit_marker(&request("a", &[9], epoch))
+            .await
+            .unwrap();
+        assert_eq!(again, Admission::Marker(vec![1]));
+        let b = cache
+            .admit_marker(&request("b", &[2], epoch))
+            .await
+            .unwrap();
+        assert_eq!(b, Admission::Marker(vec![2]));
+        let over = cache
+            .admit_marker(&request("c", &[3], epoch))
+            .await
+            .unwrap();
+        let Admission::Exhausted { resets_in } = over else {
+            panic!("expected exhaustion, got {over:?}");
+        };
+        assert!(resets_in <= Duration::from_millis(80));
+        assert_eq!(cache.get("c").await.unwrap(), None, "no marker over budget");
+        // The next window has a fresh budget.
+        thread::sleep(Duration::from_millis(90));
+        let c = cache
+            .admit_marker(&request("c", &[3], epoch))
+            .await
+            .unwrap();
+        assert_eq!(c, Admission::Marker(vec![3]));
+    }
+
+    #[tokio::test]
+    async fn admit_marker_is_exact_under_concurrency() {
+        let cache = MemoryCache::new(1024);
+        cache.set("epoch", vec![7], None).await.unwrap();
+        let window = Duration::from_secs(3600);
+        let mut tasks = Vec::new();
+        for n in 0..100u8 {
+            let cache = cache.clone();
+            tasks.push(tokio::spawn(async move {
+                let marker = format!("m{n}");
+                let token = [n];
+                let base = AdmitMarker::new(&marker, &token, "epoch", &[7]);
+                let request = base.budget("budget:", 10, window);
+                cache.admit_marker(&request).await.unwrap()
+            }));
+        }
+        let mut admitted = 0;
+        for task in tasks {
+            admitted += usize::from(matches!(task.await.unwrap(), Admission::Marker(_)));
+        }
+        assert_eq!(admitted, 10);
+    }
+
+    #[tokio::test]
+    async fn invalidate_marker_replaces_epoch_and_deletes_marker() {
+        let cache = MemoryCache::new(8);
+        cache.set("marker", vec![1], None).await.unwrap();
+        let ttl = Duration::from_millis(40);
+        cache
+            .invalidate_marker("marker", "epoch", &[5], ttl)
+            .await
+            .unwrap();
+        assert_eq!(cache.get("marker").await.unwrap(), None);
+        assert_eq!(cache.get("epoch").await.unwrap(), Some(vec![5]));
+        thread::sleep(Duration::from_millis(60));
+        assert_eq!(cache.get("epoch").await.unwrap(), None, "epoch expires");
+        let zero = cache
+            .invalidate_marker("m", "e", &[1], Duration::ZERO)
+            .await;
+        assert!(matches!(zero, Err(CacheError::InvalidTtl)));
+    }
+
+    #[tokio::test]
+    async fn stored_bytes_tracks_keys_and_values() {
+        let cache = MemoryCache::new(8);
+        assert_eq!(cache.stored_bytes(), 0);
+        cache.set("key", b"value".to_vec(), None).await.unwrap();
+        assert_eq!(cache.stored_bytes(), 8);
+        cache.delete("key").await.unwrap();
+        assert_eq!(cache.stored_bytes(), 0);
     }
 
     #[tokio::test]

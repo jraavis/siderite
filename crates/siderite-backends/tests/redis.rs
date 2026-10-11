@@ -363,3 +363,56 @@ async fn empty_prefix_delete_is_refused() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "requires explicit REDIS_URL and an isolated live service"]
+async fn marker_scripts_admit_count_and_rotate() {
+    use siderite_backends::redis::{MarkerAdmission, MarkerReply};
+    with_namespace(|store| async move {
+        let window = Duration::from_secs(600);
+        store.set("epoch", "e1", Some(window)).await.unwrap();
+        let call = |marker, token, epoch| MarkerAdmission {
+            marker,
+            token,
+            epoch_key: "epoch",
+            epoch,
+            budget_prefix: "budget:",
+            max_new: 2,
+            window,
+        };
+        let stale = store.admit_marker(call("m", "t", "other")).await;
+        assert_eq!(stale.unwrap(), MarkerReply::Stale);
+        for (marker, token) in [("a", "ta"), ("b", "tb")] {
+            let reply = store.admit_marker(call(marker, token, "e1")).await;
+            assert_eq!(reply.unwrap(), MarkerReply::Admitted(token.into()));
+        }
+        // A live marker is returned without spending budget.
+        let again = store.admit_marker(call("a", "zz", "e1")).await;
+        assert_eq!(again.unwrap(), MarkerReply::Admitted("ta".into()));
+        let over = store.admit_marker(call("c", "tc", "e1")).await.unwrap();
+        let MarkerReply::Exhausted(left) = over else {
+            panic!("expected exhaustion, got {over:?}");
+        };
+        assert!(!left.is_zero() && left <= window);
+        assert_eq!(store.get("c").await.unwrap(), None);
+        // One atomic rotation: epoch replaced with a TTL, marker deleted.
+        store
+            .rotate_marker("a", "epoch", "e2", Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(store.get("a").await.unwrap(), None);
+        assert_eq!(store.get("epoch").await.unwrap().as_deref(), Some("e2"));
+        let too_long = Duration::from_millis(u64::MAX / 2);
+        let zero = store.rotate_marker("a", "epoch", "e3", Duration::ZERO);
+        assert!(matches!(zero.await, Err(RedisError::Invalid(_))));
+        let huge = MarkerAdmission {
+            window: too_long,
+            ..call("d", "td", "e2")
+        };
+        assert!(matches!(
+            store.admit_marker(huge).await,
+            Err(RedisError::Invalid(_))
+        ));
+    })
+    .await;
+}
