@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `new --dry-run` prints the exact files without writing them.
+  File-writing commands share one write plan that rejects absolute and
+  `..` paths, writes through symbolic links and in-plan collisions, never
+  overwrites existing files (identical ones are left alone, others stop
+  the plan before any write) and writes each file atomically. Package
+  names that are Rust keywords are rejected.
 - **CLI:** `ai dump-context [--format markdown|json] [--live]
   [--max-bytes N]`: the application snapshot as Markdown or a JSON
   envelope for AI tools, offline by default with migration status

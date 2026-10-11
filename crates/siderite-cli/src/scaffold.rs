@@ -1,7 +1,7 @@
 //! `siderite new`: write a small API crate.
 
 use crate::error::CliError;
-use std::fs;
+use crate::generate::{Plan, ident, preview};
 use std::path::{Path, PathBuf};
 
 const GIT_DEP: &str = r#"git = "https://github.com/jraavis/siderite""#;
@@ -57,17 +57,25 @@ impl Engine {
     }
 }
 
-/// `siderite new NAME [--database ENGINE] [--path DIR]`.
+/// `siderite new NAME [--database ENGINE] [--path DIR] [--dry-run]`.
 pub fn run(args: &[String]) -> Result<u8, CliError> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         print_help();
         return Ok(0);
     }
-    let (name, engine, path) = parse(args)?;
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let kept = args.iter().filter(|a| *a != "--dry-run").cloned();
+    let args: Vec<String> = kept.collect();
+    let (name, engine, path) = parse(&args)?;
     let dest = std::env::current_dir()
         .map_err(|err| io_err("read cwd", err))?
         .join(&name);
-    write_project(&dest, &name, engine, path.as_deref())?;
+    let plan = project_plan(&dest, &name, engine, path.as_deref())?;
+    if dry_run {
+        print!("{}", preview(&plan.check()?));
+        return Ok(0);
+    }
+    plan.apply()?;
     println!("Created {name}. Next:");
     println!("  cd {name}");
     println!("  siderite run");
@@ -121,37 +129,18 @@ fn parse(args: &[String]) -> Result<(String, Engine, Option<PathBuf>), CliError>
         name = Some(arg.clone());
     }
     let name = name.ok_or_else(|| CliError::usage("usage: siderite new NAME"))?;
-    validate_name(&name)?;
+    ident::package_name(&name)?;
     Ok((name, engine, path))
 }
 
-fn validate_name(name: &str) -> Result<(), CliError> {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return Err(CliError::usage("project name is empty"));
-    };
-    if !first.is_ascii_lowercase() {
-        return Err(CliError::usage(
-            "project name must start with a lowercase letter",
-        ));
-    }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-    {
-        return Err(CliError::usage(
-            "project name may contain only lowercase letters, digits, `-` and `_`",
-        ));
-    }
-    Ok(())
-}
-
-fn write_project(
+/// The files of a new project in `dest`, which must not exist or be
+/// empty.
+fn project_plan(
     dest: &Path,
     name: &str,
     engine: Engine,
     siderite_root: Option<&Path>,
-) -> Result<(), CliError> {
+) -> Result<Plan, CliError> {
     if dest.exists() {
         let empty = dest
             .read_dir()
@@ -164,54 +153,81 @@ fn write_project(
             )));
         }
     }
-    fs::create_dir_all(dest.join("src")).map_err(|err| io_err("create src", err))?;
-    fs::create_dir_all(dest.join("migrations")).map_err(|err| io_err("create migrations", err))?;
+    let deps = Deps::new(engine, siderite_root)?;
+    let ident = name.replace('-', "_");
+    let url = engine.url(name);
+    let mut plan = Plan::new(dest);
+    let files = [
+        ("Cargo.toml", cargo_toml(name, &deps)),
+        ("siderite.toml", siderite_toml(name, &url)),
+        ("src/lib.rs", lib_rs(&ident)),
+        ("src/main.rs", main_rs(&ident)),
+        ("migrations/.gitkeep", String::new()),
+        (".gitignore", "/target\n*.db\n.env\n".to_owned()),
+        ("README.md", readme(name)),
+    ];
+    for (path, contents) in files {
+        plan.add(path, contents)?;
+    }
+    Ok(plan)
+}
 
-    let (siderite_loc, cli_loc, backends) = if let Some(root) = siderite_root {
+/// Where the new project gets its siderite crates from.
+struct Deps {
+    siderite: String,
+    cli: String,
+    backends: String,
+}
+
+impl Deps {
+    fn new(engine: Engine, root: Option<&Path>) -> Result<Self, CliError> {
+        let Some(root) = root else {
+            return Ok(Self {
+                siderite: GIT_DEP.to_owned(),
+                cli: format!("{GIT_DEP}{}", engine.cli_features()),
+                backends: engine.backends_dep(GIT_DEP),
+            });
+        };
         let root = root
             .canonicalize()
             .map_err(|err| io_err("resolve --path", err))?;
         let crate_path = |pkg: &str| {
-            format!("path = \"{}\"", root.join("crates").join(pkg).display()).replace('\\', "/")
+            let path = root.join("crates").join(pkg);
+            format!("path = \"{}\"", path.display()).replace('\\', "/")
         };
-        (
-            crate_path("siderite"),
-            format!("{}{}", crate_path("siderite-cli"), engine.cli_features()),
-            engine.backends_dep(&crate_path("siderite-backends")),
-        )
-    } else {
-        (
-            GIT_DEP.to_owned(),
-            format!("{GIT_DEP}{}", engine.cli_features()),
-            engine.backends_dep(GIT_DEP),
-        )
-    };
+        Ok(Self {
+            siderite: crate_path("siderite"),
+            cli: crate_path("siderite-cli") + engine.cli_features(),
+            backends: engine.backends_dep(&crate_path("siderite-backends")),
+        })
+    }
+}
 
-    let ident = name.replace('-', "_");
-    let url = engine.url(name);
-    fs::write(
-        dest.join("Cargo.toml"),
-        format!(
-            "\
+fn cargo_toml(name: &str, deps: &Deps) -> String {
+    let Deps {
+        siderite,
+        cli,
+        backends,
+    } = deps;
+    format!(
+        "\
 [package]
 name = \"{name}\"
 version = \"0.1.0\"
 edition = \"2024\"
 
 [dependencies]
-siderite = {{ {siderite_loc} }}
-siderite-cli = {{ {cli_loc} }}
+siderite = {{ {siderite} }}
+siderite-cli = {{ {cli} }}
 {backends}tokio = {{ version = \"1\", features = [\"macros\", \"rt-multi-thread\"] }}
 serde = {{ version = \"1\", features = [\"derive\"] }}
 "
-        ),
     )
-    .map_err(|err| io_err("write Cargo.toml", err))?;
+}
 
-    fs::write(
-        dest.join("siderite.toml"),
-        format!(
-            "\
+fn siderite_toml(name: &str, url: &str) -> String {
+    format!(
+        "\
 [app]
 name = \"{name}\"
 
@@ -221,22 +237,12 @@ addr = \"127.0.0.1:8000\"
 [databases.default]
 url = \"{url}\"
 "
-        ),
     )
-    .map_err(|err| io_err("write siderite.toml", err))?;
+}
 
-    fs::write(dest.join("src/lib.rs"), lib_rs(&ident))
-        .map_err(|err| io_err("write src/lib.rs", err))?;
-    fs::write(dest.join("src/main.rs"), main_rs(&ident))
-        .map_err(|err| io_err("write src/main.rs", err))?;
-    fs::write(dest.join("migrations/.gitkeep"), "")
-        .map_err(|err| io_err("write migrations/.gitkeep", err))?;
-    fs::write(dest.join(".gitignore"), "/target\n*.db\n.env\n")
-        .map_err(|err| io_err("write .gitignore", err))?;
-    fs::write(
-        dest.join("README.md"),
-        format!(
-            "\
+fn readme(name: &str) -> String {
+    format!(
+        "\
 # {name}
 
 ```bash
@@ -245,10 +251,7 @@ siderite run
 
 Open http://127.0.0.1:8000/ and http://127.0.0.1:8000/docs.
 "
-        ),
     )
-    .map_err(|err| io_err("write README.md", err))?;
-    Ok(())
 }
 
 fn lib_rs(ident: &str) -> String {
@@ -315,6 +318,7 @@ Write a new API crate in NAME/.
 Options:
   --database sqlite|postgres|mysql   Default database (sqlite)
   --path DIR                         Path to a local siderite checkout
+  --dry-run                          Show the files without writing them
   --help                             Show this help
 "
     );
@@ -369,13 +373,18 @@ mod tests {
                 .map_or(0, |d| d.as_nanos())
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        write_project(
-            &dir.join("demo_app"),
-            "demo_app",
-            Engine::Sqlite,
-            Some(&root),
-        )
-        .unwrap();
+        let dest = dir.join("demo_app");
+        let sqlite = Engine::Sqlite;
+        let plan = project_plan(&dest, "demo_app", sqlite, Some(&root));
+        let plan = plan.unwrap();
+        let text = preview(&plan.check().unwrap());
+        assert!(text.contains("create src/main.rs"), "{text}");
+        assert!(!dest.exists(), "the preview wrote files");
+        plan.apply().unwrap();
+        // Applying again changes nothing; edited files are never replaced.
+        std::fs::write(dest.join("README.md"), "mine\n").unwrap();
+        let again = project_plan(&dest, "demo_app", sqlite, Some(&root));
+        assert!(again.is_err(), "a non-empty directory is refused");
         let cargo = std::fs::read_to_string(dir.join("demo_app/Cargo.toml")).unwrap();
         assert!(cargo.contains("name = \"demo_app\""));
         assert!(cargo.contains("siderite-cli"));

@@ -26,6 +26,7 @@ mod error;
 #[cfg(test)]
 mod fixtures;
 mod fsio;
+mod generate;
 mod openapi;
 mod project;
 pub mod report;
