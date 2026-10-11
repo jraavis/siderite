@@ -219,6 +219,12 @@ stopped for a stable operator diagnosis.
 PostgreSQL/MySQL advisory acquisition defaults to 30 seconds. Set
 `Migrator::with_lock_timeout` or `--lock-timeout-ms` to change it. Timeout
 returns `MigrationError::LockTimeout`; retry after the holder finishes.
+`Migrator::lock_holder()` names the holding session on that path only
+(successful runs never query it): PostgreSQL joins `pg_locks` with
+`pg_stat_activity`, MySQL reads `IS_USED_LOCK` then the process list. The
+session id is always reported; user, client, application, state and time
+need `pg_read_all_stats` (PostgreSQL) or `PROCESS` (MySQL) for sessions of
+other roles. `migrate` and `rollback` print it to stderr after a timeout.
 This limit does not bound pool acquisition, SQLite BEGIN or migration
 execution. Session release is checked, including MySQL lock ownership.
 
@@ -226,19 +232,26 @@ Observed lock behaviour (live PostgreSQL and MySQL, `tests/lock_live.rs`):
 
 - A waiter gives up with `LockTimeout` within its bound while another
   session holds the lock, writes nothing and leaves the holder's ownership
-  intact. The message does not name the holder.
+  intact. `lock_holder()` then names the holding session.
 - Aborting a waiting migrate future leaves no lock or pending request; the
   lock is free once the holder releases it.
-- Dropping a migrator mid-run closes its session. The server only notices
-  once the statement in flight finishes, so the lock is freed after that
-  statement ends, not instantly. A long-running step delays other migrators.
+- Dropping a migrator mid-run (or a dead client process) closes its
+  socket, but the lock is freed only when the server notices:
+  - PostgreSQL notices after the statement in flight finishes, so a long
+    step holds the lock until it ends. Setting
+    `client_connection_check_interval` (PostgreSQL 14+) makes the server
+    poll the socket during long statements and cancel them sooner.
+  - MySQL checks the connection during the running statement and frees
+    the lock within about 5 seconds in the live tests.
+  Killing the session server-side (below) frees it at once on both.
 - If the holder's session is killed (`pg_terminate_backend`, MySQL `KILL`)
   during a step, the server frees the lock at once, the run fails with a
   driver error, nothing is recorded, and the next migrator proceeds.
 - If the session is lost after the work finished but before release, the
-  run returns `MigrationError::LockReleaseUncertain` naming the migrations
-  that did run. They are recorded; re-running is a no-op. Check
-  `inspectmigrations` before assuming either outcome.
+  run returns `MigrationError::LockReleaseUncertain`: the release could not
+  be confirmed. It names the migrations this run applied (`migrate`) or
+  unapplied (`rollback`); history already reflects them, so re-running is a
+  no-op. Check `inspectmigrations` before assuming either outcome.
 - A role without CREATE, or without write access to the history/progress
   tables, fails with the server's permission-denied error and the lock is
   released. PostgreSQL rolls an atomic migration back; MySQL DDL commits

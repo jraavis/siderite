@@ -33,17 +33,22 @@ pub enum MigrationError {
         operation: usize,
     },
     /// The advisory migration lock could not be acquired before its deadline.
+    ///
+    /// Use [`Migrator::lock_holder`](crate::Migrator::lock_holder) on this
+    /// path to name the session that holds it.
     #[error("timed out waiting for the migration lock")]
     LockTimeout,
-    /// The run finished, but releasing the migration lock could not be
+    /// The run finished, but the release of the migration lock could not be
     /// confirmed (for example the lock session was lost), so lock ownership
-    /// is uncertain. The listed migrations did run; inspect before retrying.
+    /// is uncertain. The listed migrations were applied (`migrate`) or
+    /// unapplied (`rollback`); inspect before retrying.
     #[error(
-        "migrations {applied:?} completed, but releasing the migration lock \
-        failed so lock ownership is uncertain: {source}"
+        "the run finished for {applied:?}, but the migration lock release \
+        could not be confirmed, so lock ownership is uncertain: {source}"
     )]
     LockReleaseUncertain {
-        /// Ids written to (or removed from) the history table.
+        /// Ids written to (`migrate`) or removed from (`rollback`) the
+        /// history table by this run.
         applied: Vec<String>,
         /// Why the release could not be confirmed.
         #[source]

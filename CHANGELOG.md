@@ -22,6 +22,14 @@
   again when serialized or rendered.
 
 ### Changed
+- **Migrations:** `Migrator::lock_holder()` and `LockHolder` name the
+  session holding the migration lock (PostgreSQL `pg_locks` with
+  `pg_stat_activity`, MySQL `IS_USED_LOCK` and the process list).
+  `migrate` / `rollback` print it after `LockTimeout`; the error variant is
+  unchanged and successful runs do not query it. `LockReleaseUncertain`
+  now says the release could not be confirmed and that the ids were
+  applied or unapplied by the run. Documented when each engine frees the
+  lock of a dead holder.
 - **Migrations:** `RecoveryEntry` gains `total_operations` (the migration's
   operation count in the supplied graph) and `all_operations_recorded()`,
   so `inspectmigrations` shows when only the history write is outstanding.
