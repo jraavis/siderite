@@ -4,6 +4,7 @@ use crate::args::{GlobalArgs, check_json_args, json_requested, split_global};
 use crate::connect::{backend_kind, connect_url, scratch_db};
 use crate::dbshell::ShellCommand;
 use crate::error::CliError;
+use crate::openapi;
 use crate::report::{build, channel, text};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
 use siderite_core::App;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 /// | `run [--addr ADDR]` | connects the configured databases and serves the app |
 /// | `routes [--json]` | prints `METHOD PATH operation_id` for every route |
 /// | `check [--json]` | runs [`check`](crate::check()); exits `1` on errors |
+/// | `openapi export [-o PATH] [--force]` | writes the OpenAPI document |
 /// | `dbshell` | starts `sqlite3`, `psql` or `mysql` on the database |
 /// | `makemigrations`, `migrate`, `rollback`, `showmigrations`, `squashmigrations` | delegate to [`siderite_migrations::cli::run`] |
 ///
@@ -212,6 +214,15 @@ impl AppCli {
                     _ => self.dbshell(&global, env),
                 }
             }
+            "openapi" => {
+                if rest.iter().any(|a| a == "--help" || a == "-h") {
+                    print_help();
+                    return Ok(0);
+                }
+                let export = openapi::parse(&rest)?;
+                let path = env.report_path.as_deref();
+                openapi::export(&(self.factory)(), &export, path)
+            }
             "makemigrations" | "squashmigrations" => {
                 // These never touch a database, but the runner wants a handle.
                 let db = scratch_db().await?;
@@ -347,6 +358,8 @@ Commands:
   run [--addr ADDR]            Connect the databases and serve the app
   routes [--json]              List METHOD PATH operation_id
   check [--json]               Validate config, models, migrations and routes
+  openapi export [--output PATH] [--force]
+                               Write the OpenAPI document (default stdout)
   dbshell                      Open the database's native client
   makemigrations [--name SLUG] [--empty] [--dry-run]
   migrate [TARGET] [--dry-run]

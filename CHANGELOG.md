@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `openapi export [--output PATH] [--force]` writes the app's
+  OpenAPI 3.1 document (the same `App::openapi()` that serves
+  `/openapi.json`, pretty-printed) from the app factory alone: no database
+  connection, server or migration, and it works with HTTP docs disabled.
+  File output is atomic and never replaces an existing file without
+  `--force`; stdout output stays clean of factory prints.
 - **CLI:** `check --json` and `routes --json` (the flag may come before or
   after the command) write one versioned JSON envelope to stdout with the
   usual exit codes. Failures, usage errors included, are envelopes with

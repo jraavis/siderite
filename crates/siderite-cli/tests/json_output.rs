@@ -163,3 +163,33 @@ fn usage_errors_of_the_tool_are_envelopes() {
         assert!(!stderr(&out).is_empty());
     }
 }
+
+#[test]
+fn openapi_export_prints_only_the_document() {
+    let root = scratch("openapi");
+    let (app, path) = fixture(&root.0);
+    let doc = r#"{"openapi":"3.1.0"}"#;
+    let export = ["openapi", "export"];
+    let out = siderite(&app, &path, &export, &[("FAKE_REPORT", doc)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(stdout(&out), format!("{doc}\n"));
+    assert!(stderr(&out).contains("noise from the app factory"));
+    // No document: nothing on stdout (no envelope), the reason on stderr.
+    let fake = [("FAKE_REPORT", ""), ("FAKE_CODE", "101")];
+    let out = siderite(&app, &path, &["openapi", "export"], &fake);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(stdout(&out), "");
+    assert!(stderr(&out).contains("without writing its output"));
+}
+
+#[test]
+fn openapi_output_paths_are_relative_to_the_caller() {
+    let root = scratch("openapi-output");
+    let (app, path) = fixture(&root.0);
+    let cwd = app.join("src");
+    let args = ["openapi", "export", "-o", "spec.json"];
+    let out = siderite(&cwd, &path, &args, &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let want = format!("-o {}", cwd.join("spec.json").display());
+    assert!(stderr(&out).contains(&want), "{}", stderr(&out));
+}

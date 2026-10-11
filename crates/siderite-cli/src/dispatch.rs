@@ -2,12 +2,14 @@
 
 use crate::args::{check_json_args, json_requested};
 use crate::error::CliError;
-use crate::project::{self, CARGO_COMMANDS, is_app_command};
+use crate::openapi;
+use crate::project::{self, CARGO_COMMANDS, Missing, is_app_command};
 use crate::report::channel;
 use crate::scaffold;
 use crate::standalone;
 use crate::target::{self, ProjectArgs, Selected, split_project};
 use std::env;
+use std::path::Path;
 
 /// Entry point of the `siderite` binary.
 ///
@@ -78,17 +80,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if is_app_command(command) {
         if let Some(app) = target::locate("cargo", cwd, &project, true)? {
             let bin = app.bin.as_deref();
-            if json_requested(raw) {
-                return project::cargo_run_report(&app.dir, bin, raw, command);
-            }
-            return project::cargo_run(&app.dir, bin, raw);
+            return run_app(&app.dir, bin, raw, command, cwd);
         }
-        if command == "run"
-            || command == "routes"
-            || command == "check"
-            || command == "dbshell"
-            || command == "makemigrations"
-        {
+        if NEEDS_APP.contains(&command) {
             return Err(CliError::usage(format!(
                 "`{command}` needs an application. cd into a project created with `siderite new`, or an example directory"
             )));
@@ -96,6 +90,39 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     }
     let code = standalone::run_with(raw, env::var("DATABASE_URL").ok()).await?;
     Ok(code.0)
+}
+
+/// App commands that make no sense without an application package.
+const NEEDS_APP: &[&str] = &[
+    "run",
+    "routes",
+    "check",
+    "dbshell",
+    "makemigrations",
+    "openapi",
+];
+
+/// `cargo run` the application with `raw`. Output that must stay clean on
+/// stdout (`--json` reports, the OpenAPI document) is captured.
+fn run_app(
+    dir: &Path,
+    bin: Option<&str>,
+    raw: &[String],
+    command: &str,
+    cwd: &Path,
+) -> Result<u8, CliError> {
+    if json_requested(raw) {
+        let missing = Missing::Envelope(command);
+        return project::cargo_run_captured(dir, bin, raw, missing);
+    }
+    if command != "openapi" {
+        return project::cargo_run(dir, bin, raw);
+    }
+    let raw = openapi::absolute_output(raw, cwd);
+    if openapi::writes_file(&raw) {
+        return project::cargo_run(dir, bin, &raw);
+    }
+    project::cargo_run_captured(dir, bin, &raw, Missing::Nothing)
 }
 
 /// First positional token, skipping flags and the values of known flags.
@@ -146,6 +173,8 @@ Create and run an app:
   run [--addr ADDR]             Serve the app
   routes [--json]               List METHOD PATH operation_id
   check [--json]                Validate config, models, migrations and routes
+  openapi export [-o PATH] [--force]
+                                Write the OpenAPI document (stdout or PATH)
   dbshell                       Open the database's native client
   build [--release ...]         cargo build in the app package
   test                          cargo test in the app package
