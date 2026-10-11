@@ -1,9 +1,10 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
 use crate::error::CliError;
-use crate::project::{self, CARGO_COMMANDS, find_app_dir, is_app_command};
+use crate::project::{self, CARGO_COMMANDS, is_app_command};
 use crate::scaffold;
 use crate::standalone;
+use crate::target::{self, Selected, split_project};
 use std::env;
 
 /// Entry point of the `siderite` binary.
@@ -17,6 +18,8 @@ pub async fn run() -> Result<u8, CliError> {
 }
 
 async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError> {
+    let (project, raw) = split_project(raw)?;
+    let raw = raw.as_slice();
     if raw.iter().any(|a| a == "--help" || a == "-h")
         && first_command(raw).is_none_or(|c| c == "help")
     {
@@ -32,16 +35,17 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         return scaffold::run(raw);
     }
     if CARGO_COMMANDS.contains(&command) {
-        let dir = find_app_dir(cwd).ok_or_else(|| {
+        let found = target::locate("cargo", cwd, &project, false)?;
+        let Selected { dir, bin, .. } = found.ok_or_else(|| {
             CliError::usage(format!(
                 "{command} needs a Cargo package (cd into a siderite app, or run siderite new)"
             ))
         })?;
-        return project::cargo_passthrough(&dir, command, raw);
+        return project::cargo_passthrough(&dir, command, bin.as_deref(), raw);
     }
     if is_app_command(command) {
-        if let Some(dir) = find_app_dir(cwd) {
-            return project::cargo_run(&dir, raw);
+        if let Some(app) = target::locate("cargo", cwd, &project, true)? {
+            return project::cargo_run(&app.dir, app.bin.as_deref(), raw);
         }
         if command == "run"
             || command == "routes"
@@ -123,6 +127,9 @@ Options:
   --database ALIAS              Database alias (migrate, dbshell)
   --database-url URL            Database URL
   --migrations-dir DIR          Migration JSON directory
+  --manifest-path PATH          Cargo.toml of the app (before the command)
+  --package, -p NAME            Workspace package of the app
+  --bin NAME                    Binary of the app package
   --help                        Show this help
 
 `run`, `routes`, `check`, `dbshell` and `makemigrations` invoke `cargo run`

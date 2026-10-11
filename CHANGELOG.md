@@ -8,6 +8,12 @@
 
 
 ### Changed
+- **CLI:** explicit project selection. `siderite` discovers the app with
+  `cargo metadata --no-deps` and accepts `--manifest-path`, `--package` /
+  `-p` and `--bin` before the command (arguments after the command are
+  forwarded unchanged). Nested packages, virtual workspaces and several
+  binaries resolve deterministically; ambiguity exits 2 with the
+  candidates, and a missing `cargo` exits 1 with an install hint.
 - **Migrations:** live-tested the migration lock on PostgreSQL and MySQL:
   bounded wait, cancelled waiters and holders, server-side kill of the lock
   holder, and roles without CREATE or bookkeeping-table write access. A run
