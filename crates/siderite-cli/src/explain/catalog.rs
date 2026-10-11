@@ -23,6 +23,7 @@ pub(crate) struct Explanation {
 
 const CHECK: &str = "guides/production/cli#check";
 const CONFIG: &str = "guides/production/cli#configuration";
+const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
 const JSON: &str = "guides/production/cli#json-output";
 
@@ -530,6 +531,43 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite routes",
         CHECK,
+    ),
+    entry(
+        "services.E001",
+        "No container runtime",
+        [
+            "`siderite services` runs local services with Docker or \
+             Podman, and neither was found on PATH.",
+            "Install Docker or Podman, or set SIDERITE_CONTAINER_RUNTIME \
+             to the runtime program.",
+        ],
+        "siderite services status",
+        SERVICES,
+    ),
+    entry(
+        "services.E002",
+        "Container runtime command failed",
+        [
+            "The runtime refused a command (daemon not running, port in \
+             use, image not available) or the container stopped while \
+             starting.",
+            "Start the runtime's daemon, free or change the port \
+             (`--port`), or read the container's logs.",
+        ],
+        "siderite services up",
+        SERVICES,
+    ),
+    entry(
+        "services.E003",
+        "Service not ready in time",
+        [
+            "The database did not accept connections within --timeout \
+             (the first start pulls the image and initializes data).",
+            "Run again with a longer --timeout, or read the container's \
+             logs.",
+        ],
+        "siderite services up --timeout 180",
+        SERVICES,
     ),
     entry(
         "setup.E001",

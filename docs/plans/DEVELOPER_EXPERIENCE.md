@@ -121,7 +121,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   redact credentials and sensitive query parameters even on parsing errors.
   JSON and text agree. Do not introduce a second configuration loader.
 
-- [ ] **X08 — Manage optional local service fixtures.**
+- [x] **X08 — Manage optional local service fixtures.**
   Depends: C07, X06. Scope: one PostgreSQL development-service recipe first.
   Done: explicit container-runtime prerequisite; project-scoped resources,
   readiness waits and random/local credentials; no exposed nonlocal ports by
