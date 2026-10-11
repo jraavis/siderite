@@ -76,6 +76,28 @@ connections when shutdown starts, so probes get no connection before
 startup completes or once draining begins; size the probe's failure
 threshold to cover the shutdown timeout.
 
+```rust
+use siderite::health::{ReadinessChecks, readiness, sql_check};
+
+let checks = ReadinessChecks::new().check("database", sql_check(db.clone()));
+let app = App::new().routes([readiness("/readyz", checks)]);
+```
+
+Readiness with checks is opt-in too:
+`readiness("/readyz", ReadinessChecks::new().check("database", sql_check(db)))`
+answers `200` only while the server is Ready and every check passes, `503`
+otherwise (no check runs before startup completes or once draining
+begins). Checks are closures returning `Result<(), String>` that reuse the
+app's existing pools and clients; `sql_check(db)` runs `SELECT 1` through a
+`Db` (SQL backends only; write a check with your own client for Redis or
+MongoDB). Probe traffic cannot become load: each check has a timeout
+(`.timeout`, default 2 s), at most `.concurrency` (default 4) run at once,
+and one evaluation is cached for `.cache` (default 1 s) and shared, so
+concurrent probes wait for the evaluation in progress instead of starting
+their own. The body is `{"status":"ready"|"unavailable","checks":{"name":
+"ok"|"failed"|"timeout"}}` with `Cache-Control: no-store`; error details
+are logged at `warn`, never returned, so name checks generically.
+
 ## See also
 
 - [Configuration](/siderite/guides/production/config/)

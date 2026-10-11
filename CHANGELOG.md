@@ -8,6 +8,12 @@
 
 
 ### Added
+- **HTTP:** opt-in readiness with checks:
+  `readiness("/readyz", ReadinessChecks::new().check(..))` answers 200
+  only while the server is Ready and every check passes. Checks are
+  bounded (per-check timeout, concurrency cap, a cached evaluation shared
+  by concurrent probes), reuse existing pools (`sql_check(db)` for SQL),
+  and failures are 503 with only check names and outcomes public.
 - **HTTP:** opt-in liveness: `siderite::health::liveness("/livez")` is a
   route answering `200 {"status":"alive"}` with `Cache-Control: no-store`
   in every phase, with no database, readiness or version details; it is

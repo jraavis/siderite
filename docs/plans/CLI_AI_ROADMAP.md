@@ -378,7 +378,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: no database dependency, no automatic endpoint collision, minimal
   public information, defined status and tests during startup/shutdown.
 
-- [ ] **F04 — Add bounded readiness orchestration.**
+- [x] **F04 — Add bounded readiness orchestration.**
   Depends: F03. Scope: async probe registry and custom checks.
   Done: timeout, concurrency cap and caching prevent per-request connection
   storms; probes reuse existing pools; failures return 503 with redacted
