@@ -80,6 +80,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "docs search" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/DocsData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "verify" } } },
       "then": {
         "properties": {
@@ -182,6 +192,59 @@
               "name": { "type": "string", "minLength": 1 },
               "status": { "enum": ["ok", "info", "warning", "error"] },
               "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "DocsData": {
+      "type": "object",
+      "required": [
+        "docs_version",
+        "index_format",
+        "installed",
+        "query",
+        "total",
+        "results"
+      ],
+      "properties": {
+        "docs_version": { "type": "string", "minLength": 1 },
+        "index_format": { "const": 1 },
+        "installed": { "type": "array", "items": { "type": "string" } },
+        "query": { "type": "string" },
+        "total": { "type": "integer", "minimum": 0 },
+        "results": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "title",
+              "path",
+              "line",
+              "source_url",
+              "features",
+              "compiled",
+              "score",
+              "excerpt",
+              "text",
+              "truncated"
+            ],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["guide", "example"] },
+              "title": { "type": "string" },
+              "path": { "type": "string" },
+              "line": { "type": "integer", "minimum": 1 },
+              "source_url": { "type": "string" },
+              "features": { "type": "array", "items": { "type": "string" } },
+              "compiled": { "type": "boolean" },
+              "score": { "type": "number", "minimum": 0 },
+              "excerpt": { "type": "array", "items": { "type": "string" } },
+              "text": { "type": "string" },
+              "truncated": { "type": "boolean" }
             }
           }
         }

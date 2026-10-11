@@ -24,6 +24,7 @@ pub mod connect;
 pub mod dbshell;
 mod dev;
 mod dispatch;
+mod docs;
 mod doctor;
 mod error;
 #[cfg(test)]

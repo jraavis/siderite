@@ -44,6 +44,10 @@ Branch from `master`; never push to it directly. A PR is merged only when:
   Existing exceptions may only shrink; after splitting a file or wrapping
   lines run `python3 scripts/check_size.py --update` to ratchet the baseline
   down. Exit status is 1 for violations and 2 for usage or I/O errors.
+- The CLI packages a search index of the website docs and examples
+  (`crates/siderite-cli/src/docs/index.json`). After changing either, run
+  `SIDERITE_UPDATE_DOCS_INDEX=1 cargo test -p siderite-cli docs` and commit
+  the regenerated file; a test fails while it is stale.
 - New dependencies pass `cargo deny check` and build on the MSRV.
 
 PRs are squash-merged; the PR title becomes the commit subject.

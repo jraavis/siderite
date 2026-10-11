@@ -143,7 +143,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
 
 ### Help AI tools produce code that actually compiles
 
-- [ ] **X11 — Ship version-matched framework documentation.**
+- [x] **X11 — Ship version-matched framework documentation.**
   Depends: X01. Scope: `docs search QUERY` over a packaged local index.
   Done: results carry framework version, feature requirements and source
   locations; runnable examples are compiled during release verification.

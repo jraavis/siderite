@@ -44,6 +44,7 @@ const VALUED: &[&str] = &[
     "--name",
     "--steps",
     "--path",
+    "--limit",
 ];
 
 /// Print the script for `shell` (`raw` starts at `completions`).

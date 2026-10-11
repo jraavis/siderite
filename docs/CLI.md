@@ -226,6 +226,14 @@ Each step records its status (`passed`, `failed` or `skipped`), wall time, exit 
 
 `lint`, `build` and `test` run with Cargo's stable `--message-format=json`, so each step also lists its compiler diagnostics (rustc and Clippy) as `{level, code, message, spans, rendered}`: the error code (`E0308`, `clippy::needless_return`), every source span (`file`, lines, columns, `primary`, `label`) and the full explanation as rustc prints it. Duplicates (Cargo replays cached messages) are dropped, errors come first, and at most 50 are kept per step (`omitted_diagnostics` counts the rest). `diagnostic_format` (currently `1`) versions this shape. Individual test results need unstable libtest options, so `test_results` is `aggregate`: a test step reports whether `cargo test` passed as a whole, and its output tail holds the test binaries' own output; nothing is parsed from terminal text.
 
+## `docs search`
+
+`siderite docs search QUERY... [--json] [--limit N]` searches the framework documentation of this CLI's own version, offline. The index is packaged with the CLI and built from the website's start, guides, reference and tutorial pages (one entry per `##` section) and from the workspace examples, which are compiled in siderite's own build (`compiled: true`). Nothing from your project is indexed or sent anywhere.
+
+Ranking is keyword based (BM25 over the section text, with a bonus for words in the title); sections containing every query word come first, and ties are broken by id, so the same query always gives the same order. `--limit` (1 to 50, default 5) bounds the results. Each result carries its id, title, source file and line, a link to that file at the release tag (`source_url`), the Cargo features the section says it needs, the lines matching the query and, in JSON, the section text (cut at 4,000 characters, with `truncated`).
+
+`data.docs_version` is the version the docs describe. When the nearest `Cargo.lock` above the current directory locks a different siderite version, the report adds a `docs.W001` warning naming both versions and the `cargo install siderite-cli --version ...` command for matching docs; the exit code stays `0`.
+
 ## `showmigrations --json`
 
 Works in the app binary and in the standalone `siderite` binary. `data` holds the selected `alias` (`null` in the standalone binary, which has no aliases), where the URL came from (`source`: `flag`, `settings` or `environment`; the URL itself is never printed), the `migrations` as `{id, applied}` in the order of the text output, and `applied` / `pending` counts. Both outputs come from the same `Migrator::show()` rows; nothing parses printed lines.
