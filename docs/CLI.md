@@ -382,6 +382,12 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 
 Migration checks are skipped when no migrations directory is passed to the library function `siderite_cli::check`; `AppCli` always passes its own.
 
+## `seed`
+
+`AppCli::seed(name, summary, |s: Seeding| async move { ... })` registers a dataset; `Seeding` carries `db` (the selected database), `alias` and `dataset`, and the callback returns `Result<(), SeedError>` (`SeedError` is a boxed error, so `?` works on ORM errors). `siderite seed --list [--json]` lists the registered datasets and `siderite seed --dataset NAME [--json]` loads one into the database the global flags select (`--database ALIAS`, `--database-url`, else the configured URL, else `DATABASE_URL` for `default`). An unknown or twice-registered name is a usage error naming the registered datasets; nothing connects before the name is resolved.
+
+The dataset runs in one transaction whenever the backend has transactions (SQLite, PostgreSQL and MySQL all do), so a dataset that returns an error is rolled back and reported as `seed.E001` (exit `1`) with its redacted message. Seeding is deliberately small: it runs only when a dataset is named, never deletes or resets data first, reads no SQL files and records nothing in the migration history, so it cannot be mistaken for a reversible migration. Write datasets to be idempotent (look rows up before inserting, or rely on unique keys). The text report names the dataset, the alias, the URL without its password and whether a transaction was used; `--json` writes a `seed` envelope whose `data` is `{datasets, loaded}`, where `loaded` is `null` for `--list` and otherwise `{dataset, database, url_source, url, transaction}`.
+
 ## `dbshell`
 
 `dbshell` starts `sqlite3`, `psql` or `mysql` on the selected database and returns the client's exit code. Passwords never appear on the command line or in output: `psql` receives `PGPASSWORD` and `mysql` receives `MYSQL_PWD` in its environment. A userinfo password and a PostgreSQL `?password=` query parameter both move into `PGPASSWORD` and are stripped from the URL passed to `psql`, so options such as `sslmode` still apply. A URL that carries `sslpassword` is refused: there is no safe way to pass it. For MySQL only host, port, user and database are forwarded. An in-memory SQLite URL, an unknown scheme, or a client that is not on `PATH` is an error. MongoDB and Redis are not supported.

@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** seed datasets: `AppCli::seed(name, summary, callback)`
+  registers one, `siderite seed --dataset NAME` loads it into the selected
+  database in one transaction (a failure, `seed.E001`, keeps nothing), and
+  `seed --list` lists them. Seeds run only when named, never reset data
+  and are not migrations.
 - **CLI:** `siderite services up|down|status|env|destroy` runs a
   PostgreSQL development database in Docker or Podman: one container and
   data volume per project, published on 127.0.0.1 only, with generated
