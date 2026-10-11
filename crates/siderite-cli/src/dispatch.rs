@@ -53,7 +53,8 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if cargo.is_none() && json_requested(raw) {
         check_json_args(raw, command)?;
     }
-    if command.is_none_or(|c| c == "help") && raw.iter().any(|a| a == "--help" || a == "-h") {
+    let help = raw.iter().any(|a| a == "--help" || a == "-h");
+    if help && command.is_none_or(|c| c == "help") {
         print_help();
         return Ok(0);
     }
