@@ -86,6 +86,12 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
+    if command == "verify" {
+        let app = target::locate("cargo", cwd, &project, true)?;
+        let missing = || CliError::usage(NEEDS_APP);
+        let app = app.ok_or_else(missing)?;
+        return crate::verify::run(raw, &app.dir, app.bin.as_deref());
+    }
     if let Some(pass) = &cargo {
         pass.check_bin(project.bin.as_deref())?;
         let found = target::locate("cargo", cwd, &project, false)?;
@@ -115,6 +121,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     let code = standalone::run_with(raw, env_url).await?;
     Ok(code.0)
 }
+
+/// `verify` outside an application.
+const NEEDS_APP: &str = "`verify` needs an application; cd into one";
 
 /// `siderite commands [--json]`.
 fn list_commands(raw: &[String]) -> Result<u8, CliError> {

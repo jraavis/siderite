@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite verify [--json] [--live]` runs `fmt --check`,
+  Clippy, the build, the tests and the framework checks with one
+  aggregate report (per-step status, duration and redacted failure
+  output). A failed build skips the steps that need it; `--live` adds the
+  ignored tests. Files are never reformatted and no migration is applied.
 - **CLI:** `siderite completions bash|zsh|fish` prints completion scripts
   derived from the command contract (commands, subcommands and flags);
   shell profiles are never edited.

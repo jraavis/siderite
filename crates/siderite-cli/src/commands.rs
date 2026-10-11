@@ -255,6 +255,18 @@ pub const COMMANDS: &[Command] = &[
         )
     },
     Command {
+        runner: Runner::Tool,
+        mutates: &[Mutation::BuildArtifacts, Mutation::RunsCode],
+        live: Live::OptIn,
+        formats: TEXT_JSON,
+        ..cmd(
+            "verify",
+            Group::App,
+            "verify [--json] [--live]",
+            "fmt, lint, build, test and check in one report",
+        )
+    },
+    Command {
         mutates: &[Mutation::RunsCode],
         live: Live::Always,
         ..cmd("run", Group::App, "run [--addr ADDR]", "Serve the app")

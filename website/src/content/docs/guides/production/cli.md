@@ -27,7 +27,7 @@ component is reported with the `rustup component add` command to run. Without a 
 | | `siderite` in a package | Standalone (no package) | `AppCli` in your binary |
 |---|---|---|---|
 | Needs your `App` and models | compiles them via cargo | no | yes |
-| Commands | `new`, `doctor`, `run`, `routes`, `check`, `dbshell`, `openapi export`, migrations, `build`, `test`, `fmt`, `lint`, `clean` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
+| Commands | `new`, `doctor`, `verify`, `run`, `routes`, `check`, `dbshell`, `openapi export`, migrations, `build`, `test`, `fmt`, `lint`, `clean` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
 
 Exit codes: `0` success, `1` failure (or `check` found an error), `2` usage
 error.
@@ -218,6 +218,18 @@ time, each within the timeout (default 5 s). Only the requested aliases
 can fail, errors never show URLs, SQLite files are opened read-only and
 never created, and Redis/MongoDB aliases are not probed.
 
+## Verify
+
+```bash
+siderite verify          # fmt, lint, build, test and check
+siderite verify --live   # also the ignored (live-service) tests
+```
+
+One report for the whole local verification: each step's status, time
+and, on failure, the redacted end of its output. A failed build skips the
+tests and the framework check; files are never reformatted and migrations
+are never applied. `--json` writes one `verify` envelope.
+
 ## AI context
 
 ```bash
@@ -242,7 +254,7 @@ recognised.
 
 ## JSON output
 
-`check`, `doctor`, `routes` and `showmigrations` accept `--json`, before or after the command
+`check`, `doctor`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command
 (`siderite --json routes`, `siderite check --json`). Stdout then carries
 exactly one JSON value and a newline, a versioned envelope described by
 [`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):
