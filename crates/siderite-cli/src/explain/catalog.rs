@@ -25,6 +25,7 @@ const CHECK: &str = "guides/production/cli#check";
 const CONFIG: &str = "guides/production/cli#configuration";
 const OPENAPI_DIFF: &str = "guides/production/cli#comparing-openapi-documents";
 const PACKAGE: &str = "guides/production/cli#release-packages";
+const UPGRADE: &str = "guides/production/cli#upgrades";
 const SEED: &str = "guides/production/cli#seed-datasets";
 const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
@@ -684,6 +685,42 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite ai dump-context --json",
         "guides/production/cli#ai-context",
+    ),
+    entry(
+        "upgrade.W001",
+        "Upgrade compatibility unknown",
+        [
+            "The CLI running the preview has no release notes for the \
+             target version (it is newer than the CLI, or unreleased).",
+            "Run the preview with the target's CLI, and rely on the \
+             verification steps the report lists.",
+        ],
+        "siderite upgrade --to VERSION --dry-run",
+        UPGRADE,
+    ),
+    entry(
+        "upgrade.W002",
+        "Framework dependency from a path",
+        [
+            "A siderite crate comes from a local path, which siderite \
+             cannot point at another version.",
+            "Check out the target version in that directory, or switch \
+             the dependency to a git tag or registry version.",
+        ],
+        "siderite upgrade --to VERSION --dry-run",
+        UPGRADE,
+    ),
+    entry(
+        "upgrade.W003",
+        "No framework dependency",
+        [
+            "The selected package depends on no siderite crate, so there \
+             is nothing to upgrade.",
+            "Select the application package with --package or \
+             --manifest-path.",
+        ],
+        "siderite upgrade --to VERSION --dry-run",
+        UPGRADE,
     ),
     entry(
         "verify.E001",

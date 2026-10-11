@@ -275,7 +275,7 @@ Each step records its status (`passed`, `failed` or `skipped`), wall time, exit 
 
 ## `docs search`
 
-`siderite docs search QUERY... [--json] [--limit N]` searches the framework documentation of this CLI's own version, offline. The index is packaged with the CLI and built from the website's start, guides, reference and tutorial pages (one entry per `##` section) and from the workspace examples, which are compiled in siderite's own build (`compiled: true`). Nothing from your project is indexed or sent anywhere.
+`siderite docs search QUERY... [--json] [--limit N]` searches the framework documentation of this CLI's own version, offline. The index is packaged with the CLI and built from the website's start, guides, reference and tutorial pages (one entry per `##` section), from the changelog (one `changelog` entry per release section) and from the workspace examples, which are compiled in siderite's own build (`compiled: true`). Nothing from your project is indexed or sent anywhere.
 
 Ranking is keyword based (BM25 over the section text, with a bonus for words in the title); sections containing every query word come first, and ties are broken by id, so the same query always gives the same order. `--limit` (1 to 50, default 5) bounds the results. Each result carries its id, title, source file and line, a link to that file at the release tag (`source_url`), the Cargo features the section says it needs, the lines matching the query and, in JSON, the section text (cut at 4,000 characters, with `truncated`).
 
@@ -316,6 +316,16 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - **Manifest.** `manifest.json` records the package and version, the binary path, the target triple, `profile: "release"`, `locked: true`, `rustc --version`, the siderite versions in `Cargo.lock`, every file with its size and SHA-256, the excluded paths and `native`: the shared libraries the binary needs as `ldd` (Linux) or `otool -L` (macOS) reports them (`tool: null` when neither is available). `SHA256SUMS` lists the same checksums for `sha256sum -c`. Files are sorted and the manifest has no timestamps.
 - **Smoke test.** The packaged binary's `routes` command is run from the package with an empty `PATH`; if it fails (`package.E003`) the package is discarded.
 - **Output.** `target/siderite-package/NAME-VERSION-HOST` unless `--output DIR`. The package is assembled in a temporary sibling and moved into place. An existing directory is replaced only with `--force`, and only if it is an earlier package (it has a `manifest.json`); anything else is never deleted. `--json` writes a `package` envelope whose `data` is `{output, manifest}`.
+
+## `upgrade`
+
+`siderite upgrade --to VERSION --dry-run [--json]` previews upgrading the framework crates (`siderite`, `siderite-cli`, `siderite-testkit`) of the selected package to an explicit version. It never writes a file; without `--dry-run` it is a usage error, and rewriting manifests or sources is out of scope.
+
+- **Sources.** A registry dependency's requirement becomes `version "VERSION"`; a git dependency (its URL and branch, tag or rev are shown) becomes `tag = "vVERSION"`, the release tag naming; a path dependency cannot be redirected by siderite (`upgrade.W002`, check out the version there). A dependency the package inherits with `workspace = true` is edited in the workspace root `Cargo.toml`, which the report names.
+- **Compatibility.** `semver` compares the locked siderite version with the target: `compatible` within one release line (`0.x` minor or `x` major), `breaking` across lines, `downgrade`, or `unknown`. The notes are the bullet points of the target's `Changed`, `Removed`, `Deprecated` and `Security` sections in the changelog packaged with this CLI (the docs index carries it). When the CLI has no section for the target (a newer or unreleased version), `notes_known` is `false` and `upgrade.W001` says compatibility is unknown.
+- **Verification.** The report lists the steps in order: export the OpenAPI document before editing, edit, `siderite build` (updates `Cargo.lock`), `siderite verify`, `siderite makemigrations --dry-run`, export again and `siderite openapi diff`.
+
+A package with no framework dependency gets `upgrade.W003`. Warnings do not change the exit status (`0`). `--json` writes an `upgrade` envelope whose `data` is `{from, to, dry_run, dependencies, compatibility, verify}`.
 
 ## `openapi diff`
 

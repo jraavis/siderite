@@ -155,6 +155,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "upgrade" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/UpgradeData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "explain" } } },
       "then": {
         "properties": {
@@ -329,7 +339,7 @@
             ],
             "properties": {
               "id": { "type": "string", "minLength": 1 },
-              "kind": { "enum": ["guide", "example"] },
+              "kind": { "enum": ["guide", "example", "changelog"] },
               "title": { "type": "string" },
               "path": { "type": "string" },
               "line": { "type": "integer", "minimum": 1 },
@@ -533,6 +543,56 @@
             }
           }
         }
+      }
+    },
+    "UpgradeData": {
+      "type": "object",
+      "required": [
+        "from",
+        "to",
+        "dry_run",
+        "dependencies",
+        "compatibility",
+        "verify"
+      ],
+      "properties": {
+        "from": { "type": "array", "items": { "type": "string" } },
+        "to": { "type": "string", "minLength": 1 },
+        "dry_run": { "const": true },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "source",
+              "inherited",
+              "manifest",
+              "current",
+              "proposed"
+            ],
+            "properties": {
+              "name": { "type": "string" },
+              "source": { "enum": ["registry", "git", "path"] },
+              "inherited": { "type": "boolean" },
+              "manifest": { "type": "string" },
+              "current": { "type": "string" },
+              "proposed": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "compatibility": {
+          "type": "object",
+          "required": ["semver", "notes_known", "notes"],
+          "properties": {
+            "semver": {
+              "enum": ["compatible", "breaking", "downgrade", "unknown"]
+            },
+            "notes_known": { "type": "boolean" },
+            "notes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "verify": { "type": "array", "items": { "type": "string" } }
       }
     },
     "ExplainData": {

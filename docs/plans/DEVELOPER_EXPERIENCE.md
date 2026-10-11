@@ -200,7 +200,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   explicit live-test jobs and useful artifacts; preserve existing workflow
   files unless an explicit reviewed update is requested. No embedded secrets.
 
-- [ ] **X19 — Preview framework upgrade impact.**
+- [x] **X19 — Preview framework upgrade impact.**
   Depends: X11, D03. Scope: `upgrade --dry-run` for an explicit target version.
   Done: show dependency changes, compatibility notes and verification commands
   without writing files. Handle git/path/workspace sources explicitly; unknown

@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 const SECTIONS: &[&str] = &["start", "guides", "reference", "tutorials"];
 /// Website pages, relative to the repository root.
 const SITE: &str = "website/src/content/docs";
+/// The changelog, relative to the repository root.
+const CHANGELOG: &str = "CHANGELOG.md";
 /// Crates whose Cargo features the docs may name.
 const FEATURE_CRATES: &[&str] = &[
     "siderite-backends",
@@ -45,6 +47,8 @@ pub(crate) fn build(root: &Path) -> Index {
         let rel = relative(root, &file);
         entries.push(example(&rel, &read(&file), &features));
     }
+    let log = root.join(CHANGELOG);
+    entries.extend(changelog(CHANGELOG, &read(&log), &features));
     Index {
         format: INDEX_FORMAT,
         siderite: env!("CARGO_PKG_VERSION").to_owned(),
@@ -210,6 +214,41 @@ fn page(path: &str, text: &str, known: &[String]) -> Vec<Entry> {
         body.push('\n');
     }
     flush(&heading, start, &body);
+    entries
+}
+
+/// The changelog, one entry per `## [VERSION]` section, with the id
+/// `changelog#VERSION` (`changelog#unreleased` for pending changes).
+fn changelog(path: &str, text: &str, known: &[String]) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    let mut current: Option<(String, u32, String)> = None;
+    let mut flush = |section: Option<(String, u32, String)>| {
+        let Some((version, line, body)) = section else {
+            return;
+        };
+        let text = body.trim().to_owned();
+        entries.push(Entry {
+            id: format!("changelog#{}", version.to_lowercase()),
+            kind: Kind::Changelog,
+            title: format!("Changelog > {version}"),
+            path: path.to_owned(),
+            line,
+            features: features_in(&text, known),
+            text,
+        });
+    };
+    for (n, line) in text.lines().enumerate() {
+        let number = u32::try_from(n + 1).unwrap_or(u32::MAX);
+        let heading = line.strip_prefix("## [");
+        if let Some(version) = heading.and_then(|h| h.split(']').next()) {
+            flush(current.take());
+            current = Some((version.to_owned(), number, String::new()));
+        } else if let Some((_, _, body)) = current.as_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    flush(current);
     entries
 }
 

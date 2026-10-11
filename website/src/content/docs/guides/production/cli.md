@@ -451,6 +451,21 @@ out, and a declared file that holds a credential stops packaging. The
 binary is run once with an empty `PATH` to show it works without Cargo.
 Nothing is deployed and no migration is applied.
 
+## Upgrades
+
+```bash
+siderite upgrade --to 0.2.0 --dry-run
+```
+
+A preview only; nothing is written. For each siderite dependency it shows
+the manifest to edit and the change: a registry version, a git tag
+`v0.2.0`, or, for a path dependency, a note to check out that version
+there yourself. Inherited `workspace = true` dependencies are edited in
+the workspace root. It says what semver allows and lists the changed,
+removed, deprecated and security notes this CLI carries for the target;
+without notes, compatibility is reported as unknown. It ends with the
+commands that verify the upgrade, including an OpenAPI comparison.
+
 ## Comparing OpenAPI documents
 
 ```bash
