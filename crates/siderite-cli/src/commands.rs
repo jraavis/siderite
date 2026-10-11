@@ -371,6 +371,17 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         runner: Runner::Tool,
+        mutates: &[Mutation::BuildArtifacts, Mutation::RunsCode],
+        formats: TEXT_JSON,
+        ..cmd(
+            "package",
+            Group::App,
+            "package --release [--output DIR] [--force] [--json]",
+            "Build a release directory with checksums",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
         needs: Needs::Nothing,
         formats: TEXT_JSON,
         ..cmd(

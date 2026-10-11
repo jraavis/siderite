@@ -76,6 +76,7 @@ pub(crate) async fn run(raw: &[String], cwd: &Path, p: &ProjectArgs) -> Code {
         cargo: PathBuf::from("cargo"),
         dir: app.dir,
         bin: app.bin.or(app.default_run),
+        release: false,
     };
     let (events, mut received) = mpsc::channel(64);
     let (built, builds) = mpsc::unbounded_channel();

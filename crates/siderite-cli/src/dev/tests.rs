@@ -58,6 +58,7 @@ fn project(dir: &Path, graceful: bool, build_secs: &str) -> BuildSpec {
         cargo: dir.join("cargo"),
         dir: dir.to_path_buf(),
         bin: None,
+        release: false,
     }
 }
 

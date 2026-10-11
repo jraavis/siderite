@@ -187,7 +187,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   unresolved/complex comparisons are unknown, not compatible. No remote-ref
   fetching by default. Test both breaking and additive fixture changes.
 
-- [ ] **X17 — Package a reproducible release artifact.**
+- [x] **X17 — Package a reproducible release artifact.**
   Depends: C01, X04. Scope: `package --release` for the host target first.
   Done: explicit locked-dependency policy; include binary, declared static
   assets and migration files with checksums/version manifest; omit credentials,

@@ -25,6 +25,10 @@ pub(crate) struct Package {
     pub dependencies: Vec<String>,
     /// `rust-version` of the package (resolved from the workspace).
     pub rust_version: Option<String>,
+    /// The package version.
+    pub version: String,
+    /// `[package.metadata.siderite]`, or `null`.
+    pub siderite: Value,
 }
 
 impl Package {
@@ -140,6 +144,9 @@ fn package(item: &Value) -> Option<Package> {
         .get("rust_version")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let version = item.get("version").and_then(Value::as_str);
+    let version = version.unwrap_or_default().to_owned();
+    let metadata = item.get("metadata").and_then(|m| m.get(FRAMEWORK));
     Some(Package {
         name,
         manifest_path,
@@ -148,6 +155,8 @@ fn package(item: &Value) -> Option<Package> {
         bins,
         default_run,
         rust_version,
+        version,
+        siderite: metadata.cloned().unwrap_or(Value::Null),
     })
 }
 

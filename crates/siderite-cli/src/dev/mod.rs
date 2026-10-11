@@ -9,7 +9,7 @@
 //! follow-up build. A shutdown event (Ctrl-C) cancels a running build and
 //! stops the app. This is process restart, not in-process hot reload.
 
-mod build;
+pub(crate) mod build;
 mod command;
 mod process;
 mod watch;

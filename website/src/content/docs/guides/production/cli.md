@@ -412,6 +412,29 @@ disabled. Only the app factory runs, so keep it free of side effects. A
 relative `--output` is resolved against your current directory; the file
 is written atomically and an existing file is replaced only with `--force`.
 
+## Release packages
+
+```toml
+# Cargo.toml
+[package.metadata.siderite.package]
+assets = ["static"]        # migrations/ is included when it exists
+```
+
+```bash
+siderite build                  # once, to create Cargo.lock; commit it
+siderite package --release      # target/siderite-package/NAME-VERSION-HOST
+```
+
+The package is a directory with the release binary (`bin/NAME`), the
+declared assets, the migrations, `manifest.json` (versions, target,
+`rustc`, every file's size and SHA-256, the shared libraries the binary
+needs) and `SHA256SUMS` for `sha256sum -c`. The build uses
+`--locked`, so it uses exactly the versions in `Cargo.lock`. `.env*`
+files, databases, keys, `.git*`, `target` and `.siderite` are always left
+out, and a declared file that holds a credential stops packaging. The
+binary is run once with an empty `PATH` to show it works without Cargo.
+Nothing is deployed and no migration is applied.
+
 ## Comparing OpenAPI documents
 
 ```bash

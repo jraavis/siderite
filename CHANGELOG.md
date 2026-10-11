@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite package --release` builds a release directory for
+  the host target with `--locked`: the binary, declared assets and
+  migrations, a manifest with versions and SHA-256 checksums,
+  `SHA256SUMS`, and the shared libraries the binary needs. Credentials,
+  databases and build caches are never included; the binary is run once
+  without Cargo on `PATH`. Nothing is deployed or migrated.
 - **CLI:** `siderite openapi diff BASE CURRENT [--json]` compares two
   local OpenAPI documents for existing clients: breaking, unknown
   (treated as incompatible) and additive changes, each with JSON pointers.

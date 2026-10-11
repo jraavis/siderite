@@ -304,6 +304,17 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--output` is relative to the directory `siderite` was run in. The file is written to a temporary sibling, synced, then linked into place, so readers never see a partial document. An existing file is never replaced without `--force`, including one created concurrently; `--force` replaces it with an atomic rename.
 - A document that cannot be generated (for example duplicate operation ids) exits `1` with nothing on stdout.
 
+## `package`
+
+`siderite package --release [--output DIR] [--force] [--json]` builds a release directory for the host target from the selected application package. It never deploys and never applies migrations.
+
+- **Locked dependencies.** The binary is built with `cargo build --release --locked`, so the dependency versions are exactly those in `Cargo.lock`. Without a `Cargo.lock` the command stops before building (`package.E001`: run `siderite build` once, then review and commit the lock file); a lock file that would need changes fails the build in the same way.
+- **Contents.** `bin/NAME` (the selected binary), the paths declared in `[package.metadata.siderite.package] assets = [...]`, and the migrations (`migrations = "DIR"`, default `migrations/` when it exists). Declared paths must be relative and inside the package; symbolic links are refused.
+- **Never included.** `.env*`, `*.db` (and journals), `*.sqlite`, `*.sqlite3`, `*.pem`, `*.key`, `*.p12`, `id_rsa*`, `.git*` (`.git`, `.gitignore`, `.gitkeep`), `target` and `.siderite` are left out wherever they appear and are listed in `excluded`. A selected text file (up to 1 MiB) that holds something credential-like stops packaging (`package.E002`).
+- **Manifest.** `manifest.json` records the package and version, the binary path, the target triple, `profile: "release"`, `locked: true`, `rustc --version`, the siderite versions in `Cargo.lock`, every file with its size and SHA-256, the excluded paths and `native`: the shared libraries the binary needs as `ldd` (Linux) or `otool -L` (macOS) reports them (`tool: null` when neither is available). `SHA256SUMS` lists the same checksums for `sha256sum -c`. Files are sorted and the manifest has no timestamps.
+- **Smoke test.** The packaged binary's `routes` command is run from the package with an empty `PATH`; if it fails (`package.E003`) the package is discarded.
+- **Output.** `target/siderite-package/NAME-VERSION-HOST` unless `--output DIR`. The package is assembled in a temporary sibling and moved into place. An existing directory is replaced only with `--force`, and only if it is an earlier package (it has a `manifest.json`); anything else is never deleted. `--json` writes a `package` envelope whose `data` is `{output, manifest}`.
+
 ## `openapi diff`
 
 `siderite openapi diff BASE CURRENT [--json]` compares two OpenAPI 3 JSON files (for example two `openapi export` outputs) for existing clients. It needs no package and connects to nothing.
