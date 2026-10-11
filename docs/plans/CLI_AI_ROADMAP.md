@@ -373,7 +373,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Implementation is a separate backlog after this design passes review.
   Design: [CURSOR_PAGINATION.md](CURSOR_PAGINATION.md).
 
-- [ ] **F03 — Add opt-in liveness support.**
+- [x] **F03 — Add opt-in liveness support.**
   Depends: none. Scope: health response and explicit route registration.
   Done: no database dependency, no automatic endpoint collision, minimal
   public information, defined status and tests during startup/shutdown.

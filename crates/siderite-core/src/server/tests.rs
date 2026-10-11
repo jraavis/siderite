@@ -360,3 +360,27 @@ fn invalid_transport_limits_fail_without_panicking() {
 async fn reject_startup() -> Result<(), crate::ApiError> {
     Err(crate::ApiError::bad_request("startup failure"))
 }
+
+#[tokio::test]
+async fn liveness_answers_while_listening_and_not_after() -> TestResult {
+    let probe = Probe::default();
+    let app = App::new().routes([crate::health::liveness("/livez")]);
+    let run = start(app, &probe).await?;
+    assert!(run.readiness.is_ready());
+    let mut socket = TcpStream::connect(run.addr).await?;
+    let ask = "GET /livez HTTP/1.1\r\nHost: localhost\r\n\
+               Connection: close\r\n\r\n";
+    socket.write_all(ask.as_bytes()).await?;
+    let mut response = Vec::new();
+    socket.read_to_end(&mut response).await?;
+    let text = std::str::from_utf8(&response)?;
+    assert!(text.starts_with("HTTP/1.1 200"), "{text}");
+    assert!(text.contains("cache-control: no-store"), "{text}");
+    assert!(text.ends_with(r#"{"status":"alive"}"#), "{text}");
+    let _ = run.stop.send(());
+    tokio::time::timeout(Duration::from_secs(2), run.task).await???;
+    assert_eq!(run.readiness.phase(), ServerPhase::Stopped);
+    let after = TcpStream::connect(run.addr).await;
+    assert!(after.is_err(), "nothing listens after shutdown");
+    Ok(())
+}

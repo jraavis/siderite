@@ -57,6 +57,25 @@ only at `trace` level (`RUST_LOG=siderite_orm=trace`). Because raw SQL is
 written by the developer, keep secrets out of it and pass values as bind
 parameters. Parameters are never recorded, at any level.
 
+## Liveness
+
+```rust
+use siderite::health::liveness;
+
+let app = App::new().routes([liveness("/livez")]);
+```
+
+Liveness is opt-in: `App::routes([siderite::health::liveness("/livez")])`
+registers `GET /livez` answering `200` with `{"status":"alive"}` and
+`Cache-Control: no-store` in every phase, reading no database, readiness,
+version or host details (documented under the `health` tag, operation ID
+`liveness`; `liveness_router()` mounts it with `App::route`). Nothing is
+registered unless asked, and a path the app already uses is rejected when
+the app is built. The server binds only after startup and stops accepting
+connections when shutdown starts, so probes get no connection before
+startup completes or once draining begins; size the probe's failure
+threshold to cover the shutdown timeout.
+
 ## See also
 
 - [Configuration](/siderite/guides/production/config/)
