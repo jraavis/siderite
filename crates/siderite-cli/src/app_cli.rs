@@ -5,8 +5,9 @@ use crate::connect::{backend_kind, connect_url, scratch_db};
 use crate::dbshell::ShellCommand;
 use crate::error::CliError;
 use crate::openapi;
-use crate::report::{build, channel, text};
+use crate::report::{UrlSource, build, channel, text};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
+use crate::status::{STATUS_TIMEOUT, Selection, status};
 use siderite_core::App;
 use siderite_orm::router::DatabaseRouter;
 use siderite_orm::{BackendKind, Databases, Db, ModelMeta};
@@ -60,6 +61,7 @@ pub struct AppCli {
 }
 
 type CliResult = Result<u8, CliError>;
+type Selected = Result<Selection, CliError>;
 
 /// Hook applied to each connected database handle.
 type ConfigureDb = dyn Fn(&str, Db) -> Db + Send + Sync;
@@ -228,6 +230,18 @@ impl AppCli {
                 let db = scratch_db().await?;
                 self.migrations(&global, &db, rest).await
             }
+            "showmigrations" if global.json => {
+                if let Some(extra) = rest.get(1) {
+                    return Err(CliError::usage(format!(
+                        "unexpected argument `{extra}` for `showmigrations`"
+                    )));
+                }
+                let selection = self.select_database(&global, env)?;
+                let dir = self.migrations_dir_for(&global);
+                let report = status(&selection, &dir, STATUS_TIMEOUT).await?;
+                emit(&report, env)?;
+                Ok(report.exit_code())
+            }
             "migrate" | "rollback" | "showmigrations" | "inspectmigrations" => {
                 let url = self.database_url(&global, env)?;
                 let alias = global.database.as_deref().unwrap_or(DEFAULT_DATABASE);
@@ -251,27 +265,44 @@ impl AppCli {
         db: &siderite_orm::Db,
         rest: Vec<String>,
     ) -> Result<u8, CliError> {
-        let dir = global
-            .migrations_dir
-            .clone()
-            .unwrap_or_else(|| self.migrations_dir.clone());
+        let dir = self.migrations_dir_for(global);
         let code = siderite_migrations::cli::run(&self.models, db, &dir, rest).await?;
         Ok(code.0)
     }
 
+    /// `--migrations-dir`, else the configured directory.
+    fn migrations_dir_for(&self, global: &GlobalArgs) -> PathBuf {
+        global
+            .migrations_dir
+            .clone()
+            .unwrap_or_else(|| self.migrations_dir.clone())
+    }
+
     /// URL for the database selected by the global flags.
     fn database_url(&self, global: &GlobalArgs, env: &Env) -> Result<String, CliError> {
-        if let Some(url) = &global.database_url {
-            return Ok(url.clone());
-        }
+        Ok(self.select_database(global, env)?.url)
+    }
+
+    /// The database selected by the global flags: `--database-url`, then
+    /// the URL configured for the alias, then (for `default` only) the
+    /// `DATABASE_URL` environment variable.
+    fn select_database(&self, global: &GlobalArgs, env: &Env) -> Selected {
         let alias = global.database.as_deref().unwrap_or(DEFAULT_DATABASE);
+        let chosen = |url: &str, source| Selection {
+            url: url.to_owned(),
+            alias: Some(alias.to_owned()),
+            source,
+        };
+        if let Some(url) = &global.database_url {
+            return Ok(chosen(url, UrlSource::Flag));
+        }
         if let Some(url) = self.settings.database_url(alias) {
-            return Ok(url.to_owned());
+            return Ok(chosen(url, UrlSource::Settings));
         }
         if alias == DEFAULT_DATABASE
             && let Some(url) = env.database_url.as_deref().filter(|u| !u.is_empty())
         {
-            return Ok(url.to_owned());
+            return Ok(chosen(url, UrlSource::Environment));
         }
         Err(CliError::NoDatabase {
             alias: alias.to_owned(),
@@ -364,7 +395,7 @@ Commands:
   makemigrations [--name SLUG] [--empty] [--dry-run]
   migrate [TARGET] [--dry-run]
   rollback [--steps N | TARGET] [--dry-run]
-  showmigrations
+  showmigrations [--json]
   inspectmigrations       Read-only recovery report
   squashmigrations FROM TO [--name SLUG]
 

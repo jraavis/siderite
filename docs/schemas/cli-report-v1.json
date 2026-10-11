@@ -47,6 +47,19 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "showmigrations" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              { "$ref": "#/$defs/MigrationStatusData" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "models" } } },
       "then": {
         "properties": {
@@ -73,6 +86,27 @@
         "message": { "type": "string" },
         "location": { "type": "string" },
         "hint": { "type": "string" }
+      }
+    },
+    "MigrationStatusData": {
+      "type": "object",
+      "required": ["alias", "source", "migrations", "applied", "pending"],
+      "properties": {
+        "alias": { "type": ["string", "null"] },
+        "source": { "enum": ["flag", "settings", "environment"] },
+        "migrations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "applied"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "applied": { "type": "boolean" }
+            }
+          }
+        },
+        "applied": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 }
       }
     },
     "CheckSummary": {

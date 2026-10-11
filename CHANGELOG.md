@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `showmigrations --json`, in the app binary and the standalone
+  binary: the selected alias, the URL source (never the URL), and every
+  migration's `id` / `applied` flag in text order, from the same
+  `Migrator::show()` rows as the text. The read is read-only and bounded
+  to 30 seconds; failures are envelopes, never an empty success.
+  `siderite_migrations::cli::render_status` renders the text form.
 - **CLI:** `openapi export [--output PATH] [--force]` writes the app's
   OpenAPI 3.1 document (the same `App::openapi()` that serves
   `/openapi.json`, pretty-printed) from the app factory alone: no database

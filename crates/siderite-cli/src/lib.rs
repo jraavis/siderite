@@ -30,6 +30,7 @@ pub mod routes;
 mod scaffold;
 pub mod settings;
 mod standalone;
+mod status;
 mod target;
 mod workspace;
 
