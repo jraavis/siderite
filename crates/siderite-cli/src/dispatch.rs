@@ -1,11 +1,12 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
 use crate::args::{check_json_args, json_requested};
+use crate::commands::{self, Runner};
 use crate::doctor;
 use crate::error::CliError;
 use crate::openapi;
-use crate::project::{self, Output, is_app_command, passthrough};
-use crate::report::channel;
+use crate::project::{self, Output, passthrough, passthrough_of};
+use crate::report::{Envelope, channel};
 use crate::scaffold;
 use crate::standalone;
 use crate::target::{self, ProjectArgs, Selected, split_project};
@@ -46,17 +47,17 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     let (project, raw) = split_project(raw)?;
     let raw = raw.as_slice();
     let command = first_command(raw);
-    let cargo = command.and_then(passthrough).is_some();
-    if json_requested(raw) && !cargo {
+    // The command contract is consulted once per run.
+    let spec = command.and_then(commands::find);
+    let cargo = spec.and_then(passthrough_of);
+    if cargo.is_none() && json_requested(raw) {
         check_json_args(raw, command)?;
     }
-    if raw.iter().any(|a| a == "--help" || a == "-h")
-        && first_command(raw).is_none_or(|c| c == "help")
-    {
+    if command.is_none_or(|c| c == "help") && raw.iter().any(|a| a == "--help" || a == "-h") {
         print_help();
         return Ok(0);
     }
-    let command = first_command(raw).unwrap_or("");
+    let command = command.unwrap_or("");
     if command.is_empty() || command == "help" {
         print_help();
         return Ok(if command == "help" { 0 } else { 2 });
@@ -69,13 +70,16 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         }
         return scaffold::run(raw);
     }
+    if command == "commands" {
+        return list_commands(raw);
+    }
     if command == "dev" {
         return crate::dev::run(raw, cwd, &project).await;
     }
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
-    if let Some(pass) = passthrough(command) {
+    if let Some(pass) = &cargo {
         pass.check_bin(project.bin.as_deref())?;
         let found = target::locate("cargo", cwd, &project, false)?;
         let Selected { dir, bin, .. } = found.ok_or_else(|| {
@@ -85,12 +89,13 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         })?;
         return project::cargo_passthrough(&dir, pass, bin.as_deref(), raw);
     }
-    if is_app_command(command) {
+    let runner = spec.map(|s| s.runner);
+    if matches!(runner, Some(Runner::App | Runner::AppOrStandalone)) {
         if let Some(app) = target::locate("cargo", cwd, &project, true)? {
             let bin = app.bin.as_deref();
             return run_app(&app.dir, bin, raw, command, cwd);
         }
-        if NEEDS_APP.contains(&command) {
+        if runner == Some(Runner::App) {
             return Err(CliError::usage(format!(
                 "`{command}` needs an application. cd into a project created with `siderite new`, or an example directory"
             )));
@@ -104,16 +109,21 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     Ok(code.0)
 }
 
-/// App commands that make no sense without an application package.
-const NEEDS_APP: &[&str] = &[
-    "run",
-    "routes",
-    "check",
-    "dbshell",
-    "makemigrations",
-    "openapi",
-    "ai",
-];
+/// `siderite commands [--json]`.
+fn list_commands(raw: &[String]) -> Result<u8, CliError> {
+    let extra = raw.iter().find(|a| *a != "commands" && *a != "--json");
+    if let Some(extra) = extra {
+        let msg = format!("unexpected argument `{extra}` for `commands`");
+        return Err(CliError::usage(msg));
+    }
+    if json_requested(raw) {
+        let report = Envelope::new("commands", commands::list(), Vec::new());
+        channel::emit_json(&report, None)?;
+    } else {
+        print!("{}", commands::table());
+    }
+    Ok(0)
+}
 
 /// `cargo run` the application with `raw`. Output that must stay clean on
 /// stdout (`--json` reports, the OpenAPI document) is captured.
@@ -192,55 +202,26 @@ fn flag_parts(arg: &str) -> Option<(&str, Option<&str>)> {
 }
 
 fn print_help() {
+    let version = env!("CARGO_PKG_VERSION");
+    let commands = commands::help(|_| true);
     println!(
         "\
-siderite {} — FastAPI-style Rust web framework
+siderite {version} — FastAPI-style Rust web framework
+{commands}
+Options (before the command for the project flags):
+  --manifest-path PATH            Cargo.toml of the app
+  --package, -p NAME              Workspace package of the app
+  --bin NAME                      Binary of the app package
+  --database ALIAS                Database alias (migrations, dbshell)
+  --database-url URL              Database URL
+  --migrations-dir DIR            Migration JSON directory
+  --addr ADDR                     Listen address (run)
+  --json                          One JSON report on stdout
+  --help                          Show this help
 
-Create and run an app:
-  new NAME                      Write a new API crate
-  dev [-- ARGS]                 Rebuild and restart the app on changes
-                                (r+Enter rebuilds, Ctrl-C stops it)
-  doctor [--json] [--live]      Check the toolchain, project and config
-                                (--live: read-only database probes)
-  run [--addr ADDR]             Serve the app
-  routes [--json]               List METHOD PATH operation_id
-  check [--json]                Validate config, models, migrations and routes
-  ai dump-context [--format F] [--live]
-                                Markdown or JSON context for AI tools
-  ai init [--check] [--dry-run]  Write or refresh .siderite/context.md
-  openapi export [-o PATH] [--force]
-                                Write the OpenAPI document (stdout or PATH)
-  dbshell                       Open the database's native client
-  build [--release ...]         cargo build in the app package
-  test                          cargo test in the app package
-  fmt [--check ...]             cargo fmt (rustfmt) in the app package
-  lint [-- -D warnings ...]     cargo clippy: Rust lints, not `check`
-  clean                         cargo clean (only when you run it)
-
-Migrations:
-  makemigrations [--name SLUG] [--empty] [--dry-run]
-  migrate [TARGET] [--dry-run]
-  rollback [--steps N | TARGET] [--dry-run]
-  showmigrations
-  inspectmigrations       Read-only recovery report
-  squashmigrations FROM TO [--name SLUG]
-
-Options:
-  --addr ADDR                   Listen address (run)
-  --database ALIAS              Database alias (migrate, dbshell)
-  --database-url URL            Database URL
-  --migrations-dir DIR          Migration JSON directory
-  --manifest-path PATH          Cargo.toml of the app (before the command)
-  --package, -p NAME            Workspace package of the app
-  --bin NAME                    Binary of the app package
-  --json                        One JSON report on stdout (check, routes)
-  --help                        Show this help
-
-`run`, `routes`, `check`, `dbshell` and `makemigrations` invoke `cargo run`
-in the current package. `migrate` without a package uses JSON files and
-`--database-url` / DATABASE_URL.
-",
-        env!("CARGO_PKG_VERSION")
+App commands run in your binary through `cargo run`; `siderite commands
+--json` lists every command with what it needs and may change.
+"
     );
 }
 

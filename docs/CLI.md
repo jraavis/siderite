@@ -147,6 +147,12 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 - `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
 
+## Command contract
+
+Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, usage, summary, where it runs (`tool`: the `siderite` binary; `app`: your binary through `cargo run`; `app_or_standalone`: your binary, or JSON migration files without a package; `cargo`: a Cargo subcommand with arguments forwarded unchanged), what it needs (`nothing`, `package`, `app`), what it may change (`project_files`, `output_file`, `database`, `build_artifacts`, `runs_code`; empty means read-only), whether it touches live services (`never`, `opt_in`, `always`) and its output formats (`text`, `json`, `markdown`, `document`). Dispatch, both help texts and `--json` validation read this table.
+
+`siderite commands` prints it as a table; `siderite commands --json` writes a `commands` envelope (`data.version` 1, `data.siderite`, `data.commands`) for AI clients and scripts, described by the report schema.
+
 ## `new`
 
 `siderite new NAME [--database sqlite|postgres|mysql] [--path DIR] [--dry-run]` writes an API crate in `NAME/`, which must not exist or be empty. `--dry-run` prints every file it would create with its full contents (as a diff from nothing) and writes nothing.

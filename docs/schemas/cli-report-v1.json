@@ -90,6 +90,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "commands" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/CommandList" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "models" } } },
       "then": {
         "properties": {
@@ -266,6 +276,64 @@
         "total": { "type": ["integer", "null"], "minimum": 0 },
         "included": { "type": "integer", "minimum": 0 },
         "reason": { "type": ["string", "null"] }
+      }
+    },
+    "CommandList": {
+      "type": "object",
+      "required": ["version", "siderite", "commands"],
+      "properties": {
+        "version": { "const": 1 },
+        "siderite": { "type": "string" },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "group",
+              "usage",
+              "summary",
+              "runner",
+              "needs",
+              "mutates",
+              "live",
+              "formats"
+            ],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "group": { "enum": ["app", "migrations", "ai", "cargo", "tool"] },
+              "usage": { "type": "string" },
+              "summary": { "type": "string" },
+              "runner": {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {
+                  "kind": {
+                    "enum": ["tool", "app", "app_or_standalone", "cargo"]
+                  }
+                }
+              },
+              "needs": { "enum": ["nothing", "package", "app"] },
+              "mutates": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "project_files",
+                    "output_file",
+                    "database",
+                    "build_artifacts",
+                    "runs_code"
+                  ]
+                }
+              },
+              "live": { "enum": ["never", "opt_in", "always"] },
+              "formats": {
+                "type": "array",
+                "items": { "enum": ["text", "json", "markdown", "document"] }
+              }
+            }
+          }
+        }
       }
     },
     "CheckSummary": {

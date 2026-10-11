@@ -17,6 +17,7 @@ mod ai;
 mod app_cli;
 mod args;
 pub mod check;
+pub mod commands;
 pub mod connect;
 pub mod dbshell;
 mod dev;

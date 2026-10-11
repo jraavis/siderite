@@ -434,34 +434,21 @@ fn emit<T: serde::Serialize>(report: &T, env: &Env) -> Result<(), CliError> {
 }
 
 fn print_help() {
+    use crate::commands::{Command, Runner, help};
+    use Runner::AppOrStandalone;
+    let ours = |c: &Command| matches!(c.runner, Runner::App | AppOrStandalone);
     println!(
         "\
-Commands:
-  run [--addr ADDR]            Connect the databases and serve the app
-  routes [--json]              List METHOD PATH operation_id
-  check [--json]               Validate config, models, migrations and routes
-  ai dump-context [--format markdown|json] [--live] [--max-bytes N]
-                               Application context for AI tools
-  ai init [--check] [--dry-run] [--force]
-                               Write or refresh .siderite/context.md
-  openapi export [--output PATH] [--force]
-                               Write the OpenAPI document (default stdout)
-  dbshell                      Open the database's native client
-  makemigrations [--name SLUG] [--empty] [--dry-run]
-  migrate [TARGET] [--dry-run]
-  rollback [--steps N | TARGET] [--dry-run]
-  showmigrations [--json]
-  inspectmigrations       Read-only recovery report
-  squashmigrations FROM TO [--name SLUG]
-
+Commands:{}
 Options:
-  --addr ADDR             Listen address (default: ADDR, settings, 127.0.0.1:8000)
-  --database ALIAS        Database alias for migrate/rollback/showmigrations/dbshell
+  --addr ADDR             Listen address (else ADDR, settings, 127.0.0.1:8000)
+  --database ALIAS        Database alias (migrations, dbshell, --live)
   --database-url URL      Database URL, overriding the settings
   --migrations-dir DIR    Migration JSON directory
-  --json                  One JSON report on stdout (check, routes)
+  --json                  One JSON report on stdout
   --help                  Show this help
-"
+",
+        help(ours)
     );
 }
 
