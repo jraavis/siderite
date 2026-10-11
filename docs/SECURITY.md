@@ -65,6 +65,10 @@ The application owns browser-session CSRF protection, secure HttpOnly cookie
 policy where cookies are used, token storage, refresh rotation/revocation,
 and issuer key refresh. Keep tokens out of URLs and logs. Browser storage
 and cookies have different XSS/CSRF exposure; select and test one policy.
+siderite does not ship sessions; the requirements for cookie flags, id
+rotation, expiry, store failures, CSRF and trusted proxies that any
+session layer should meet are in
+[plans/SESSIONS_CSRF.md](plans/SESSIONS_CSRF.md).
 
 Before returning a principal, a trusted verifier must check the access-token
 signature with an allowed algorithm and keys from the configured issuer,

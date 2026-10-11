@@ -401,11 +401,12 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   and other methods retain intended behavior; no path traversal/symlink escape;
   explicit routes win. Test root/prefix mounts and missing index files.
 
-- [ ] **F08 — Decide session and CSRF support.**
+- [x] **F08 — Decide session and CSRF support.**
   Depends: none. Scope: adapter-versus-owned-implementation design.
   Done: document cookie flags, rotation/revocation, expiry, backend failures,
   CSRF strategy, trusted proxy interaction and application ownership.
   No session implementation is promised by this task.
+  Decision: [SESSIONS_CSRF.md](SESSIONS_CSRF.md).
 
 ## 4. Recommended order and release gates
 
