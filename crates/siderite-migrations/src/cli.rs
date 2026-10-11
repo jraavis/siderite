@@ -293,12 +293,26 @@ async fn name_lock_holder(
 
 async fn cmd_show(db: &Db, dir: &Path) -> Result<ExitCode, MigrationError> {
     let graph = load_graph(dir)?;
-    let migrator = Migrator::new(db, &graph);
-    for (id, applied) in migrator.show().await? {
-        let mark = if applied { 'X' } else { ' ' };
-        println!("[{mark}] {id}");
-    }
+    let rows = Migrator::new(db, &graph).show().await?;
+    print!("{}", render_status(&rows));
     Ok(ExitCode::SUCCESS)
+}
+
+/// The `showmigrations` text for rows of [`Migrator::show`]: one
+/// `[X] id` (applied) or `[ ] id` (pending) line per migration.
+///
+/// Args:
+///   rows: `(id, applied)` pairs in display order.
+///
+/// Returns:
+///   The text, one line per row (empty for no rows).
+pub fn render_status(rows: &[(String, bool)]) -> String {
+    let mut out = String::new();
+    for (id, applied) in rows {
+        let mark = if *applied { 'X' } else { ' ' };
+        out.push_str(&format!("[{mark}] {id}\n"));
+    }
+    out
 }
 
 async fn cmd_inspect(db: &Db, dir: &Path) -> Result<ExitCode, MigrationError> {

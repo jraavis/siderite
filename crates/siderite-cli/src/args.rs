@@ -80,7 +80,7 @@ pub fn json_requested(args: &[String]) -> bool {
 }
 
 /// The commands that support `--json`.
-pub const JSON_COMMANDS: &[&str] = &["check", "routes"];
+pub const JSON_COMMANDS: &[&str] = &["check", "routes", "showmigrations"];
 
 /// Validate a `--json` command line: it needs one of [`JSON_COMMANDS`]
 /// and cannot be combined with `--help`.
@@ -89,11 +89,14 @@ pub const JSON_COMMANDS: &[&str] = &["check", "routes"];
 ///   A usage error naming the problem.
 pub fn check_json_args(args: &[String], command: Option<&str>) -> Usage {
     let Some(command) = command else {
-        return Err(CliError::usage("--json needs a command: check or routes"));
+        return Err(CliError::usage(
+            "--json needs a command: check, routes or showmigrations",
+        ));
     };
     if !JSON_COMMANDS.contains(&command) {
         return Err(CliError::usage(format!(
-            "--json is supported by `check` and `routes`, not `{command}`"
+            "--json is supported by `check`, `routes` and `showmigrations`, \
+             not `{command}`"
         )));
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {

@@ -51,6 +51,14 @@ pub enum CliError {
     /// Creating a project or invoking cargo failed.
     #[error("{0}")]
     Io(String),
+    /// A live operation did not finish within its bound.
+    #[error("timed out after {after:?} {what}")]
+    Timeout {
+        /// What was being done.
+        what: String,
+        /// The bound that expired.
+        after: std::time::Duration,
+    },
 }
 
 impl CliError {

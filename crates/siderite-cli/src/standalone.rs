@@ -3,6 +3,8 @@
 use crate::args::split_global;
 use crate::connect::{connect_url, scratch_db};
 use crate::error::CliError;
+use crate::report::{UrlSource, channel};
+use crate::status::{STATUS_TIMEOUT, Selection, status};
 use siderite_migrations::MigrationError;
 use siderite_migrations::cli::{self, ExitCode};
 use std::path::PathBuf;
@@ -54,6 +56,46 @@ pub(crate) async fn run_with(
     Ok(ExitCode::USAGE)
 }
 
+/// `showmigrations --json` without an application package (`dispatch`
+/// lets `--json` through only for the JSON commands).
+///
+/// Errors:
+///   Usage errors, or the status errors of [`status`].
+pub(crate) async fn run_json(
+    raw: &[String],
+    env_database_url: Option<String>,
+) -> Result<u8, CliError> {
+    let (global, rest) = split_global(raw)?;
+    if rest.first().map(String::as_str) != Some("showmigrations") {
+        return Err(CliError::usage(
+            "only showmigrations supports --json without an application",
+        ));
+    }
+    if let Some(extra) = rest.get(1) {
+        let msg = format!("unexpected argument `{extra}`");
+        return Err(CliError::usage(msg));
+    }
+    let (url, source) = match (global.database_url, env_database_url) {
+        (Some(url), _) => (url, UrlSource::Flag),
+        (None, Some(url)) if !url.is_empty() => (url, UrlSource::Environment),
+        _ => {
+            let msg = "missing --database-url or DATABASE_URL";
+            return Err(CliError::usage(msg));
+        }
+    };
+    let selection = Selection {
+        url,
+        alias: None,
+        source,
+    };
+    let dir = global
+        .migrations_dir
+        .unwrap_or_else(|| PathBuf::from("migrations"));
+    let report = status(&selection, &dir, STATUS_TIMEOUT).await?;
+    channel::emit_json(&report, None)?;
+    Ok(report.exit_code())
+}
+
 fn into_migration_error(err: CliError) -> MigrationError {
     MigrationError::usage(err.to_string())
 }
@@ -66,7 +108,7 @@ siderite {} — schema migrations (no application package)
 Commands:
   migrate [TARGET]            Apply migrations
   rollback [--steps N|TARGET] Unapply migrations
-  showmigrations              List migrations and applied status
+  showmigrations [--json]     List migrations and applied status
   squashmigrations FROM TO    Collapse a range into one migration
 
 Options:

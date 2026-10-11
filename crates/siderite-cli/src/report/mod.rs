@@ -263,3 +263,42 @@ pub struct ModelsData {
     /// The models.
     pub models: Vec<ModelReport>,
 }
+
+/// One migration in a `showmigrations` report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrationReport {
+    /// Migration id.
+    pub id: String,
+    /// Whether the history table records it as applied.
+    pub applied: bool,
+}
+
+/// Where the database URL of a live command came from. The URL itself is
+/// never reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UrlSource {
+    /// `--database-url`.
+    Flag,
+    /// The URL configured for the alias in the application settings.
+    Settings,
+    /// The `DATABASE_URL` environment variable.
+    Environment,
+}
+
+/// The `data` of a `showmigrations` envelope: the same rows, in the same
+/// order, as the text output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MigrationStatusData {
+    /// The selected database alias; `null` for the standalone binary,
+    /// which has no aliases.
+    pub alias: Option<String>,
+    /// Where the database URL came from.
+    pub source: UrlSource,
+    /// Every migration with its applied flag.
+    pub migrations: Vec<MigrationReport>,
+    /// Number of applied migrations.
+    pub applied: usize,
+    /// Number of pending migrations.
+    pub pending: usize,
+}

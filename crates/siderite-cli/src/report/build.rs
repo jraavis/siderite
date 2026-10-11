@@ -3,6 +3,7 @@
 
 use super::{CheckSummary, Diagnostic, Envelope, Severity, redact_text};
 use super::{FieldReport, ModelReport, ModelsData};
+use super::{MigrationReport, MigrationStatusData, UrlSource};
 use super::{RouteReport, RoutesData};
 use crate::check::{CheckIssue, CheckLevel, check, check_build};
 use crate::error::CliError;
@@ -122,4 +123,27 @@ pub fn check_report(
     };
     let diagnostics = issues.iter().map(diagnostic).collect();
     Envelope::new("check", summary, diagnostics)
+}
+
+/// The `showmigrations` report over rows of `Migrator::show`, kept in
+/// their order so JSON and text agree.
+pub fn migration_status(
+    alias: Option<&str>,
+    source: UrlSource,
+    rows: Vec<(String, bool)>,
+) -> Envelope<MigrationStatusData> {
+    let applied = rows.iter().filter(|(_, applied)| *applied).count();
+    let pending = rows.len() - applied;
+    let migrations = rows
+        .into_iter()
+        .map(|(id, applied)| MigrationReport { id, applied })
+        .collect();
+    let data = MigrationStatusData {
+        alias: alias.map(str::to_owned),
+        source,
+        migrations,
+        applied,
+        pending,
+    };
+    Envelope::new("showmigrations", data, Vec::new())
 }

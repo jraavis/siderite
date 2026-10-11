@@ -21,7 +21,7 @@ siderite-core.workspace = true
 siderite-migrations.workspace = true
 siderite-orm.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["time"] }
 url.workspace = true
 
 [dev-dependencies]

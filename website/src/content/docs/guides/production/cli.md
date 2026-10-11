@@ -95,7 +95,7 @@ AppCli::new(build_app)
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the graph and writes a JSON migration. Never connects to a database |
 | `migrate [TARGET] [--dry-run]` | Applies migrations |
 | `rollback [--steps N \| TARGET] [--dry-run]` | Unapplies migrations |
-| `showmigrations` | `[X]` applied / `[ ]` pending |
+| `showmigrations [--json]` | `[X]` applied / `[ ]` pending |
 | `squashmigrations FROM TO [--name SLUG]` | Collapses a range. Never connects to a database |
 
 See [Migrations](/siderite/guides/data/migrations/) for the file format and
@@ -153,7 +153,7 @@ command fails with a “no database” error naming the alias.
 
 ## JSON output
 
-`check` and `routes` accept `--json`, before or after the command
+`check`, `routes` and `showmigrations` accept `--json`, before or after the command
 (`siderite --json routes`, `siderite check --json`). Stdout then carries
 exactly one JSON value and a newline, a versioned envelope described by
 [`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):
@@ -174,6 +174,11 @@ exactly one JSON value and a newline, a versioned envelope described by
 - `--json` with any other command, with `--help`, or without a command is
   a usage error. `routes` lists documented routes only (hidden endpoints
   are omitted).
+- `showmigrations --json` reports the selected alias, where its URL came
+  from (never the URL), and each migration's `id` and `applied` flag in
+  the text order. It is a read-only live query bounded to 30 seconds; a
+  missing database or unreadable history is a failure, never an empty
+  list.
 
 ## OpenAPI export
 

@@ -65,6 +65,7 @@ fn siderite(cwd: &Path, path: &str, args: &[&str], fake: Fake) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_siderite"));
     command.args(args).current_dir(cwd).env("PATH", path);
     command.env_remove("SIDERITE_REPORT_PATH");
+    command.env_remove("DATABASE_URL");
     for (key, value) in fake {
         command.env(key, value);
     }
@@ -192,4 +193,55 @@ fn openapi_output_paths_are_relative_to_the_caller() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let want = format!("-o {}", cwd.join("spec.json").display());
     assert!(stderr(&out).contains(&want), "{}", stderr(&out));
+}
+
+#[test]
+fn standalone_status_agrees_with_the_text() {
+    use siderite_migrations::{Migration, Operation, write_migration};
+    let root = scratch("standalone");
+    let dir = root.0.join("migrations");
+    for (id, deps, table) in [
+        ("0001_a", vec![], "a"),
+        ("0002_b", vec!["0001_a".to_owned()], "b"),
+    ] {
+        let op = Operation::RunSQL {
+            sql: format!("CREATE TABLE {table} (id INTEGER)"),
+            reverse_sql: Some(format!("DROP TABLE {table}")),
+        };
+        let m = Migration::new(id, deps, vec![op], true, vec![]).unwrap();
+        write_migration(&dir, &m).unwrap();
+    }
+    let db = root.0.join("app.db");
+    let url = format!("sqlite://{}?mode=rwc", db.display());
+    let path = std::env::var("PATH").unwrap_or_default();
+    let flag = format!("--database-url={url}");
+    let out = siderite(&root.0, &path, &["migrate", "0001_a", &flag], &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = siderite(&root.0, &path, &["showmigrations", &flag], &[]);
+    assert_eq!(stdout(&text), "[X] 0001_a\n[ ] 0002_b\n");
+    let json = ["showmigrations", "--json", &flag];
+    let out = siderite(&root.0, &path, &json, &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let value = one_value(&out);
+    assert!(value["data"]["alias"].is_null());
+    assert_eq!(value["data"]["source"], "flag");
+    let rows: Vec<String> = value["data"]["migrations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            let mark = if m["applied"] == true { 'X' } else { ' ' };
+            format!("[{mark}] {}\n", m["id"].as_str().unwrap())
+        })
+        .collect();
+    assert_eq!(rows.concat(), stdout(&text));
+    // DATABASE_URL is reported as the environment, never echoed.
+    let env = [("DATABASE_URL", url.as_str())];
+    let out = siderite(&root.0, &path, &["--json", "showmigrations"], &env);
+    assert_eq!(one_value(&out)["data"]["source"], "environment");
+    assert!(!stdout(&out).contains("app.db"));
+    // No database at all is a failure envelope, not an empty status.
+    let out = siderite(&root.0, &path, &["showmigrations", "--json"], &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(one_value(&out)["ok"], false);
 }

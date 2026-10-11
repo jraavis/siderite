@@ -73,7 +73,7 @@ AppCli::new(build_app)
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the migration graph and writes a JSON migration. Never connects to a database. |
 | `migrate [TARGET] [--dry-run]` | Applies migrations. |
 | `rollback [--steps N \| TARGET] [--dry-run]` | Unapplies migrations. |
-| `showmigrations` | `[X]` applied / `[ ]` pending. |
+| `showmigrations [--json]` | `[X]` applied / `[ ]` pending. With `--json`, the same rows as a report (see below). |
 | `squashmigrations FROM TO [--name SLUG]` | Collapses a range. Never connects to a database. |
 
 See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
@@ -136,7 +136,7 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 - `ok` is `false` when any diagnostic has severity `error`. A diagnostic has `code` (the stable `check` ids below), `severity` (`info`, `warning`, `error`), `message` and optional `location` and `hint`. Codes match `^[a-z][a-z0-9_]*\.[EWI][0-9]{3}$`; `info` is reserved and never makes a report fail. Free text is redacted when the diagnostic is built and again when it is rendered: URL passwords (the userinfo ends at the last `@`, so unencoded `/ ? # @`, spaces and quotes are covered), every URL of a comma-separated list, and secret-looking `key=value` pairs anywhere (query parameters, libpq DSNs, `;Pwd=`, `sig=`) become `***`.
 - Reports are sorted deterministically: routes by path then method, models by name then table, fields by name then column, tags alphabetically. `routes` lists documented routes (from OpenAPI; hidden endpoints are omitted), not a complete runtime inventory.
 - Exit codes: `0` success, `1` failure (including a `check` that finds an error), `2` usage error.
-- JSON mode (`--json`, accepted before or after `check` and `routes`) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
+- JSON mode (`--json`, accepted before or after `check`, `routes` and `showmigrations`) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
 - In JSON mode every failure is an envelope as well, with `ok: false`, `data: null` and one diagnostic:
 
   | Code | Exit | Meaning |
@@ -146,6 +146,12 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
   | `cli.E003` | `1` (`2` if the app exited `2`) | the application exited without a valid report: a build failure, a crash, or a `siderite-cli` that predates `--json` |
 
 - `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
+
+## `showmigrations --json`
+
+Works in the app binary and in the standalone `siderite` binary. `data` holds the selected `alias` (`null` in the standalone binary, which has no aliases), where the URL came from (`source`: `flag`, `settings` or `environment`; the URL itself is never printed), the `migrations` as `{id, applied}` in the order of the text output, and `applied` / `pending` counts. Both outputs come from the same `Migrator::show()` rows; nothing parses printed lines.
+
+The read is live but explicit and read-only: it opens the selected database, reads the history table (it never creates it) and is bounded to 30 seconds for connecting and reading together (`cli.E002` with a timeout message after that). Note that the PostgreSQL and MySQL drivers retry a refused connection until that bound. A missing database, an unreadable history or a changed applied file is a failure envelope (exit `1`, or `2` for a missing URL in the standalone binary), never an empty success. Errors name the alias, not the URL.
 
 ## `openapi export`
 

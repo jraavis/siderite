@@ -88,7 +88,11 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
             )));
         }
     }
-    let code = standalone::run_with(raw, env::var("DATABASE_URL").ok()).await?;
+    let env_url = env::var("DATABASE_URL").ok();
+    if json_requested(raw) {
+        return standalone::run_json(raw, env_url).await;
+    }
+    let code = standalone::run_with(raw, env_url).await?;
     Ok(code.0)
 }
 
