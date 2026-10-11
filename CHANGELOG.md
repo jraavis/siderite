@@ -8,6 +8,11 @@
 
 
 ### Changed
+- **Cache:** `Cache::set_if_absent_with_ttl` adds atomic expiring
+  insertion (zero TTL rejected, sub-millisecond TTL rounded up) with an
+  explicit `CacheError::Unsupported` default for external adapters;
+  implemented for `MemoryCache` and `Arc`. Generation expiry, metadata
+  bound and bypass contract documented in `docs/CACHE.md`.
 - **SQLite:** writers of one `SqliteBackend` (statements, raw writes,
   scripts, transactions and transactional schema changes) queue in FIFO
   order for one write slot instead of racing for the file lock and sleeping

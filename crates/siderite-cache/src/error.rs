@@ -16,9 +16,18 @@ pub enum CacheError {
     /// Cache limits must be positive and fit within the total byte budget.
     #[error("invalid cache byte limits")]
     InvalidLimits,
-    /// A TTL cannot be represented by the backend's monotonic deadline.
+    /// A TTL is zero where a positive lifetime is required, or cannot be
+    /// represented by the backend's monotonic deadline.
     #[error("cache TTL is not representable")]
     InvalidTtl,
+    /// The backend does not implement an optional [`Cache`](crate::Cache)
+    /// operation. Callers must fail open or bypass; they must not emulate
+    /// the operation with non-atomic calls.
+    #[error("cache operation `{operation}` is unsupported by this backend")]
+    Unsupported {
+        /// Name of the unsupported trait method.
+        operation: &'static str,
+    },
     /// The backend could not complete the operation.
     #[error("cache backend error: {0}")]
     Backend(String),

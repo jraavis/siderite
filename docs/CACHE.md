@@ -10,6 +10,7 @@ two backends and a response-caching middleware.
 | `get(key)` | `Option<Vec<u8>>`; expired entries count as missing |
 | `set(key, value, ttl)` | store bytes; `None` TTL keeps the entry until evicted |
 | `set_if_absent(key, value)` | atomic non-expiring creation; optional for custom backends |
+| `set_if_absent_with_ttl(key, value, ttl)` | atomic expiring creation; optional, default is `CacheError::Unsupported` |
 | `delete(key)` | `true` when an entry was removed |
 | `increment(key, by)` | Redis `INCRBY` semantics: a missing key starts at `0`, a non-integer value is an error |
 | `clear()` | remove every entry (Redis: only this cache's key prefix) |
@@ -128,9 +129,82 @@ invalidation. Cache key scheme uses `.trusted_proxies(...)`, the same exact
 peer policy as redirect and rate limiting; untrusted forwarded headers are
 ignored. The proxy must replace headers. Malformed trusted context fails.
 
-The cache requires atomic `Cache::set_if_absent`; MemoryCache and RedisCache
-implement it. Custom backends without it bypass route storage. Generation
-markers have no TTL; backend capacity/eviction governs their lifetime.
+## Generation contract
+
+Generations are the only mechanism that makes invalidation, expiry and
+eviction safe for route caching. The invariants below are normative for
+`RouteCache` and for every `Cache` backend it runs on.
+
+1. **Fresh random token.** A target's generation is a random UUID. Any
+   marker created after expiry, eviction, deletion or rotation carries a
+   newly drawn token, never a counter or a value derived from the old one.
+2. **Delayed fills stay dead.** Representation keys embed the generation.
+   A fill that completes after rotation, expiry or eviction stores under an
+   old key that no later reader computes.
+3. **Entries never outlive their marker.** A representation's TTL is
+   clamped to the marker's remaining lifetime, so when a marker expires all
+   representations written under it are already gone, and a recreated
+   marker cannot re-expose old data.
+4. **Atomic creation only.** Markers are created with
+   `set_if_absent_with_ttl`. Expiry and insertion are one atomic step;
+   `get` followed by `set` is never an acceptable substitute.
+5. **Finite lifetime.** Markers carry a TTL (`generation_ttl`, default one
+   hour). A marker without a TTL is a leak under unique targets.
+
+`set_if_absent_with_ttl` semantics: a zero TTL is rejected with
+`CacheError::InvalidTtl`; TTLs round up to whole milliseconds (a 1 ns TTL
+lives 1 ms, 1.5 ms lives 2 ms) so entries never expire earlier than asked;
+an expired entry counts as absent; a losing creator leaves the winner's
+value and deadline untouched; exactly one concurrent creator wins.
+`MemoryCache` implements this under one lock acquisition.
+
+### Metadata resource bound
+
+Marker metadata is bounded across all processes sharing a backend. Each
+namespace admits at most `max_new_targets` (default 10,000) new markers per
+`generation_ttl` window, counted by one shared counter key created and
+expired through the same atomic primitives. Because a marker lives at most
+`generation_ttl`, at most two windows are live, so a namespace holds at
+most `2 x max_new_targets` markers. Each marker is a key of at most
+`byte_limits` key bytes (default 4 KiB) plus a 16-byte value, so the
+default worst case is about 82 MB per namespace and typically far less.
+Targets whose key exceeds the key limit never create a marker.
+
+When the window budget is exhausted, or the target is uncacheable
+(credentials, `no-store` request, non-`GET`/`HEAD`, oversized key),
+the layer **bypasses**: it serves the origin response, creates no marker,
+stores no representation and marks the response `x-cache: miss`. Unique
+targets (for example per-request query strings) therefore cannot grow
+metadata beyond the bound, and a responder that is uncacheable leaves at
+most the already counted marker, which expires by TTL.
+
+### Retired namespaces
+
+Namespaces are never scanned or deleted. When a namespace is retired
+(layer dropped, process restarted with the default unique namespace, or an
+`app-vN` name abandoned) its markers and representations simply expire
+within `generation_ttl`. Total metadata is therefore at most
+`live_namespaces x 2 x max_new_targets` markers, plus a tail of retired
+namespaces for up to one `generation_ttl`. Use a fixed `.namespace(...)` in
+long-lived deployments so restarts do not orphan namespaces.
+
+### External `Cache` adapters
+
+`set_if_absent_with_ttl` is a provided method whose default returns
+`CacheError::Unsupported`, so existing adapters keep compiling unchanged.
+`RouteCache` treats that error like any backend limitation: it bypasses
+route storage and serves the origin. It never falls back to non-expiring
+markers or to non-atomic emulation. Adapters opt in by implementing the
+method atomically (for Redis: a single `SET key value NX PX ms`).
+`Arc<T>` forwards it.
+
+Status: the contract, the trait method and `MemoryCache` are in place.
+The Redis adapter, the generation lifetime policy and the admission budget
+are tracked as roadmap tasks R03 to R05; until they land, `RouteCache`
+still creates non-expiring markers via `set_if_absent`.
+
+### Failures and consistency
+
 Backend read/store errors serve the origin. Failed write invalidation
 disables the affected layer, preserving the already completed write.
 Database commits and cache invalidation are separate operations: other

@@ -1,4 +1,18 @@
 //! Random generations keep stale fills unreachable across target writes.
+//!
+//! Invariants (full contract in `docs/CACHE.md`):
+//!
+//! 1. A generation is an unguessable random token. Whenever a marker is
+//!    created after expiry, eviction, deletion or rotation, the token is
+//!    freshly random; it is never derived from the previous one or from a
+//!    counter, so an older token cannot be reproduced.
+//! 2. A representation key embeds its generation, so a delayed fill that
+//!    finishes after rotation lands under a key no reader will compute.
+//! 3. A representation must not outlive its marker: its TTL is clamped to
+//!    the marker's lifetime. Hence a marker that expires or is evicted
+//!    never re-exposes entries written under it.
+//! 4. Marker creation goes through atomic creation only. A backend without
+//!    it makes the layer bypass storage rather than emulate it.
 
 use super::{Policy, cache_key, push_part};
 use crate::{Cache, CacheError};
@@ -71,4 +85,67 @@ pub(super) fn unsafe_method(method: &Method) -> bool {
         *method,
         Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MemoryCache;
+    use std::time::Duration;
+
+    type TestResult = Result<(), CacheError>;
+    const MARKER: &str = "route-v2-target:test";
+
+    #[tokio::test]
+    async fn expired_marker_yields_a_fresh_token() -> TestResult {
+        let cache = MemoryCache::new(8);
+        let ttl = Some(Duration::from_millis(5));
+        let first = Uuid::new_v4();
+        cache.set(MARKER, first.as_bytes().to_vec(), ttl).await?;
+        assert_eq!(current(&cache, MARKER).await?, first);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let second = current(&cache, MARKER).await?;
+        assert_ne!(second, first);
+        assert_eq!(current(&cache, MARKER).await?, second);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn evicted_marker_yields_a_fresh_token() -> TestResult {
+        let cache = MemoryCache::new(1);
+        let first = current(&cache, MARKER).await?;
+        cache.set("other", vec![1], None).await?;
+        assert_ne!(current(&cache, MARKER).await?, first);
+        cache.delete(MARKER).await?;
+        assert_ne!(current(&cache, MARKER).await?, first);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn invalidation_rotates_to_a_fresh_token() -> TestResult {
+        let cache = MemoryCache::new(8);
+        let first = current(&cache, MARKER).await?;
+        invalidate(&cache, MARKER).await?;
+        let second = current(&cache, MARKER).await?;
+        assert_ne!(first, second);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delayed_fill_cannot_revive_old_data() -> TestResult {
+        let cache = MemoryCache::new(8);
+        let reader = current(&cache, MARKER).await?;
+        let mut stale = String::from("route-v2-response:");
+        push_part(&mut stale, reader.as_bytes());
+        // A write rotates the generation while the origin read is pending.
+        invalidate(&cache, MARKER).await?;
+        // The delayed fill finishes and stores under the old generation.
+        cache.set(&stale, b"old".to_vec(), None).await?;
+        let next = current(&cache, MARKER).await?;
+        let mut fresh = String::from("route-v2-response:");
+        push_part(&mut fresh, next.as_bytes());
+        assert_ne!(stale, fresh);
+        assert_eq!(cache.get(&fresh).await?, None);
+        Ok(())
+    }
 }

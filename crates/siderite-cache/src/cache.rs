@@ -14,6 +14,25 @@ use std::time::Duration;
 /// [`CacheExt`]. [`increment`](Cache::increment) follows Redis `INCRBY`: a
 /// missing key is treated as `0`, and a stored value that is not a decimal
 /// integer is an error.
+///
+/// # Contract for backends and external adapters
+///
+/// Only `get`, `set`, `delete`, `increment` and `clear` are required. The
+/// atomic creation methods ([`set_if_absent`](Cache::set_if_absent) and
+/// [`set_if_absent_with_ttl`](Cache::set_if_absent_with_ttl)) are provided
+/// methods whose defaults report an unsupported capability, so adding them
+/// never breaks an existing implementation. Callers that need atomic
+/// creation (RouteCache generation markers) treat that error as "bypass":
+/// they serve the origin and store nothing. They never emulate creation
+/// with `get` followed by `set`, which would let two creators both win and
+/// let a delayed writer overwrite a newer value.
+///
+/// An atomic creation method must make the liveness check, the insertion and
+/// the expiry deadline one indivisible step: exactly one of any set of
+/// concurrent creators of a missing or expired key observes `Ok(true)`, and a
+/// cancelled call either created the entry with its full TTL or created
+/// nothing. See `docs/CACHE.md` for the generation-expiry contract built on
+/// this primitive.
 #[async_trait]
 pub trait Cache: Send + Sync + 'static {
     /// Fetch `key`. `Ok(None)` when the key is missing or has expired.
@@ -36,6 +55,45 @@ pub trait Cache: Send + Sync + 'static {
         Err(CacheError::Backend(
             "atomic insertion is unsupported".into(),
         ))
+    }
+
+    /// Atomically create an expiring entry only when no live entry exists.
+    ///
+    /// The liveness check, insertion and expiry deadline are one atomic
+    /// step. An existing entry that has already expired counts as absent and
+    /// is replaced. A losing creator leaves the winner's value and deadline
+    /// untouched.
+    ///
+    /// TTL granularity is one millisecond. A `ttl` that is not a whole
+    /// number of milliseconds is rounded up, so a sub-millisecond TTL lives
+    /// for one millisecond and an entry never expires earlier than
+    /// requested. A zero `ttl` is rejected rather than treated as "already
+    /// expired", because an entry that cannot be observed is never useful as
+    /// a marker and several stores treat zero as "no expiry".
+    ///
+    /// Args:
+    ///     key: Entry identity.
+    ///     value: Opaque value to store on successful creation.
+    ///     ttl: Positive lifetime, rounded up to whole milliseconds.
+    ///
+    /// Returns:
+    ///     Whether this call created the entry.
+    ///
+    /// # Errors
+    /// [`CacheError::InvalidTtl`] for a zero or unrepresentable `ttl`,
+    /// checked before the key is examined. [`CacheError::SizeLimit`] when
+    /// the entry is refused by byte admission. [`CacheError::Unsupported`]
+    /// from the default implementation: backends that cannot create and
+    /// expire atomically must keep it, not emulate it.
+    async fn set_if_absent_with_ttl(
+        &self,
+        _key: &str,
+        _value: Vec<u8>,
+        _ttl: Duration,
+    ) -> Result<bool, CacheError> {
+        Err(CacheError::Unsupported {
+            operation: "set_if_absent_with_ttl",
+        })
     }
 
     /// Remove `key`. `Ok(true)` when a live entry was removed.
@@ -71,6 +129,15 @@ impl<T: Cache + ?Sized> Cache for Arc<T> {
         (**self).set_if_absent(key, value).await
     }
 
+    async fn set_if_absent_with_ttl(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> Result<bool, CacheError> {
+        (**self).set_if_absent_with_ttl(key, value, ttl).await
+    }
+
     async fn delete(&self, key: &str) -> Result<bool, CacheError> {
         (**self).delete(key).await
     }
@@ -81,6 +148,23 @@ impl<T: Cache + ?Sized> Cache for Arc<T> {
 
     async fn clear(&self) -> Result<(), CacheError> {
         (**self).clear().await
+    }
+}
+
+/// Round `ttl` up to whole milliseconds, the portable TTL granularity.
+///
+/// # Errors
+/// [`CacheError::InvalidTtl`] for zero or when the millisecond count does
+/// not fit in `u64`.
+pub(crate) fn ttl_millis(ttl: Duration) -> Result<u64, CacheError> {
+    if ttl.is_zero() {
+        return Err(CacheError::InvalidTtl);
+    }
+    let whole = u64::try_from(ttl.as_millis()).map_err(|_| CacheError::InvalidTtl)?;
+    if ttl.subsec_nanos().is_multiple_of(1_000_000) {
+        Ok(whole)
+    } else {
+        whole.checked_add(1).ok_or(CacheError::InvalidTtl)
     }
 }
 
@@ -248,6 +332,85 @@ mod tests {
             .unwrap();
         assert_eq!(value, widget());
         assert_eq!(cache.get_json::<Widget>("w").await.unwrap(), Some(widget()));
+    }
+
+    /// An adapter written before the expiring creation method existed.
+    struct LegacyAdapter(MemoryCache);
+
+    #[async_trait]
+    impl Cache for LegacyAdapter {
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, CacheError> {
+            self.0.get(key).await
+        }
+        async fn set(
+            &self,
+            key: &str,
+            value: Vec<u8>,
+            ttl: Option<Duration>,
+        ) -> Result<(), CacheError> {
+            self.0.set(key, value, ttl).await
+        }
+        async fn delete(&self, key: &str) -> Result<bool, CacheError> {
+            self.0.delete(key).await
+        }
+        async fn increment(&self, key: &str, by: i64) -> Result<i64, CacheError> {
+            self.0.increment(key, by).await
+        }
+        async fn clear(&self) -> Result<(), CacheError> {
+            self.0.clear().await
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_adapters_compile_and_report_unsupported() {
+        let ttl = Duration::from_secs(1);
+        let adapter = LegacyAdapter(MemoryCache::new(4));
+        assert!(matches!(
+            adapter.set_if_absent_with_ttl("k", vec![1], ttl).await,
+            Err(CacheError::Unsupported { operation })
+                if operation == "set_if_absent_with_ttl"
+        ));
+        assert!(adapter.set_if_absent("k", vec![1]).await.is_err());
+        let shared: Arc<dyn Cache> = Arc::new(adapter);
+        assert!(matches!(
+            shared.set_if_absent_with_ttl("k", vec![1], ttl).await,
+            Err(CacheError::Unsupported { .. })
+        ));
+        // Nothing was stored by the failed call.
+        assert_eq!(shared.get("k").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn arc_forwards_expiring_creation() {
+        let cache: Arc<dyn Cache> = Arc::new(MemoryCache::new(4));
+        let ttl = Duration::from_secs(5);
+        assert!(
+            cache
+                .set_if_absent_with_ttl("k", vec![1], ttl)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !cache
+                .set_if_absent_with_ttl("k", vec![2], ttl)
+                .await
+                .unwrap()
+        );
+        assert_eq!(cache.get("k").await.unwrap(), Some(vec![1]));
+    }
+
+    #[test]
+    fn ttl_millis_rounds_up_and_rejects_zero() {
+        assert!(matches!(
+            ttl_millis(Duration::ZERO),
+            Err(CacheError::InvalidTtl)
+        ));
+        assert_eq!(ttl_millis(Duration::from_nanos(1)).unwrap(), 1);
+        assert_eq!(ttl_millis(Duration::from_micros(999)).unwrap(), 1);
+        assert_eq!(ttl_millis(Duration::from_millis(1)).unwrap(), 1);
+        assert_eq!(ttl_millis(Duration::from_micros(1001)).unwrap(), 2);
+        assert_eq!(ttl_millis(Duration::new(2, 1)).unwrap(), 2001);
+        assert!(ttl_millis(Duration::MAX).is_err());
     }
 
     #[tokio::test]
