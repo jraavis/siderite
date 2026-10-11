@@ -9,12 +9,12 @@ cd myapp
 siderite run
 ```
 
-`new` writes an API crate. In a Cargo package, `run`, `routes`, `check`, `dbshell`, `makemigrations` and the other migration commands invoke `cargo run -- <command>` so `AppCli` in your binary sees the app. `build` and `test` are `cargo build` / `cargo test` in the package, with every argument after the command passed through (`siderite build --release` replaces `cargo build --release -p myapp`). Without a package, `migrate` / `rollback` / `showmigrations` / `squashmigrations` run against JSON files.
+`new` writes an API crate. In a Cargo package, `run`, `routes`, `check`, `dbshell`, `makemigrations` and the other migration commands invoke `cargo run -- <command>` so `AppCli` in your binary sees the app. `build`, `test`, `fmt`, `lint` and `clean` run `cargo build` / `test` / `fmt` / `clippy` / `clean` in the package, with every argument after the command passed through as separate arguments and the child's exit status forwarded (`siderite build --release` replaces `cargo build --release -p myapp`; `siderite lint -- -D warnings` runs Clippy). `lint` is Rust linting and is never confused with the framework's `check`. `fmt` and `lint` first look for `cargo-fmt` / `cargo-clippy` on `PATH` and, when missing, exit `1` with the `rustup component add` command to run. `--bin` applies to `build`, `test` and `lint` only. `clean` runs only when you invoke it. Without a package, `migrate` / `rollback` / `showmigrations` / `squashmigrations` run against JSON files.
 
 | | `siderite` in a package | Standalone (no package) | `AppCli` in your binary |
 |---|---|---|---|
 | Needs your `App` and models | compiles them via cargo | no | yes |
-| Commands | `new`, `run`, `routes`, `check`, `dbshell`, migrations, `build`, `test` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
+| Commands | `new`, `doctor`, `run`, `routes`, `check`, `dbshell`, `openapi export`, migrations, `build`, `test`, `fmt`, `lint`, `clean` | `migrate`, `rollback`, `showmigrations`, `squashmigrations` | `run`, `routes`, `check`, `dbshell`, migrations |
 
 Exit codes: `0` success, `1` failure (or `check` found an error), `2` usage error.
 
@@ -92,7 +92,7 @@ Flags may appear anywhere and take `--flag value` or `--flag=value`.
 
 ### Choosing the application
 
-`run`, `routes`, `check`, `dbshell`, the migration commands, `build` and `test` act on one application package. The project flags below are accepted **before the command** only; everything after the command (or after `--`) is forwarded unchanged, so `siderite run -p 9` still hands `-p 9` to your binary.
+`run`, `routes`, `check`, `dbshell`, `openapi export`, `doctor`, the migration commands and the Cargo passthroughs act on one application package. The project flags below are accepted **before the command** only; everything after the command (or after `--`) is forwarded unchanged, so `siderite run -p 9` still hands `-p 9` to your binary.
 
 | Flag | Meaning |
 |---|---|

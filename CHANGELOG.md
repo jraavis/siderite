@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `fmt`, `lint` and `clean` passthroughs: `cargo fmt`, `cargo
+  clippy` and `cargo clean` in the app package with arguments forwarded
+  unchanged and the exit status preserved. `lint` is Clippy, distinct from
+  the framework `check`; a missing `rustfmt`/`clippy` component exits 1
+  with the `rustup component add` command.
 - **CLI:** `doctor --live [--database ALIAS]... [--timeout-ms N]`:
   read-only probes of the configured databases (connect plus migration
   status), at most four at a time and each within a timeout (default

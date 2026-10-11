@@ -4,7 +4,7 @@ use crate::args::{check_json_args, json_requested};
 use crate::doctor;
 use crate::error::CliError;
 use crate::openapi;
-use crate::project::{self, CARGO_COMMANDS, Missing, is_app_command};
+use crate::project::{self, Missing, is_app_command, passthrough};
 use crate::report::channel;
 use crate::scaffold;
 use crate::standalone;
@@ -36,7 +36,7 @@ fn report_json_error(raw: &[String], err: &CliError) -> Result<(), CliError> {
         return Ok(());
     };
     let command = first_command(&raw).unwrap_or("siderite");
-    if !json_requested(&raw) || CARGO_COMMANDS.contains(&command) {
+    if !json_requested(&raw) || passthrough(command).is_some() {
         return Ok(());
     }
     channel::emit_json(&channel::error_envelope(command, err), None)
@@ -46,7 +46,7 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     let (project, raw) = split_project(raw)?;
     let raw = raw.as_slice();
     let command = first_command(raw);
-    let cargo = command.is_some_and(|c| CARGO_COMMANDS.contains(&c));
+    let cargo = command.and_then(passthrough).is_some();
     if json_requested(raw) && !cargo {
         check_json_args(raw, command)?;
     }
@@ -72,14 +72,15 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
-    if CARGO_COMMANDS.contains(&command) {
+    if let Some(pass) = passthrough(command) {
+        pass.check_bin(project.bin.as_deref())?;
         let found = target::locate("cargo", cwd, &project, false)?;
         let Selected { dir, bin, .. } = found.ok_or_else(|| {
             CliError::usage(format!(
                 "{command} needs a Cargo package (cd into a siderite app, or run siderite new)"
             ))
         })?;
-        return project::cargo_passthrough(&dir, command, bin.as_deref(), raw);
+        return project::cargo_passthrough(&dir, pass, bin.as_deref(), raw);
     }
     if is_app_command(command) {
         if let Some(app) = target::locate("cargo", cwd, &project, true)? {
@@ -188,6 +189,9 @@ Create and run an app:
   dbshell                       Open the database's native client
   build [--release ...]         cargo build in the app package
   test                          cargo test in the app package
+  fmt [--check ...]             cargo fmt (rustfmt) in the app package
+  lint [-- -D warnings ...]     cargo clippy: Rust lints, not `check`
+  clean                         cargo clean (only when you run it)
 
 Migrations:
   makemigrations [--name SLUG] [--empty] [--dry-run]

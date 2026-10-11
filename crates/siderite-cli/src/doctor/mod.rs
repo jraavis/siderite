@@ -9,7 +9,7 @@
 
 mod checks;
 mod live;
-mod tools;
+pub(crate) mod tools;
 
 #[cfg(test)]
 mod tests;
