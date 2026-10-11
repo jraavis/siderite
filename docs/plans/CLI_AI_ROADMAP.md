@@ -285,7 +285,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   symlink escapes and collisions; default writes never overwrite user files.
   Existing `new` fixtures still compile using local framework paths.
 
-- [ ] **D06 — Generate one route module.**
+- [x] **D06 — Generate one route module.**
   Depends: D05. Scope: handler and explicit registration snippet.
   Done: generated code compiles against actual public APIs, has docs and a
   unique operation ID; no fragile string-based rewriting of arbitrary routers.

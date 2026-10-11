@@ -235,6 +235,17 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Package,
         mutates: &[Mutation::ProjectFiles],
         ..cmd(
+            "generate route",
+            Group::App,
+            "generate route NAME [--path /URL] [--dry-run]",
+            "Write a route module (src/routes/NAME.rs)",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
             "add",
             Group::App,
             "add CRATE... | add --preset postgres|mysql [--dry-run]",

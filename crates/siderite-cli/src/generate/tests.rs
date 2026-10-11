@@ -86,3 +86,60 @@ fn symbolic_links_cannot_redirect_writes() {
     assert!(plan.apply().is_err());
     assert!(!outside.path().join("evil.rs").exists());
 }
+
+mod route_generator {
+    use crate::fixtures::ScratchDir;
+    use crate::generate::route::{file, instructions, parse, render};
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|a| (*a).to_owned()).collect()
+    }
+
+    #[test]
+    fn the_output_is_the_compiled_golden_file() {
+        let options = parse(&words(&["items"])).unwrap();
+        assert_eq!(file(&options), "src/routes/items.rs");
+        let golden = include_str!("../../tests/generated/route_items.rs");
+        assert_eq!(render(&options), golden);
+    }
+
+    #[test]
+    fn names_and_paths_are_checked() {
+        let custom = parse(&words(&["blog_posts", "--path", "/api/posts"]));
+        let custom = custom.unwrap();
+        let text = render(&custom);
+        assert!(text.contains("#[get(\"/api/posts\", tag = \"blog_posts\""));
+        assert!(text.contains("pub struct BlogPostsInfo"), "{text}");
+        for bad in [
+            &[][..],
+            &["Items"],
+            &["type"],
+            &["items", "extra"],
+            &["items", "--path", "items"],
+            &["items", "--path", "/a/{id}"],
+            &["items", "--path", "/a\"b"],
+            &["items", "--path", "/a//b"],
+            &["items", "--method", "post"],
+        ] {
+            assert!(parse(&words(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn instructions_follow_the_crate_layout() {
+        let scratch = ScratchDir::new("route-steps");
+        let dir = scratch.path();
+        let options = parse(&words(&["items"])).unwrap();
+        let text = instructions(dir, &options);
+        assert!(text.contains("pub mod items; }` to src/main.rs"), "{text}");
+        std::fs::create_dir_all(dir.join("src/routes")).unwrap();
+        std::fs::write(dir.join("src/lib.rs"), "").unwrap();
+        std::fs::write(dir.join("src/routes/mod.rs"), "").unwrap();
+        let text = instructions(dir, &options);
+        assert!(
+            text.contains("`pub mod items;` to src/routes/mod.rs"),
+            "{text}"
+        );
+        assert!(text.contains(".routes(routes::items::routes())"), "{text}");
+    }
+}

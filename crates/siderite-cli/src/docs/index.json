@@ -1350,11 +1350,20 @@
       "text": "```bash\nsiderite dev                       # build, run, r+Enter rebuilds\nsiderite dev -- --addr 0.0.0.0:8000\n```\n\n`dev` builds the app, runs it, and rebuilds when a file the binary was\ncompiled from changes (taken from cargo's dep-info, so path dependencies\nand `include_str!` files count), or `Cargo.toml`, `Cargo.lock`,\n`siderite.toml` or `migrations/`. Files the app writes at run time never\ntrigger a rebuild, and editing a migration never applies it. A failed\nbuild keeps the previous version serving; a successful one stops the old process (SIGTERM, then SIGKILL\nafter `--grace-ms`, default 5 s, including anything it started) and waits\nfor its port to be free before starting the new one. Ctrl-C cancels a\nbuild and stops the app. This restarts the process; it is not hot reload."
     },
     {
+      "id": "guides/production/cli#generators",
+      "kind": "guide",
+      "title": "CLI > Generators",
+      "path": "website/src/content/docs/guides/production/cli.md",
+      "line": 175,
+      "features": [],
+      "text": "```bash\nsiderite generate route items             # src/routes/items.rs\nsiderite generate route items --dry-run   # show it only\n```\n\nA generated route module has one documented handler (`GET /items`,\noperation ID `items_index`), its response type and a `routes()` function.\nsiderite never edits your existing code; it prints the two lines that\nregister the module. Existing files are never overwritten."
+    },
+    {
       "id": "guides/production/cli#dependencies",
       "kind": "guide",
       "title": "CLI > Dependencies",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 175,
+      "line": 187,
       "features": [],
       "text": "```bash\nsiderite add serde --features derive   # cargo add for the app package\nsiderite add --preset postgres         # enable PostgreSQL support\nsiderite add --preset mysql --dry-run  # show the change only\nsiderite remove serde\n```\n\nCargo makes every manifest edit, so `workspace = true` and path or git\nsources stay as they are. A preset only adds a feature to the existing\n`siderite-cli` dependency. `remove --preset` changes nothing and tells you\nwhich feature to delete by hand, so features you added yourself survive."
     },
@@ -1363,7 +1372,7 @@
       "kind": "guide",
       "title": "CLI > Setup",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 189,
+      "line": 201,
       "features": [],
       "text": "```bash\nsiderite setup             # report only\nsiderite setup --install   # also run the rustup steps it suggests\n```\n\nChecks rustup, `rustc` (against siderite's minimum Rust version),\n`cargo`, `rustfmt`, `clippy` and a C linker, and prints the exact command\nto fix each gap for your operating system. `--install` runs only rustup\ncommands (toolchain and components) and never edits shell profiles or\ninstalls system packages."
     },
@@ -1372,7 +1381,7 @@
       "kind": "guide",
       "title": "CLI > Shell completions",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 202,
+      "line": 214,
       "features": [],
       "text": "```bash\nsiderite completions bash > ~/.local/share/bash-completion/completions/siderite\nsiderite completions fish > ~/.config/fish/completions/siderite.fish\nsiderite completions zsh > \"${fpath[1]}/_siderite\"\n```\n\nGenerated from the same command list as the help, so they never drift.\nYour shell profile is never edited."
     },
@@ -1381,7 +1390,7 @@
       "kind": "guide",
       "title": "CLI > Doctor",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 213,
+      "line": 225,
       "features": [],
       "text": "```bash\nsiderite doctor          # or: siderite doctor --json\n```\n\nChecks, without building the app or touching a database: `rustc` and\n`cargo` are present and at least the Rust version siderite and your\npackage need; `rustfmt` and `clippy` are installed; `siderite.toml` and\n`SIDERITE_*` variables load; each database alias uses a supported scheme\nthat this `siderite` binary was built for; and whether the listen address\nis free (advisory). Missing `psql`/`mysql`/`sqlite3` clients are reported\nfor information only. Every warning or error comes with a fix hint; the\nexit code is `1` when a check fails.\n\n`siderite doctor --live [--database ALIAS]... [--timeout-ms N]` also\nconnects to the configured databases (all of them, or the ones named),\nread-only, and reads each one's migration status: at most four at a\ntime, each within the timeout (default 5 s). Only the requested aliases\ncan fail, errors never show URLs, SQLite files are opened read-only and\nnever created, and Redis/MongoDB aliases are not probed."
     },
@@ -1390,7 +1399,7 @@
       "kind": "guide",
       "title": "CLI > Verify",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 235,
+      "line": 247,
       "features": [],
       "text": "```bash\nsiderite verify          # fmt, lint, build, test and check\nsiderite verify --live   # also the ignored (live-service) tests\n```\n\nOne report for the whole local verification: each step's status, time\nand, on failure, the redacted end of its output. A failed build skips the\ntests and the framework check; files are never reformatted and migrations\nare never applied. `--json` writes one `verify` envelope; compiler errors\nand Clippy findings appear there with their codes, file spans and rendered\nexplanations."
     },
@@ -1399,7 +1408,7 @@
       "kind": "guide",
       "title": "CLI > Docs search",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 249,
+      "line": 261,
       "features": [],
       "text": "```bash\nsiderite docs search queryset filter\nsiderite docs search transaction --json --limit 3\n```\n\nSearches the documentation of the installed CLI's version without a\nnetwork connection. Results name the source file and line, link to it at\nthe release tag and list the Cargo features the section mentions. If your\nproject's `Cargo.lock` uses another siderite version, a warning says so."
     },
@@ -1408,7 +1417,7 @@
       "kind": "guide",
       "title": "CLI > Explain",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 261,
+      "line": 273,
       "features": [],
       "text": "```bash\nsiderite explain models.E003     # cause, fix, verification command\nsiderite explain E0308           # points to rustc --explain\nsiderite explain --list          # every siderite code\n```\n\nEvery diagnostic code siderite reports has an entry: why it appears, the\nsmallest correction and the command that shows it is fixed, for this\nversion. Compiler codes and Clippy lints point to their official pages\ninstead of a siderite explanation; an unknown code exits `1`."
     },
@@ -1417,7 +1426,7 @@
       "kind": "guide",
       "title": "CLI > AI context",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 274,
+      "line": 286,
       "features": [],
       "text": "```bash\nsiderite ai dump-context            # Markdown\nsiderite ai dump-context --json     # versioned JSON envelope\nsiderite ai dump-context --live     # also read migration status\n```\n\n`siderite ai init` writes `.siderite/context.md` for AI assistants:\ncommands, conventions, this project's models and routes, and examples\ncompiled against your siderite version. Rerun it after changes (`--check`\ntells CI when it is stale). Only the block between its markers is\ngenerated; your notes around it are kept, and a hand-edited block is\nleft alone unless you pass `--force`.\n\n`ai dump-context` describes the app from its compiled metadata: framework\nversion, database aliases and backend kinds (never URLs), models and\ntheir fields, documented routes, and migration status (`unknown` unless\n`--live`). Output is bounded (`--max-bytes`), says what was cut, and is\nredacted. It names the binary and its build time so stale context can be\nrecognised.\n\nFor one task, `siderite ai context --task \"add a tag filter to posts\"`\npicks the matching models and routes, the relevant documentation and\nexamples for your siderite version, and any files you name with\n`--include`, within a byte budget (`--budget`, default 32768). It says\nwhat it left out and what it could not know. Included files must be in\nthe app package; git-ignored and secret-looking files are skipped.\n\nBefore handing work back, `siderite ai validate` runs the same steps as\n`siderite verify` and lists each failure with its file and line, the fix\n`siderite explain` gives for its code, a documentation link and the\ncommand that reproduces it. It changes nothing, and a clean report only\nmeans these checks passed: application logic still needs its own tests."
     },
@@ -1426,7 +1435,7 @@
       "kind": "guide",
       "title": "CLI > JSON output",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 309,
+      "line": 321,
       "features": [],
       "text": "`check`, `docs search`, `doctor`, `explain`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command\n(`siderite --json routes`, `siderite check --json`). Stdout then carries\nexactly one JSON value and a newline, a versioned envelope described by\n[`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):\n\n```json\n{\"schema_version\":1,\"command\":\"routes\",\"ok\":true,\"data\":{\"routes\":[]},\"diagnostics\":[]}\n```\n\n- Exit codes keep their meaning: `0` success, `1` failure (`check` found an\n  error, `ok: false`), `2` usage error.\n- Every failure is an envelope too, with `data: null`, `ok: false` and one\n  diagnostic: `cli.E001` usage error, `cli.E002` the command failed,\n  `cli.E003` the application exited without a report (build failure,\n  crash, or a `siderite-cli` that predates `--json`).\n- Through `siderite`, cargo's build output and anything the app factory\n  prints go to stderr: the app writes its report to a private file\n  (`SIDERITE_REPORT_PATH`), never to the shared stdout.\n- `--json` with any other command, with `--help`, or without a command is\n  a usage error. `routes` lists documented routes only (hidden endpoints\n  are omitted).\n- `showmigrations --json` reports the selected alias, where its URL came\n  from (never the URL), and each migration's `id` and `applied` flag in\n  the text order. It is a read-only live query bounded to 30 seconds; a\n  missing database or unreadable history is a failure, never an empty\n  list."
     },
@@ -1435,7 +1444,7 @@
       "kind": "guide",
       "title": "CLI > OpenAPI export",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 338,
+      "line": 350,
       "features": [],
       "text": "```bash\nsiderite openapi export > openapi.json\nsiderite openapi export --output openapi.json --force\n```\n\nThe document is the one `/openapi.json` serves (`App::openapi()`),\npretty-printed and deterministic, and export works with the HTTP docs\ndisabled. Only the app factory runs, so keep it free of side effects. A\nrelative `--output` is resolved against your current directory; the file\nis written atomically and an existing file is replaced only with `--force`."
     },
@@ -1444,7 +1453,7 @@
       "kind": "guide",
       "title": "CLI > `check`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 351,
+      "line": 363,
       "features": [],
       "text": "`check` runs without starting a server or opening a database. Each issue\nprints as `error: [models.E003] message` or `warning: [id] message`.\nMessages never contain database URLs.\n\n| Id | Level | Meaning |\n|---|---|---|\n| `config.E001` | error | models are registered but no `default` database is configured |\n| `config.E002` | error | a database URL has no scheme or does not parse |\n| `config.E003` | error | a database URL uses an unsupported scheme |\n| `models.E001` | error | two models use the same table |\n| `models.E002` | error | a model name is registered more than once |\n| `models.E003` | error | a model has no primary key |\n| `models.E004` | error | a foreign key points to a model that is not registered |\n| `models.E005` | error | a many-to-many relation (or its through model) targets an unregistered model |\n| `models.E006` | error | two fields map to the same column |\n| `models.E007` | error | a model has more than one primary-key field |\n| `migrations.E001` | error | the migration files cannot be loaded |\n| `migrations.E002` | error | the migration dependency graph is invalid |\n| `migrations.E003` | error | the migrations do not replay cleanly |\n| `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |\n| `openapi.E001` | error | the OpenAPI document cannot be generated |\n| `routes.E001` | error | the app cannot be built into a router |\n| `backend.E001` | error | the `default` database is Redis, which cannot hold models |\n| `backend.E002` | error | a model needs joins the `default` backend does not support |\n| `backend.E003` | error | the schema cannot be created on the `default` backend |\n| `backend.W001` | warning | the backend has no schema migrations; `migrate` will refuse to run |\n\nMigration checks are skipped when no migrations directory is passed to\n`siderite_cli::check`; `AppCli` always passes its own."
     },
@@ -1453,7 +1462,7 @@
       "kind": "guide",
       "title": "CLI > `dbshell`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 383,
+      "line": 395,
       "features": [],
       "text": "`dbshell` starts `sqlite3`, `psql`, or `mysql` on the selected database and\nreturns the client’s exit code. Passwords never appear on the command line\nor in output: `psql` receives `PGPASSWORD` and `mysql` receives `MYSQL_PWD`\nin its environment. A userinfo password and a PostgreSQL `?password=` query\nparameter both move into `PGPASSWORD` and are stripped from the URL passed\nto `psql`. A URL that carries `sslpassword` is refused. For MySQL only\nhost, port, user, and database are forwarded. An in-memory SQLite URL, an\nunknown scheme, or a client that is not on `PATH` is an error. MongoDB and\nRedis are not supported."
     },
@@ -1462,7 +1471,7 @@
       "kind": "guide",
       "title": "CLI > See also",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 395,
+      "line": 407,
       "features": [],
       "text": "- [Migrations](/siderite/guides/data/migrations/)\n- [Configuration](/siderite/guides/production/config/)\n- [Signals](/siderite/guides/data/signals/)"
     },

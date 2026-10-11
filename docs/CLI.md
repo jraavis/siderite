@@ -165,6 +165,12 @@ siderite completions fish > ~/.config/fish/completions/siderite.fish
 
 The scripts are tested by running them in bash, zsh and fish.
 
+## `generate`
+
+`siderite generate KIND NAME [--dry-run]` writes new source files into the selected package through the same write plan as `new`: a file is only created (rerunning with identical output reports it unchanged; a file you changed is a conflict, never overwritten), paths cannot escape the package, and `--dry-run` shows the exact files. Generated code is compiled and exercised in siderite's own tests, so it matches the public API of the version that writes it. siderite never edits existing code: it prints the lines to add.
+
+- `generate route NAME [--path /URL]` writes `src/routes/NAME.rs`: a documented `GET` handler at `/NAME` (or `--path`, a literal path; add parameters by hand) with the explicit operation ID `NAME_index` and tag `NAME`, a documented response type (`NameInfo`, deriving `Serialize` and `Schema`) and `pub fn routes() -> Vec<Route>`. `NAME` is a snake_case identifier and not a keyword. Registering it takes two lines, which the command prints: declare the module (`pub mod routes { pub mod NAME; }` in `src/lib.rs`, or `pub mod NAME;` in an existing `src/routes.rs` or `src/routes/mod.rs`) and add `.routes(routes::NAME::routes())` to the app. `siderite check` then reports any duplicate operation ID.
+
 ## `add` and `remove`
 
 `siderite add CRATE... [cargo add options]` and `siderite remove CRATE... [cargo remove options]` run `cargo add` / `cargo remove --package NAME` for the selected app package (`--manifest-path` and `--package` choose it as for other commands), so Cargo makes every manifest edit: workspace inheritance (`workspace = true`), path and git sources and formatting are kept as Cargo keeps them (Cargo may rewrite a path dependency relative to the manifest). The command is printed before it runs, and Cargo's exit code is returned.
