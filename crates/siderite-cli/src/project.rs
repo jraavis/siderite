@@ -73,10 +73,10 @@ pub fn cargo_run_captured(
 }
 
 /// A fresh, private output file under the temp dir, removed on drop.
-struct ReportFile(std::path::PathBuf);
+pub(crate) struct ReportFile(std::path::PathBuf);
 
 impl ReportFile {
-    fn new() -> Result<Self, CliError> {
+    pub(crate) fn new() -> Result<Self, CliError> {
         let name = fsio::unique_name("siderite-report", ".json");
         let path = std::env::temp_dir().join(name);
         // `create_new` refuses a file (or link) planted at the path.
@@ -84,13 +84,13 @@ impl ReportFile {
         Ok(Self(path))
     }
 
-    fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 
     /// The output: any non-empty text, or exactly one JSON value when
     /// `json`.
-    fn read(&self, json: bool) -> Option<String> {
+    pub(crate) fn read(&self, json: bool) -> Option<String> {
         let text = std::fs::read_to_string(&self.0).ok()?;
         if json {
             serde_json::from_str::<serde_json::Value>(&text).ok()?;
@@ -181,7 +181,7 @@ pub fn cargo_passthrough(
 
 /// `cargo <sub>` is an external `cargo-<sub>` program; say how to get it
 /// instead of letting cargo report an unknown command.
-fn require_subcommand(pass: &Passthrough, component: &str) -> Done {
+pub(crate) fn require_subcommand(pass: &Passthrough, component: &str) -> Done {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let program = format!("cargo-{}", pass.cargo);
     if crate::doctor::tools::which(&program, &path).is_some() {
@@ -203,7 +203,7 @@ fn args_after(cargo_cmd: &str, args: &[String]) -> Vec<String> {
 }
 
 /// Every argument is a separate argv entry, so paths with spaces work.
-fn cargo_command(
+pub(crate) fn cargo_command(
     package_dir: &Path,
     cargo_cmd: &str,
     bin: Option<&str>,

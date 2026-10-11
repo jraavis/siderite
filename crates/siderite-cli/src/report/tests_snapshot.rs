@@ -40,14 +40,7 @@ fn build(models: Models<'_>, limits: Limits) -> Envelope<Snapshot> {
 }
 
 fn validate(value: &Value) {
-    let schema: Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/schemas/cli-report-v1.json"
-    )))
-    .unwrap();
-    let validator = jsonschema::validator_for(&schema).unwrap();
-    let errors: Vec<_> = validator.iter_errors(value).collect();
-    assert!(errors.is_empty(), "{errors:?}");
+    crate::fixtures::assert_schema_valid(value);
 }
 
 #[test]

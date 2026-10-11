@@ -78,24 +78,24 @@ checkbox is a separate reviewable change. All tasks are currently open.
 
 ### Make the CLI sufficient for daily work
 
-- [ ] **X01 — Define the developer command contract.**
+- [x] **X01 — Define the developer command contract.**
   Depends: C01, C02. Scope: consistent help, arguments and command metadata.
   Done: commands declare project requirements, mutations, live access and
   supported output modes. Provide a versioned machine-readable command list
   for AI clients. Preserve Cargo argument forwarding and exit semantics.
 
-- [ ] **X02 — Add setup diagnostics.**
+- [x] **X02 — Add setup diagnostics.**
   Depends: C06. Scope: `setup` as a guided prerequisite check.
   Done: identify missing compiler/linker/platform prerequisites and compatible
   versions; show exact next steps. Interactive and non-interactive runs agree;
   no shell profile or global toolchain change without explicit installation.
 
-- [ ] **X03 — Add shell completions.**
+- [x] **X03 — Add shell completions.**
   Depends: X01. Scope: Bash, Zsh and Fish completion generation.
   Done: derive completions from command metadata, test nested subcommands,
   and never edit shell profiles by default.
 
-- [ ] **X04 — Add one-command verification.**
+- [x] **X04 — Add one-command verification.**
   Depends: C03, C08. Scope: `verify` orchestration.
   Done: run formatting checks, lint, compilation, tests and framework checks
   through existing runners; return one aggregate report with per-step status,

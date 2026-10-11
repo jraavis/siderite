@@ -38,6 +38,7 @@ pub mod settings;
 mod standalone;
 mod status;
 mod target;
+mod verify;
 mod workspace;
 
 pub use app_cli::AppCli;

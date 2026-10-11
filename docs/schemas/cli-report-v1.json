@@ -80,6 +80,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "verify" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/VerifyData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "snapshot" } } },
       "then": {
         "properties": {
@@ -172,6 +182,37 @@
               "name": { "type": "string", "minLength": 1 },
               "status": { "enum": ["ok", "info", "warning", "error"] },
               "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "VerifyData": {
+      "type": "object",
+      "required": ["profile", "steps"],
+      "properties": {
+        "profile": { "enum": ["offline", "live"] },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "command",
+              "status",
+              "duration_ms",
+              "exit_code",
+              "output"
+            ],
+            "properties": {
+              "name": {
+                "enum": ["fmt", "lint", "build", "test", "check"]
+              },
+              "command": { "type": "string" },
+              "status": { "enum": ["passed", "failed", "skipped"] },
+              "duration_ms": { "type": "integer", "minimum": 0 },
+              "exit_code": { "type": ["integer", "null"] },
+              "output": { "type": ["string", "null"] }
             }
           }
         }

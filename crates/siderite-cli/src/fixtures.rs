@@ -216,3 +216,24 @@ pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
         Err(err) => panic!("cannot start a runtime: {err}"),
     }
 }
+
+/// Assert that `value` matches the published report schema.
+pub(crate) fn assert_schema_valid(value: &serde_json::Value) {
+    use std::sync::OnceLock;
+    static VALIDATOR: OnceLock<jsonschema::Validator> = OnceLock::new();
+    let validator = VALIDATOR.get_or_init(|| {
+        let text = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../docs/schemas/cli-report-v1.json"
+        ));
+        let schema = serde_json::from_str(text);
+        let schema = schema.unwrap_or_else(|e| panic!("schema: {e}"));
+        let validator = jsonschema::validator_for(&schema);
+        validator.unwrap_or_else(|e| panic!("schema: {e}"))
+    });
+    let errors: Vec<String> = validator
+        .iter_errors(value)
+        .map(|e| e.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}\n{value}");
+}

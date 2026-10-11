@@ -216,6 +216,14 @@ Tools are probed in the project directory (so `rust-toolchain.toml` applies) wit
 
 Probes do not change schema or data: the history table is only read, and SQLite files are opened read-only (`mode=ro`) and never created (a missing file is an error; a relative path is resolved against the project directory). In-memory SQLite, Redis and MongoDB aliases are reported as not probed. Connecting is not entirely free of effects: PostgreSQL and MySQL pools run their session setup (for example setting the session time zone), the server logs the connection, and failed logins count toward any lockout policy; none of this persists past the connection.
 
+## `verify`
+
+`siderite verify [--json] [--live]` runs the whole local verification of the app and reports every step in one place. The steps, in order: `fmt` (`cargo fmt --check`), `lint` (`cargo clippy --all-targets -- -D warnings`), `build` (`cargo build --all-targets`), `test` (`cargo test --all-targets`) and `check` (`cargo run -- check --json`, the framework checks). Every step runs even after an earlier one failed, except that a failed `build` skips `test` and `check`. A missing `rustfmt` or `clippy` fails its step with the `rustup component add` command.
+
+The default profile is offline. `--live` also runs the ignored tests (`cargo test --all-targets -- --include-ignored`), which is where tests that need running services belong. `verify` never formats files, never applies migrations and never connects to a database itself.
+
+Each step records its status (`passed`, `failed` or `skipped`), wall time, exit code and, for a failure, the last 30 lines of its output with credentials redacted. Text output is one line per step and a summary; `--json` writes one `verify` envelope whose `data` is `{profile, steps}` with a `verify.E001` diagnostic per failed step. The exit code is `1` when any step failed. Progress lines go to stderr.
+
 ## `showmigrations --json`
 
 Works in the app binary and in the standalone `siderite` binary. `data` holds the selected `alias` (`null` in the standalone binary, which has no aliases), where the URL came from (`source`: `flag`, `settings` or `environment`; the URL itself is never printed), the `migrations` as `{id, applied}` in the order of the text output, and `applied` / `pending` counts. Both outputs come from the same `Migrator::show()` rows; nothing parses printed lines.
