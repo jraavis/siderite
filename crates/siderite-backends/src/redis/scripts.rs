@@ -28,7 +28,8 @@ static INCR_EXPIRE: LazyLock<Script> = LazyLock::new(|| {
 /// that expires the counter, so processes with skewed clocks agree.
 static ADMIT: LazyLock<Script> = LazyLock::new(|| {
     Script::new(
-        "if redis.call('GET', KEYS[2]) ~= ARGV[2] then return {0, 0} end \
+        "if redis.replicate_commands then redis.replicate_commands() end \
+         if redis.call('GET', KEYS[2]) ~= ARGV[2] then return {0, 0} end \
          local live = redis.call('GET', KEYS[1]) \
          if live then return {1, live} end \
          local t = redis.call('TIME') \
@@ -113,8 +114,9 @@ impl RedisStore {
     /// on it whatever its own clock says; the counter expires after twice
     /// the window on the same server clock. Nothing is created when the
     /// epoch differs or the budget is spent. The counter key is built inside
-    /// the script, so this requires a single (non-cluster) deployment, and
-    /// Redis 5 or newer (effects replication after `TIME`).
+    /// the script, so this requires a single (non-cluster) deployment. The
+    /// script enables effects replication itself where Redis needs it
+    /// (before 7), so `TIME` followed by writes is accepted.
     ///
     /// # Errors
     /// [`RedisError::Invalid`] when `window` is below 1ms or above

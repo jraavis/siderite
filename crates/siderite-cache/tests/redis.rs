@@ -239,6 +239,7 @@ async fn admit_marker_budget_is_exact_under_concurrency_on_the_server_clock() {
     with_cache(|cache| async move {
         let window = Duration::from_secs(600);
         cache.set("epoch", vec![7; 16], Some(window)).await.unwrap();
+        let before = server_window(window).await;
         let mut tasks = Vec::new();
         for n in 0..64 {
             let cache = cache.clone();
@@ -261,6 +262,13 @@ async fn admit_marker_budget_is_exact_under_concurrency_on_the_server_clock() {
                 other => panic!("unexpected {other:?}"),
             }
         }
+        let after = server_window(window).await;
+        if before != after {
+            // The run straddled a window boundary, so the split between
+            // two counters is legitimate; nothing exact can be asserted.
+            eprintln!("window rolled during the run; skipping exact counts");
+            return;
+        }
         assert_eq!((admitted, exhausted), (10, 54));
         // Refused callers left no marker behind.
         let mut live = 0;
@@ -270,20 +278,43 @@ async fn admit_marker_budget_is_exact_under_concurrency_on_the_server_clock() {
         assert_eq!(live, 10);
         // The counter is named after the server window and expires after
         // two windows on the server clock.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap();
-        let index = now.as_millis() / window.as_millis();
-        let mut found = Vec::new();
-        for candidate in [index - 1, index, index + 1] {
-            let key = format!("budget:{candidate}");
-            if let Ttl::ExpiresIn(left) = cache.store().ttl(&key).await.unwrap() {
-                found.push(left);
-            }
-        }
-        assert_eq!(found.len(), 1, "one counter for the window: {found:?}");
-        let left = found[0];
+        let key = format!("budget:{after}");
+        let Ttl::ExpiresIn(left) = cache.store().ttl(&key).await.unwrap() else {
+            panic!("counter {key} has no expiry");
+        };
         assert!(left <= window * 2 && left > window, "{left:?}");
+    })
+    .await;
+}
+
+/// The window index (`floor(server TIME / window)`) the script uses.
+async fn server_window(window: Duration) -> u128 {
+    let url = std::env::var("REDIS_URL").unwrap();
+    let client = redis::Client::open(url).unwrap();
+    let mut conn = client.get_multiplexed_async_connection().await.unwrap();
+    let (secs, micros): (u64, u64) = redis::cmd("TIME").query_async(&mut conn).await.unwrap();
+    let now = u128::from(secs) * 1000 + u128::from(micros / 1000);
+    now / window.as_millis()
+}
+
+/// A lost epoch (eviction) refuses fills that observed it.
+#[tokio::test]
+#[ignore = "requires explicit REDIS_URL and an isolated live namespace"]
+async fn evicted_epoch_mid_fill_makes_admission_stale() {
+    with_cache(|cache| async move {
+        let hour = Duration::from_secs(3600);
+        let epoch: &[u8] = &[7; 16];
+        cache
+            .set("epoch", epoch.to_vec(), Some(hour))
+            .await
+            .unwrap();
+        let request = AdmitMarker::new("m", &[1; 16], "epoch", epoch);
+        let request = request.budget("budget:", 5, hour);
+        // The fill observed the epoch, then the server evicted it.
+        assert!(cache.delete("epoch").await.unwrap());
+        let stale = cache.admit_marker(&request).await.unwrap();
+        assert_eq!(stale, Admission::Stale);
+        assert_eq!(cache.get("m").await.unwrap(), None);
     })
     .await;
 }
@@ -306,8 +337,13 @@ async fn invalidate_marker_replaces_the_epoch_and_deletes_the_marker() {
         assert!(left <= ttl);
         let zero = cache.invalidate_marker("marker", "epoch", &[1], Duration::ZERO);
         assert!(matches!(zero.await.unwrap_err(), CacheError::InvalidTtl));
-        // A write is one atomic call: no half-state is observable.
+        // A failed call changed nothing; a missing marker still rotates.
         assert_eq!(cache.get("epoch").await.unwrap(), Some(vec![9, 0, 255]));
+        cache
+            .invalidate_marker("marker", "epoch", &[4], ttl)
+            .await
+            .unwrap();
+        assert_eq!(cache.get("epoch").await.unwrap(), Some(vec![4]));
     })
     .await;
 }
@@ -351,7 +387,9 @@ async fn scripts_run_by_hash() {
             .await
             .unwrap();
         let by_hash = stat(&after, "cmdstat_evalsha:") - stat(&before, "cmdstat_evalsha:");
-        assert_eq!(by_hash, 4, "two scripts per run, two runs");
+        // Other clients may add EVALSHA calls to the server-wide stats, so
+        // only a lower bound holds; text resent would show up as EVAL.
+        assert!(by_hash >= 4, "two scripts per run, two runs: {by_hash}");
         assert_eq!(
             stat(&after, "cmdstat_eval:"),
             stat(&before, "cmdstat_eval:"),

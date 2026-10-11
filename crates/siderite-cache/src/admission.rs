@@ -77,7 +77,8 @@ pub enum Admission {
 /// Generic admission from existing primitives.
 ///
 /// Order: create the marker, count it only if this call created it, delete
-/// it again when over budget, then compare the epoch. A write that lands
+/// it again when over budget, then compare the epoch (a marker this call
+/// created is deleted again when the epoch differs). A write that lands
 /// after the marker exists deletes it; one that landed earlier changed the
 /// epoch. The window comes from this process's clock, so clocks that
 /// disagree by more than a fraction of the window let processes count
@@ -107,7 +108,16 @@ where
     };
     match cache.get(req.epoch_key).await? {
         Some(current) if current == req.epoch => Ok(Admission::Marker(token)),
-        _ => Ok(Admission::Stale),
+        _ => {
+            if created {
+                // The fill will not be stored, so the marker this call
+                // made would only occupy a slot. Deleting it after the
+                // epoch read keeps the safety order: a write between the
+                // two reads deletes the marker itself.
+                let _ = cache.delete(req.marker).await;
+            }
+            Ok(Admission::Stale)
+        }
     }
 }
 

@@ -144,6 +144,10 @@ eviction safe for route caching. The invariants below are normative for
    layers and processes two tokens can only coincide if both layers drew
    the same seed (2^-64 per pair) and the same counter value. Tokens are
    unique, not secret, and no per-write random-number syscall is needed.
+   The seed is 64 fully random bits. Processes forked after the layer is
+   built copy its seed and counter; build the layer in each process after
+   the fork. The epoch keys are striped (64 per namespace, new format in
+   this release).
 2. **Delayed fills stay dead.** Representation keys embed the generation.
    A fill that completes after rotation, expiry or eviction stores under an
    old key that no later reader computes.

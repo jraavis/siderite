@@ -418,8 +418,12 @@ impl Cache for MemoryCache {
             value: req.token.to_vec(),
             expires_at: Some(deadline),
         };
-        cache.put(counter, counted)?;
+        // Marker first: a refused marker must not consume budget.
         cache.put(req.marker.to_owned(), marker)?;
+        if let Err(error) = cache.put(counter, counted) {
+            cache.pop(req.marker);
+            return Err(error);
+        }
         Ok(Admission::Marker(req.token.to_vec()))
     }
 
@@ -438,8 +442,9 @@ impl Cache for MemoryCache {
             value: epoch.to_vec(),
             expires_at: Some(deadline),
         };
-        cache.put(epoch_key.to_owned(), entry)?;
+        // Marker first: a refused epoch put cannot leave the marker.
         cache.pop(marker);
+        cache.put(epoch_key.to_owned(), entry)?;
         Ok(())
     }
 }

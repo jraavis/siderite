@@ -27,7 +27,7 @@
 //!    marker yields a fresh random token (invariant 1), so deletion rotates
 //!    the generation and creates no metadata outside the admission budget.
 
-use super::{NO_MARKERS, Policy, cache_key, push_part};
+use super::{ADMIT_WARNED, NO_MARKERS, Policy, cache_key, push_part};
 use crate::{Admission, AdmitMarker, Cache, CacheError};
 use http::Method;
 use siderite_core::Request;
@@ -78,6 +78,10 @@ impl Keys {
 /// counter guarantees that; across layers and processes two identifiers
 /// collide only if both draw the same seed (2^-64 per pair) and the same
 /// counter. They are unique, not secret: nothing is learned from one.
+///
+/// The seed is drawn when the layer is built. Processes forked after the
+/// build (prefork servers) copy the seed and the counter and would mint
+/// identical identifiers: build the layer in each process after the fork.
 #[derive(Debug)]
 pub(super) struct Local {
     seed: [u8; 8],
@@ -89,8 +93,10 @@ pub(super) struct Local {
 
 impl Local {
     pub(super) fn new() -> Self {
-        let random = *Uuid::new_v4().as_bytes();
-        let [a, b, c, d, e, f, g, h, ..] = random;
+        // Bytes 0..6 of a v4 UUID are fully random (the version and
+        // variant bits sit in bytes 6 and 8); take four from each of two.
+        let [a, b, c, d, ..] = *Uuid::new_v4().as_bytes();
+        let [e, f, g, h, ..] = *Uuid::new_v4().as_bytes();
         Self {
             seed: [a, b, c, d, e, f, g, h],
             counter: AtomicU64::new(0),
@@ -258,7 +264,10 @@ pub(super) async fn admit<C: Cache>(
         window: policy.generation_ttl,
     };
     let admission = cache.admit_marker(&request).await;
-    match admission.inspect_err(|error| note_error(error, &policy.flags))? {
+    match admission.inspect_err(|error| {
+        note_error(error, &policy.flags);
+        note_admit_failure(error, &policy.flags);
+    })? {
         Admission::Marker(token) => decode(&token).map(Some),
         Admission::Exhausted { resets_in } => {
             policy.local.spend(resets_in);
@@ -271,6 +280,19 @@ pub(super) async fn admit<C: Cache>(
 fn note_error(error: &CacheError, flags: &AtomicU8) {
     if matches!(error, CacheError::Unsupported { .. }) {
         note_unsupported(flags);
+    }
+}
+
+/// Warn once per layer when admission fails with a backend error, so a
+/// persistent script or command error (for example a server that rejects
+/// the admission script) is visible instead of an endless silent miss.
+fn note_admit_failure(error: &CacheError, flags: &AtomicU8) {
+    if matches!(error, CacheError::Backend(_)) {
+        let before = flags.fetch_or(ADMIT_WARNED, Ordering::AcqRel);
+        if before & ADMIT_WARNED == 0 {
+            tracing::warn!(%error, "route cache marker admission failed; \
+                 responses are served uncached while it keeps failing");
+        }
     }
 }
 
