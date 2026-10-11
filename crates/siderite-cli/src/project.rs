@@ -1,6 +1,7 @@
 //! Invoke `cargo run` / `cargo test`.
 
 use crate::error::CliError;
+use crate::fsio;
 use crate::report::channel::{self, NO_REPORT_CODE, REPORT_PATH_ENV};
 use crate::workspace::spawn_error;
 use std::path::Path;
@@ -9,6 +10,7 @@ use std::process::{Command, Stdio};
 /// Commands that `AppCli` in the application binary understands.
 pub const APP_COMMANDS: &[&str] = &[
     "run",
+    "openapi",
     "routes",
     "check",
     "dbshell",
@@ -35,20 +37,31 @@ pub fn cargo_run(dir: &Path, bin: Option<&str>, args: &[String]) -> CliResult {
     exit_code(&mut command)
 }
 
-/// `cargo run` for a `--json` run of `command`: the application writes its
-/// report to a private file named by [`REPORT_PATH_ENV`] and its stdout
-/// (anything the app factory prints) goes to stderr. The report is then
+/// What [`cargo_run_captured`] prints when the application exits
+/// without writing its output.
+#[derive(Debug, Clone, Copy)]
+pub enum Missing<'a> {
+    /// A failure envelope for this command (`--json` runs).
+    Envelope(&'a str),
+    /// Nothing on stdout; the reason goes to stderr (raw documents such
+    /// as the OpenAPI export).
+    Nothing,
+}
+
+/// `cargo run` whose stdout output must stay clean: the application
+/// writes it to a private file named by [`REPORT_PATH_ENV`], its stdout
+/// (anything the app factory prints) goes to stderr, and the file is then
 /// printed as the only stdout output.
 ///
-/// When the application exits without a valid report (a build failure, a
-/// crash, or a `siderite-cli` that predates `--json`), a failure envelope
-/// with code [`NO_REPORT_CODE`] is printed instead and the exit code is
-/// `2` if the child exited `2`, else `1`.
-pub fn cargo_run_report(
+/// When the application exits without writing exactly one JSON value (a
+/// build failure, a crash, or a `siderite-cli` without the command),
+/// `missing` decides what is printed, and the exit code is `2` if the
+/// child exited `2`, else `1`.
+pub fn cargo_run_captured(
     dir: &Path,
     bin: Option<&str>,
     args: &[String],
-    command_name: &str,
+    missing: Missing<'_>,
 ) -> CliResult {
     let report = ReportFile::new()?;
     let mut command = cargo_command(dir, "run", bin, args);
@@ -61,38 +74,28 @@ pub fn cargo_run_report(
         return Ok(if code <= 2 { code } else { 1 });
     }
     let message = format!(
-        "the application exited with status {code} without writing a \
-         report (see stderr; its siderite-cli may predate --json)"
+        "the application exited with status {code} without writing its \
+         output (see stderr; its siderite-cli may predate this command)"
     );
-    let failure = channel::failure(command_name, NO_REPORT_CODE, &message);
-    channel::emit_json(&failure, None)?;
+    match missing {
+        Missing::Envelope(name) => {
+            let failure = channel::failure(name, NO_REPORT_CODE, &message);
+            channel::emit_json(&failure, None)?;
+        }
+        Missing::Nothing => eprintln!("error: {message}"),
+    }
     Ok(if code == 2 { 2 } else { 1 })
 }
 
-fn io_error(what: &str, path: &Path, err: &std::io::Error) -> CliError {
-    CliError::Io(format!("cannot {what} {}: {err}", path.display()))
-}
-
-/// A unique report file under the temp dir, removed on drop.
+/// A fresh, private output file under the temp dir, removed on drop.
 struct ReportFile(std::path::PathBuf);
 
 impl ReportFile {
     fn new() -> Result<Self, CliError> {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos());
-        let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let pid = std::process::id();
-        let name = format!("siderite-report-{pid}-{nanos}-{n}.json");
+        let name = fsio::unique_name("siderite-report", ".json");
         let path = std::env::temp_dir().join(name);
         // `create_new` refuses a file (or link) planted at the path.
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|err| io_error("create", &path, &err))?;
+        fsio::create_new(&path)?;
         Ok(Self(path))
     }
 
@@ -100,7 +103,7 @@ impl ReportFile {
         &self.0
     }
 
-    /// The report, when the child wrote exactly one JSON value.
+    /// The output, when the child wrote exactly one JSON value.
     fn read(&self) -> Option<String> {
         let text = std::fs::read_to_string(&self.0).ok()?;
         serde_json::from_str::<serde_json::Value>(&text).ok()?;

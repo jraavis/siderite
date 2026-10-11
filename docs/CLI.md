@@ -69,6 +69,7 @@ AppCli::new(build_app)
 | `routes [--json]` | Prints `METHOD PATH operation_id` for every route, mounts included. |
 | `check [--json]` | Validates configuration, models, migrations, routes and the backend (see below). Exits `1` when an error is found. |
 | `dbshell` | Starts the database's native client. Replaces Django-style `shell`. |
+| `openapi export [--output PATH] [--force]` | Writes the app's OpenAPI 3.1 document (pretty JSON, the same `App::openapi()` that serves `/openapi.json`) to stdout or `PATH`. Builds the app from the factory only: no database connection, server or migration; works with the HTTP docs disabled. |
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the migration graph and writes a JSON migration. Never connects to a database. |
 | `migrate [TARGET] [--dry-run]` | Applies migrations. |
 | `rollback [--steps N \| TARGET] [--dry-run]` | Unapplies migrations. |
@@ -145,6 +146,19 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
   | `cli.E003` | `1` (`2` if the app exited `2`) | the application exited without a valid report: a build failure, a crash, or a `siderite-cli` that predates `--json` |
 
 - `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
+
+## `openapi export`
+
+```bash
+siderite openapi export > openapi.json
+siderite openapi export --output openapi.json          # refuses to replace
+siderite openapi export --output openapi.json --force  # replaces atomically
+```
+
+- The output is the raw OpenAPI document, not a report envelope, so `--json` does not apply. Paths, operations and components come out sorted, so repeated exports are byte-identical.
+- The factory must be side-effect free: export calls it once and only reads the document. Nothing is sandboxed; a factory that connects or prints still does so (prints go to stderr when run through `siderite`).
+- `--output` is relative to the directory `siderite` was run in. The file is written to a temporary sibling, synced, then linked into place, so readers never see a partial document. An existing file is never replaced without `--force`, including one created concurrently; `--force` replaces it with an atomic rename.
+- A document that cannot be generated (for example duplicate operation ids) exits `1` with nothing on stdout.
 
 ## `check`
 

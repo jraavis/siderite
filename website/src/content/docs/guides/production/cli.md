@@ -91,6 +91,7 @@ AppCli::new(build_app)
 | `routes [--json]` | Prints `METHOD PATH operation_id` for every route, mounts included |
 | `check [--json]` | Validates configuration, models, migrations, routes, and the backend. Exits `1` when an error is found |
 | `dbshell` | Starts the database’s native client |
+| `openapi export [--output PATH] [--force]` | Writes the OpenAPI 3.1 document to stdout or `PATH`; no database, server or migration |
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the graph and writes a JSON migration. Never connects to a database |
 | `migrate [TARGET] [--dry-run]` | Applies migrations |
 | `rollback [--steps N \| TARGET] [--dry-run]` | Unapplies migrations |
@@ -173,6 +174,19 @@ exactly one JSON value and a newline, a versioned envelope described by
 - `--json` with any other command, with `--help`, or without a command is
   a usage error. `routes` lists documented routes only (hidden endpoints
   are omitted).
+
+## OpenAPI export
+
+```bash
+siderite openapi export > openapi.json
+siderite openapi export --output openapi.json --force
+```
+
+The document is the one `/openapi.json` serves (`App::openapi()`),
+pretty-printed and deterministic, and export works with the HTTP docs
+disabled. Only the app factory runs, so keep it free of side effects. A
+relative `--output` is resolved against your current directory; the file
+is written atomically and an existing file is replaced only with `--force`.
 
 ## `check`
 

@@ -22,6 +22,8 @@ mod dispatch;
 mod error;
 #[cfg(test)]
 mod fixtures;
+mod fsio;
+mod openapi;
 mod project;
 pub mod report;
 pub mod routes;
