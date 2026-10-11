@@ -273,7 +273,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   failures; do not claim rollback after partial edits without verifying it.
   Separate package names from presets, for example `add --preset postgres`.
 
-- [ ] **D04 — Add PostgreSQL/MySQL presets.**
+- [x] **D04 — Add PostgreSQL/MySQL presets.**
   Depends: D03. Scope: only mappings supported by current CLI features.
   Done: preview exact feature/source changes; inherited/path/git dependencies
   remain valid; fixture apps compile. Removal does not discard shared features

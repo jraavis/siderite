@@ -30,3 +30,17 @@ fn crate_edits_name_the_package_and_keep_exit_codes() {
     let out = siderite(&app, &path, &["remove", "serde"], &failing);
     assert_eq!(out.status.code(), Some(101));
 }
+
+#[test]
+fn presets_and_crates_do_not_mix() {
+    let root = scratch("deps-mix");
+    let (app, path) = fixture(&root.0);
+    let args = ["add", "--preset", "postgres", "serde"];
+    let out = siderite(&app, &path, &args, &[]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("cannot be combined"),
+        "{}",
+        stderr(&out)
+    );
+}

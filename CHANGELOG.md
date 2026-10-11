@@ -10,7 +10,10 @@
 ### Added
 - **CLI:** `siderite add` / `siderite remove` run `cargo add` /
   `cargo remove` for the selected app package, so Cargo owns manifest
-  edits (workspace inheritance and sources are kept).
+  edits (workspace inheritance and sources are kept). `add --preset
+  postgres|mysql` enables a backend by adding the feature to the existing
+  `siderite-cli` dependency (`--dry-run` previews it); `remove --preset`
+  describes the manual edit instead of guessing.
 - **CLI:** `siderite ai validate [--json] [--live]` reports the
   `verify` run as bounded findings with locations, `explain` fixes,
   documentation links and reproduce commands; it applies no fixes and

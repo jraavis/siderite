@@ -4,9 +4,9 @@
 //! Cargo owns every manifest edit, so workspace inheritance
 //! (`workspace = true`), path and git sources and formatting are kept as
 //! Cargo keeps them. The package is always named (`-p`). Crate names and
-//! presets are separate: `add serde` passes through, `add --preset NAME`
-//! expands to the feature change the preset stands for, and the two do
-//! not mix in one call. Each Cargo command is shown before it runs;
+//! presets are separate: `add serde` passes through, `add --preset
+//! postgres` expands to the feature change the preset stands for, and the
+//! two do not mix in one call. Each Cargo command is shown before it runs;
 //! a failure stops the rest and says what was already applied, since
 //! nothing is rolled back.
 
@@ -33,9 +33,20 @@ pub(crate) struct Preset {
     pub feature: &'static str,
 }
 
-/// Every preset: only mappings the CLI's own features support (none
-/// yet).
-pub(crate) const PRESETS: &[Preset] = &[];
+/// Every preset: only mappings the CLI's own features support. Redis
+/// and MongoDB are set up in the app, so they have none.
+pub(crate) const PRESETS: &[Preset] = &[
+    Preset {
+        name: "mysql",
+        dependency: "siderite-cli",
+        feature: "mysql",
+    },
+    Preset {
+        name: "postgres",
+        dependency: "siderite-cli",
+        feature: "postgres",
+    },
+];
 
 /// `add` or `remove`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,8 +128,8 @@ pub(crate) fn parse(raw: &[String]) -> Result<Request, CliError> {
 }
 
 const USAGE: &str = "usage: add CRATE... [cargo add options] | add --preset \
-     NAME [--dry-run]\n       remove CRATE... [cargo remove options] | \
-     remove --preset NAME";
+     postgres|mysql [--dry-run]\n       remove CRATE... [cargo remove \
+     options] | remove --preset NAME";
 
 fn preset(name: &str) -> Result<&'static Preset, CliError> {
     PRESETS.iter().find(|p| p.name == name).ok_or_else(|| {
