@@ -207,3 +207,12 @@ impl Drop for ScratchDir {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+/// Run `future` to completion on a fresh multi-thread runtime.
+pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    match builder.enable_all().build() {
+        Ok(rt) => rt.block_on(future),
+        Err(err) => panic!("cannot start a runtime: {err}"),
+    }
+}

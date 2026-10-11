@@ -4,7 +4,7 @@
 
 use super::checks::{FRAMEWORK_MSRV, address_check, rustc_check};
 use super::*;
-use crate::fixtures::ScratchDir;
+use crate::fixtures::{ScratchDir, block_on};
 use serde_json::Value;
 use std::path::Path;
 
@@ -67,7 +67,7 @@ fn a_healthy_toolchain_passes_with_advisory_clients() {
     let cwd = ScratchDir::new("doctor-cwd");
     let rustc = format!("rustc {FRAMEWORK_MSRV}.0 (abc 2026-09-28)");
     let path = fake_toolchain(tools.path(), &rustc, true);
-    let report = diagnose(&probe(path, cwd.path()));
+    let report = block_on(diagnose(&probe(path, cwd.path()), None));
     assert!(report.ok, "{}", render(&report));
     assert_eq!(status_of(&report, "toolchain.rustc"), Status::Ok);
     assert_eq!(status_of(&report, "toolchain.cargo"), Status::Ok);
@@ -89,7 +89,7 @@ fn old_rustc_and_missing_components_are_flagged() {
     let tools = ScratchDir::new("doctor-old");
     let cwd = ScratchDir::new("doctor-old-cwd");
     let path = fake_toolchain(tools.path(), "rustc 1.80.0 (old)", false);
-    let report = diagnose(&probe(path, cwd.path()));
+    let report = block_on(diagnose(&probe(path, cwd.path()), None));
     assert!(!report.ok);
     assert_eq!(report.exit_code(), 1);
     assert_eq!(codes(&report), ["doctor.E003", "doctor.W002"]);
@@ -104,7 +104,7 @@ fn missing_tools_are_actionable_errors() {
     let cwd = ScratchDir::new("doctor-none");
     let empty = ScratchDir::new("doctor-empty-path");
     let path = empty.path().as_os_str().to_owned();
-    let report = diagnose(&probe(path, cwd.path()));
+    let report = block_on(diagnose(&probe(path, cwd.path()), None));
     let found = codes(&report);
     for code in ["doctor.E001", "doctor.E002", "doctor.W001", "doctor.W002"] {
         assert!(found.contains(&code), "{found:?}");

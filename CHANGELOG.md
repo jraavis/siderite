@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `doctor --live [--database ALIAS]... [--timeout-ms N]`:
+  read-only probes of the configured databases (connect plus migration
+  status), at most four at a time and each within a timeout (default
+  5 s). Only requested aliases can fail, errors are redacted, SQLite is
+  opened read-only and never created, and Redis/MongoDB are not probed.
 - **CLI:** `siderite doctor [--json]`: offline checks of `rustc`/`cargo`
   against siderite's and the project's `rust-version`, `rustfmt` and
   `clippy`, configuration loading, database URL schemes against the

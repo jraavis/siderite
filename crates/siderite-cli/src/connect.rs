@@ -31,6 +31,15 @@ pub fn backend_kind(url: &str) -> Option<BackendKind> {
     }
 }
 
+/// The file of a `sqlite:` URL (`sqlite://app.db?mode=rwc` -> `app.db`),
+/// or `None` for an in-memory database.
+pub(crate) fn sqlite_path(url: &str) -> Option<&str> {
+    let rest = url.split_once(':').map_or("", |(_, rest)| rest);
+    let rest = rest.trim_start_matches("//");
+    let path = rest.split('?').next().unwrap_or_default();
+    (!path.is_empty() && path != ":memory:").then_some(path)
+}
+
 /// Open a [`Db`] from a `sqlite:`, `postgres://` or `mysql://` URL.
 ///
 /// PostgreSQL and MySQL URLs need the `postgres` and `mysql` features of this

@@ -166,6 +166,13 @@ is free (advisory). Missing `psql`/`mysql`/`sqlite3` clients are reported
 for information only. Every warning or error comes with a fix hint; the
 exit code is `1` when a check fails.
 
+`siderite doctor --live [--database ALIAS]... [--timeout-ms N]` also
+connects to the configured databases (all of them, or the ones named),
+read-only, and reads each one's migration status: at most four at a
+time, each within the timeout (default 5 s). Only the requested aliases
+can fail, errors never show URLs, SQLite files are opened read-only and
+never created, and Redis/MongoDB aliases are not probed.
+
 ## JSON output
 
 `check`, `doctor`, `routes` and `showmigrations` accept `--json`, before or after the command

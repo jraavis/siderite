@@ -70,10 +70,7 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         return scaffold::run(raw);
     }
     if command == "doctor" {
-        let rest = raw.iter().skip_while(|a| *a != "doctor").cloned();
-        let rest: Vec<String> = rest.collect();
-        let json = json_requested(raw);
-        return doctor::run(&rest, cwd.to_path_buf(), project, json);
+        return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
     if CARGO_COMMANDS.contains(&command) {
         let found = target::locate("cargo", cwd, &project, false)?;
@@ -181,7 +178,8 @@ siderite {} — FastAPI-style Rust web framework
 
 Create and run an app:
   new NAME                      Write a new API crate
-  doctor [--json]               Check the toolchain, project and config
+  doctor [--json] [--live]      Check the toolchain, project and config
+                                (--live: read-only database probes)
   run [--addr ADDR]             Serve the app
   routes [--json]               List METHOD PATH operation_id
   check [--json]                Validate config, models, migrations and routes

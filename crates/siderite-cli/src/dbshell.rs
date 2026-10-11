@@ -8,7 +8,7 @@
 //! `psql` whole (minus its password, including a `?password=` parameter) so
 //! options such as `sslmode` apply.
 
-use crate::connect::backend_kind;
+use crate::connect::{backend_kind, sqlite_path};
 use crate::error::CliError;
 use siderite_orm::BackendKind;
 use std::fmt;
@@ -86,16 +86,11 @@ impl ShellCommand {
 }
 
 fn sqlite(url: &str) -> Result<ShellCommand, CliError> {
-    let rest = url
-        .split_once(':')
-        .map_or("", |(_, rest)| rest)
-        .trim_start_matches("//");
-    let path = rest.split('?').next().unwrap_or_default();
-    if path.is_empty() || path == ":memory:" {
+    let Some(path) = sqlite_path(url) else {
         return Err(CliError::usage(
             "an in-memory SQLite database has no file to open in sqlite3",
         ));
-    }
+    };
     Ok(ShellCommand {
         program: "sqlite3",
         args: vec![path.to_owned()],
