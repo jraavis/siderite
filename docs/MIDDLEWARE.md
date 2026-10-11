@@ -101,7 +101,9 @@ with Retry-After. Socket saturation leaves peers in the OS listener backlog;
 closing an idle peer releases capacity. Invalid bounds fail configuration.
 
 The `Readiness` extractor exposes Starting, Ready, Draining and Stopped.
-Use `is_ready()` in health probes. Shutdown clears readiness and closes
+Use `is_ready()` in health probes; `stopping().await` resolves once
+shutdown begins, so long-lived responses (event streams, for example with
+`Sse::until`) can end themselves before the shutdown timeout. Shutdown clears readiness and closes
 transport admission before resource teardown. Probe routing, load balancer
 removal and application/database health remain deployment responsibilities.
 Services built without running lifespan remain Starting. In-process

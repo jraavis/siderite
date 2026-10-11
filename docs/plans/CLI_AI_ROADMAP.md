@@ -389,7 +389,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: correct multiline data, event/id/retry encoding and input validation;
   text/event-stream is documented; stream errors and cache policy are explicit.
 
-- [ ] **F06 — Add SSE keepalive and lifecycle integration.**
+- [x] **F06 — Add SSE keepalive and lifecycle integration.**
   Depends: F05. Scope: idle heartbeat, backpressure and disconnect behavior.
   Done: client disconnect drops work, slow readers do not grow unbounded
   queues, shutdown ends streams, and compression/timeout middleware behavior

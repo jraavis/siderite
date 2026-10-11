@@ -4,6 +4,7 @@ use crate::{ApiError, FromRequestParts};
 use http::request::Parts;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use tokio::sync::Notify;
 
 /// Observable phase of the root application lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,11 +25,18 @@ pub enum ServerPhase {
 /// Readiness does not assess database health or prove a load balancer has
 /// removed this server; deployments must configure their probes and grace.
 #[derive(Debug, Clone)]
-pub struct Readiness(Arc<AtomicU8>);
+pub struct Readiness(Arc<State>);
+
+#[derive(Debug, Default)]
+struct State {
+    phase: AtomicU8,
+    /// Woken when the phase reaches Draining or Stopped.
+    stopping: Notify,
+}
 
 impl Readiness {
     pub(crate) fn new() -> Self {
-        Self(Arc::new(AtomicU8::new(0)))
+        Self(Arc::default())
     }
 
     /// Read the current root application lifecycle phase.
@@ -36,7 +44,7 @@ impl Readiness {
     /// Returns:
     ///     A snapshot which can change immediately after this call.
     pub fn phase(&self) -> ServerPhase {
-        match self.0.load(Ordering::Acquire) {
+        match self.0.phase.load(Ordering::Acquire) {
             0 => ServerPhase::Starting,
             1 => ServerPhase::Ready,
             2 => ServerPhase::Draining,
@@ -52,21 +60,41 @@ impl Readiness {
         self.phase() == ServerPhase::Ready
     }
 
+    /// Wait until shutdown has begun (Draining or Stopped); returns at
+    /// once when it already has. Long-lived responses such as event
+    /// streams end on it so a graceful shutdown need not time out.
+    pub async fn stopping(&self) {
+        loop {
+            let woken = self.0.stopping.notified();
+            tokio::pin!(woken);
+            // Registered before the check, so no change is missed.
+            woken.as_mut().enable();
+            let phase = self.phase();
+            if matches!(phase, ServerPhase::Draining | ServerPhase::Stopped) {
+                return;
+            }
+            woken.await;
+        }
+    }
+
     pub(crate) fn ready(&self) {
-        self.0.store(1, Ordering::Release);
+        self.0.phase.store(1, Ordering::Release);
     }
 
     pub(crate) fn draining(&self) {
         // Repeated cleanup must not move Stopped back into Draining.
         let _ = self
             .0
+            .phase
             .try_update(Ordering::AcqRel, Ordering::Acquire, |phase| {
                 (phase < 2).then_some(2)
             });
+        self.0.stopping.notify_waiters();
     }
 
     pub(crate) fn stopped(&self) {
-        self.0.store(3, Ordering::Release);
+        self.0.phase.store(3, Ordering::Release);
+        self.0.stopping.notify_waiters();
     }
 }
 

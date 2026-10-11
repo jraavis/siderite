@@ -8,6 +8,12 @@
 
 
 ### Added
+- **HTTP:** event stream lifecycle: `Sse::keep_alive(interval)` sends
+  idle heartbeats, `Sse::until(future)` ends a stream cleanly, and
+  `Readiness::stopping()` resolves when shutdown begins. Slow readers
+  stall the stream instead of growing buffers, disconnects drop it, and
+  `Timeout` and `Compression` leave event streams intact (tested through
+  the server).
 - **HTTP:** server-sent events: `Sse::new(stream)` streams
   `siderite::sse::Event`s as `text/event-stream` with
   `Cache-Control: no-store`. Multiline data is split into `data:` lines,

@@ -384,3 +384,184 @@ async fn liveness_answers_while_listening_and_not_after() -> TestResult {
     assert!(after.is_err(), "nothing listens after shutdown");
     Ok(())
 }
+
+// ---------------------------------------------------------------------
+// Server-sent events through the server
+// ---------------------------------------------------------------------
+
+use crate::sse::{Event, Sse};
+use std::convert::Infallible;
+
+type Item = Result<Event, Infallible>;
+type Events = futures_util::stream::BoxStream<'static, Item>;
+
+/// An event stream that never sends, marking the probe while it lives.
+fn quiet(probe: &Probe) -> Events {
+    let marker = Marker(probe.clone());
+    let started = Arc::clone(&probe.started);
+    let stream = futures_util::stream::unfold(marker, move |marker| {
+        started.notify_one();
+        async move {
+            pending::<()>().await;
+            Some((Ok(Event::data("never")), marker))
+        }
+    });
+    Box::pin(stream)
+}
+
+type Wait = Duration;
+
+/// Read from `socket` until `wanted` appears or `wait` passes.
+async fn read_until(peer: &mut TcpStream, wanted: &str, wait: Wait) -> String {
+    let mut seen = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    let deadline = tokio::time::Instant::now() + wait;
+    while !String::from_utf8_lossy(&seen).contains(wanted) {
+        let read = tokio::time::timeout_at(deadline, peer.read(&mut chunk));
+        match read.await {
+            Ok(Ok(n)) if n > 0 => seen.extend_from_slice(&chunk[..n]),
+            _ => break,
+        }
+    }
+    String::from_utf8_lossy(&seen).into_owned()
+}
+
+async fn quiet_events(State(probe): State<Probe>) -> Sse<Events> {
+    Sse::new(quiet(&probe))
+}
+
+const SECONDS: Duration = Duration::from_secs(2);
+
+const SSE_REQUEST: &str = "GET / HTTP/1.1\r\nHost: localhost\r\n\
+                           Accept-Encoding: gzip, br\r\n\r\n";
+
+#[tokio::test]
+async fn heartbeats_pass_compression_and_the_request_timeout() -> TestResult {
+    let probe = Probe::default();
+    let handler = |State(probe): State<Probe>| async move {
+        Sse::new(quiet(&probe)).keep_alive(Duration::from_millis(20))
+    };
+    let app = App::new()
+        .route("/", get(handler))
+        .compression(crate::middleware::Compression::new())
+        .timeout(Duration::from_millis(30));
+    let run = start(app, &probe).await?;
+    let mut socket = TcpStream::connect(run.addr).await?;
+    socket.write_all(SSE_REQUEST.as_bytes()).await?;
+    // Two heartbeats arrive, well past the request timeout.
+    let two = ":\n\n\r\n3\r\n:\n\n";
+    let text = read_until(&mut socket, two, SECONDS).await;
+    assert!(text.starts_with("HTTP/1.1 200"), "{text}");
+    assert!(text.contains("content-type: text/event-stream"), "{text}");
+    assert!(
+        !text.contains("content-encoding"),
+        "events are not compressed: {text}"
+    );
+    assert!(text.contains(":\n\n\r\n3\r\n:\n\n"), "{text}");
+    let _ = run.stop.send(());
+    let _ = run.task.await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_disconnected_client_drops_the_stream() -> TestResult {
+    let probe = Probe::default();
+    let run = start(App::new().route("/", get(quiet_events)), &probe).await?;
+    let socket = request(run.addr, false).await?;
+    reached(&probe.started).await?;
+    assert_eq!(probe.drops.load(Ordering::SeqCst), 0);
+    drop(socket);
+    let gone = async {
+        while probe.drops.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(2), gone).await?;
+    let _ = run.stop.send(());
+    let _ = run.task.await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_slow_reader_stalls_the_stream_instead_of_buffering() -> TestResult {
+    let produced = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&produced);
+    let handler = move || {
+        let counter = Arc::clone(&counter);
+        async move {
+            let events = futures_util::stream::repeat_with(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, Infallible>(Event::data("x".repeat(1024)))
+            });
+            Sse::new(events)
+        }
+    };
+    let probe = Probe::default();
+    let run = start(App::new().route("/", get(handler)), &probe).await?;
+    // The client never reads: once the socket buffers are full, the
+    // server must stop pulling events.
+    let _socket = request(run.addr, false).await?;
+    let mut last = 0;
+    let stalled = async {
+        loop {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let now = produced.load(Ordering::SeqCst);
+            if now > 0 && now == last {
+                return now;
+            }
+            last = now;
+        }
+    };
+    let count = tokio::time::timeout(Duration::from_secs(5), stalled).await?;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(produced.load(Ordering::SeqCst), count, "no further events");
+    assert!(count < 1_000_000, "bounded by socket buffers: {count}");
+    let _ = run.stop.send(());
+    let _ = run.task.await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn streams_ending_on_shutdown_complete_it_gracefully() -> TestResult {
+    let probe = Probe::default();
+    let handler = |State(probe): State<Probe>, ready: Readiness| async move {
+        let stopping = async move { ready.stopping().await };
+        Sse::new(quiet(&probe))
+            .keep_alive(Duration::from_millis(20))
+            .until(stopping)
+    };
+    let run = start(App::new().route("/", get(handler)), &probe).await?;
+    let mut socket = TcpStream::connect(run.addr).await?;
+    socket.write_all(SSE_REQUEST.as_bytes()).await?;
+    read_until(&mut socket, ":\n\n", SECONDS).await;
+    let _ = run.stop.send(());
+    // The shutdown timeout is 100 ms: the stream ends first, cleanly.
+    tokio::time::timeout(Duration::from_secs(2), run.task).await???;
+    let rest = read_until(&mut socket, "0\r\n\r\n", SECONDS).await;
+    assert!(
+        rest.ends_with("0\r\n\r\n"),
+        "the chunked body ended: {rest:?}"
+    );
+    assert_eq!(
+        probe.drops.load(Ordering::SeqCst),
+        1,
+        "the work was dropped"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn stopping_resolves_when_shutdown_begins() -> TestResult {
+    let readiness = Readiness::new();
+    readiness.ready();
+    let waiter = readiness.clone();
+    let waiting = tokio::spawn(async move { waiter.stopping().await });
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(!waiting.is_finished(), "still Ready");
+    readiness.draining();
+    tokio::time::timeout(Duration::from_secs(1), waiting).await??;
+    // Once stopping, it returns at once.
+    let at_once = Duration::from_millis(50);
+    tokio::time::timeout(at_once, readiness.stopping()).await?;
+    Ok(())
+}
