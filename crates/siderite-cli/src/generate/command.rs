@@ -2,7 +2,7 @@
 //! selected package through the write plan (never overwriting), with
 //! `--dry-run` showing the exact files first.
 
-use super::{Plan, model, preview, resource, route, summary};
+use super::{Plan, model, preview, resource, route, rustfmt, summary};
 use crate::error::CliError;
 use crate::target::{self, ProjectArgs};
 use std::path::Path;
@@ -42,6 +42,11 @@ pub(crate) fn run(raw: &[String], cwd: &Path, project: &ProjectArgs) -> Code {
     let output = generate(kind, words, &found.dir)?;
     let mut plan = Plan::new(&found.dir);
     for (file, text) in output.files {
+        let text = if file.ends_with(".rs") {
+            rustfmt(&text)
+        } else {
+            text
+        };
         plan.add(&file, text)?;
     }
     if dry_run {

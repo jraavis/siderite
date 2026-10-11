@@ -306,7 +306,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: enforced size limit, correct schema and fixed query budget; no per-row
   ORM queries. Document count/items consistency during concurrent writes.
 
-- [ ] **D10 — Generate update/delete handlers.**
+- [x] **D10 — Generate update/delete handlers.**
   Depends: D08. Scope: remaining CRUD operations.
   Done: specify PUT/PATCH and absent-vs-null behavior, immutable PK policy,
   not-found responses and status codes. Test malicious field names and partial

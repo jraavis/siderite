@@ -1,13 +1,23 @@
 //! `siderite generate resource NAME [FIELD:TYPE[?]]... [--table TABLE]`:
-//! a model and its create/get routes.
+//! a model and its CRUD routes.
 //!
 //! It writes the same model file as `generate model` (an identical file
-//! is left unchanged) and `src/routes/NAME.rs` with a request body type,
-//! a response type and two handlers: `POST /TABLE` (201 with the stored
-//! row; invalid bodies are 422 before the handler runs) and
-//! `GET /TABLE/{id}` (404 when there is no such row). Handlers reach the
-//! database through `State<Databases>`, which `AppCli` registers. They
-//! are unauthenticated examples, and no migration is run.
+//! is left unchanged) and `src/routes/NAME.rs`:
+//!
+//! - `POST /TABLE`: create; 201 with the stored row.
+//! - `GET /TABLE/{id}`: fetch; 404 when there is no such row.
+//! - `PUT /TABLE/{id}`: replace every field (the creation body); 200.
+//! - `PATCH /TABLE/{id}`: change the fields present in the body; an
+//!   absent field keeps its value, `null` clears a nullable field and is
+//!   rejected for any other; 200.
+//! - `DELETE /TABLE/{id}`: 204, or 404 when there is no such row.
+//!
+//! The primary key never changes: bodies reject unknown fields, `id`
+//! included, with 422, like any body that fails validation. Writes go to
+//! the router's write database, reads to its read database
+//! (`State<Databases>`, which `AppCli` registers). Updates are
+//! read-modify-write, so concurrent writers to one row: last write wins.
+//! The handlers are unauthenticated examples, and no migration is run.
 
 use super::ident::pascal;
 use super::model::{FieldSpec, ModelOptions};
@@ -21,7 +31,7 @@ pub(crate) fn file(options: &ModelOptions) -> String {
 
 const NOT_EMPTY: &str = "#[field(min_length = 1)]";
 
-/// The request body's fields: required strings must not be empty;
+/// The creation body's fields: required strings must not be empty;
 /// nullable fields may be left out.
 fn body_fields(fields: &[FieldSpec]) -> String {
     let mut out = String::new();
@@ -36,6 +46,26 @@ fn body_fields(fields: &[FieldSpec]) -> String {
             let _ = writeln!(out, "    {attr}");
         }
         let _ = writeln!(out, "    pub {}: {},", f.name, f.rust_type());
+    }
+    out
+}
+
+/// The patch body's fields: each is `Change::Unchanged` when absent.
+fn patch_fields(fields: &[FieldSpec]) -> String {
+    let mut out = String::new();
+    for f in fields {
+        let doc = if f.nullable {
+            "; `null` clears it"
+        } else {
+            "; `null` is rejected"
+        };
+        let _ = writeln!(out, "    /// New `{}`, when present{doc}.", f.name);
+        if !f.nullable && f.ty == "String" {
+            let _ = writeln!(out, "    {NOT_EMPTY}");
+        }
+        let _ = writeln!(out, "    #[serde(default)]");
+        let (name, ty) = (&f.name, f.rust_type());
+        let _ = writeln!(out, "    pub {name}: Change<{ty}>,");
     }
     out
 }
@@ -57,50 +87,59 @@ fn names(fields: &[FieldSpec], indent: &str) -> String {
     out
 }
 
+/// `body.x.apply(&mut row.x);` for every field.
+fn apply_patch(fields: &[FieldSpec]) -> String {
+    let mut out = String::new();
+    for f in fields {
+        let n = &f.name;
+        let _ = writeln!(out, "    body.{n}.apply(&mut row.{n});");
+    }
+    out
+}
+
 /// The route attribute's tag and operation ID.
 fn ids(operation: &str, name: &str) -> String {
     format!("tag = \"{name}\", operation_id = \"{operation}_{name}\"")
 }
 
-/// The routes module's source.
-pub(crate) fn render(options: &ModelOptions) -> String {
-    let ModelOptions {
-        name,
-        table,
-        fields,
-    } = options;
-    let ty = pascal(name);
-    let new = format!("New{ty}");
-    let out = format!("{ty}Out");
-    let (create_ids, get_ids) = (ids("create", name), ids("get", name));
-    let body = body_fields(fields);
-    let out_body = out_fields(fields);
-    let deep = names(fields, "            ");
-    let shallow = names(fields, "        ");
-    format!(
-        "\
-//! `/{table}`: create and fetch `{ty}` rows.
-//!
-//! Example handlers without authentication: add your own checks before
-//! exposing them.
+/// Generated text for one resource.
+struct Parts<'a> {
+    name: &'a str,
+    table: &'a str,
+    ty: String,
+    fields: &'a [FieldSpec],
+}
 
-use crate::models::{name}::{ty};
-use siderite::orm::Databases;
-use siderite::prelude::*;
-
-/// Body of `POST /{table}`; invalid input is answered with 422.
+impl Parts<'_> {
+    fn types(&self) -> String {
+        let Self { table, ty, .. } = self;
+        let body = body_fields(self.fields);
+        let patch = patch_fields(self.fields);
+        let out = out_fields(self.fields);
+        let deep = names(self.fields, "            ");
+        format!(
+            "\
+/// Body of `POST /{table}` and `PUT /{table}/{{id}}`; invalid input is
+/// answered with 422.
 #[derive(Debug, Deserialize, Validate, Schema)]
-pub struct {new} {{
+#[serde(deny_unknown_fields)]
+pub struct New{ty} {{
 {body}}}
+
+/// Body of `PATCH /{table}/{{id}}`: only the fields present change.
+#[derive(Debug, Deserialize, Validate, Schema)]
+#[serde(deny_unknown_fields)]
+pub struct {ty}Patch {{
+{patch}}}
 
 /// A `{ty}` as returned to clients.
 #[derive(Debug, Serialize, Schema)]
-pub struct {out} {{
+pub struct {ty}Out {{
     /// Database key.
     pub id: i64,
-{out_body}}}
+{out}}}
 
-impl From<{ty}> for {out} {{
+impl From<{ty}> for {ty}Out {{
     fn from(row: {ty}) -> Self {{
         let {ty} {{
             id,
@@ -110,14 +149,25 @@ impl From<{ty}> for {out} {{
 {deep}        }}
     }}
 }}
+"
+        )
+    }
 
+    fn create_get(&self) -> String {
+        let Self {
+            name, table, ty, ..
+        } = self;
+        let shallow = names(self.fields, "        ");
+        let (create, get) = (ids("create", name), ids("get", name));
+        format!(
+            "
 /// Create a `{ty}`; the response holds the stored row.
-#[post(\"/{table}\", status = 201, {create_ids})]
+#[post(\"/{table}\", status = 201, {create})]
 pub async fn create_{name}(
     State(dbs): State<Databases>,
-    Json(body): Json<{new}>,
-) -> ApiResult<Json<{out}>> {{
-    let {new} {{
+    Json(body): Json<New{ty}>,
+) -> ApiResult<Json<{ty}Out>> {{
+    let New{ty} {{
 {shallow}    }} = body;
     let mut row = {ty} {{
         id: 0,
@@ -127,20 +177,113 @@ pub async fn create_{name}(
 }}
 
 /// Fetch one `{ty}`; 404 when there is none with this `id`.
-#[get(\"/{table}/{{id}}\", {get_ids})]
+#[get(\"/{table}/{{id}}\", {get})]
 pub async fn get_{name}(
     State(dbs): State<Databases>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<{out}>> {{
+) -> ApiResult<Json<{ty}Out>> {{
     let found = dbs.objects::<{ty}>()?.get({ty}::id.eq(id)).await?;
     Ok(Json(found.into()))
 }}
+"
+        )
+    }
 
-/// The routes of this module, for `App::routes`.
-pub fn routes() -> Vec<Route> {{
-    routes![create_{name}, get_{name}].into_iter().collect()
+    fn update_delete(&self) -> String {
+        let Self {
+            name, table, ty, ..
+        } = self;
+        let shallow = names(self.fields, "        ");
+        let apply = apply_patch(self.fields);
+        let (replace, update) = (ids("replace", name), ids("update", name));
+        let delete = ids("delete", name);
+        format!(
+            "
+/// Replace every field of a `{ty}`; 404 when there is none with this
+/// `id`. The `id` itself never changes.
+#[put(\"/{table}/{{id}}\", {replace})]
+pub async fn replace_{name}(
+    State(dbs): State<Databases>,
+    Path(id): Path<i64>,
+    Json(body): Json<New{ty}>,
+) -> ApiResult<Json<{ty}Out>> {{
+    let db = dbs.for_write::<{ty}>()?;
+    let found = {ty}::objects(db).get({ty}::id.eq(id)).await?;
+    let New{ty} {{
+{shallow}    }} = body;
+    let mut row = {ty} {{
+        id: found.id,
+{shallow}    }};
+    row.save(db).await?;
+    Ok(Json(row.into()))
+}}
+
+/// Change the fields present in the body; 404 when there is no `{ty}`
+/// with this `id`.
+#[patch(\"/{table}/{{id}}\", {update})]
+pub async fn update_{name}(
+    State(dbs): State<Databases>,
+    Path(id): Path<i64>,
+    Json(body): Json<{ty}Patch>,
+) -> ApiResult<Json<{ty}Out>> {{
+    let db = dbs.for_write::<{ty}>()?;
+    let mut row = {ty}::objects(db).get({ty}::id.eq(id)).await?;
+{apply}    row.save(db).await?;
+    Ok(Json(row.into()))
+}}
+
+/// Delete a `{ty}`; 404 when there is none with this `id`.
+#[delete(\"/{table}/{{id}}\", status = 204, {delete})]
+pub async fn delete_{name}(
+    State(dbs): State<Databases>,
+    Path(id): Path<i64>,
+) -> ApiResult<NoContent> {{
+    let db = dbs.for_write::<{ty}>()?;
+    let rows = {ty}::objects(db).filter({ty}::id.eq(id));
+    if rows.delete().await? == 0 {{
+        return Err(ApiError::not_found(\"Resource not found.\"));
+    }}
+    Ok(NoContent)
 }}
 "
+        )
+    }
+}
+
+/// The routes module's source.
+pub(crate) fn render(options: &ModelOptions) -> String {
+    let parts = Parts {
+        name: &options.name,
+        table: &options.table,
+        ty: pascal(&options.name),
+        fields: &options.fields,
+    };
+    let Parts {
+        name, table, ty, ..
+    } = &parts;
+    let handlers = ["create", "get", "replace", "update", "delete"]
+        .map(|op| format!("{op}_{name}"))
+        .join(", ");
+    format!(
+        "\
+//! `/{table}`: create, fetch, replace, update and delete `{ty}` rows.
+//!
+//! Example handlers without authentication: add your own checks before
+//! exposing them.
+
+use crate::models::{name}::{ty};
+use siderite::orm::Databases;
+use siderite::prelude::*;
+
+{types}{create_get}{update_delete}
+/// The routes of this module, for `App::routes`.
+pub fn routes() -> Vec<Route> {{
+    routes![{handlers}].into_iter().collect()
+}}
+",
+        types = parts.types(),
+        create_get = parts.create_get(),
+        update_delete = parts.update_delete(),
     )
 }
 

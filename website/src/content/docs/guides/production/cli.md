@@ -187,9 +187,10 @@ siderite never edits your existing code; it prints the two lines that
 register the module. A generated model has an `id` primary key and
 fields of type `i32`, `i64`, `f64`, `bool` or `String` (`?` for nullable);
 register its `META` with `AppCli::models`, then run `makemigrations`.
-`generate resource` adds `POST /books` and `GET /books/{id}` handlers
-with validated request bodies and 404s for missing rows; they have no
-authentication until you add it.
+`generate resource` adds create, get, replace (`PUT`), partial update
+(`PATCH`: absent fields stay, `null` clears nullable ones) and delete
+handlers with validated bodies, 404s for missing rows and an `id` that
+never changes; they have no authentication until you add it.
 Existing files are never overwritten.
 
 ## Dependencies

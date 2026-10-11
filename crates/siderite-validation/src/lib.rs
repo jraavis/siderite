@@ -10,9 +10,11 @@
 //! - [`ModelHooks`]: field/model validators, computed fields, serializers.
 //! - [`Dump`] / [`DumpOptions`]: `model_dump`-style output options.
 //! - [`Schema`]: JSON Schema / OpenAPI 3.1 metadata.
+//! - [`Change`]: a partial-update field, absent or set (`null` included).
 //! - [`rules`] and constrained [`types`].
 #![forbid(unsafe_code)]
 
+pub mod change;
 pub mod context;
 pub mod dump;
 pub mod error;
@@ -24,6 +26,7 @@ pub mod schema;
 pub mod types;
 pub mod validate;
 
+pub use change::Change;
 pub use context::{Extra, InputKind, ModelConfig, ValidationContext};
 pub use dump::{Dump, DumpError, DumpOptions, FieldSet};
 pub use error::{FieldError, LocationItem, ValidationError, ValidationResult};
