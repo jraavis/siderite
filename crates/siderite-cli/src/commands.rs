@@ -235,6 +235,17 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Package,
         mutates: &[Mutation::ProjectFiles],
         ..cmd(
+            "generate model",
+            Group::App,
+            "generate model NAME [FIELD:TYPE]... [--table T] [--dry-run]",
+            "Write a model (src/models/NAME.rs)",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
             "generate route",
             Group::App,
             "generate route NAME [--path /URL] [--dry-run]",

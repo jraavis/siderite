@@ -2,12 +2,14 @@
 //! selected package through the write plan (never overwriting), with
 //! `--dry-run` showing the exact files first.
 
-use super::{Plan, preview, route, summary};
+use super::{Plan, model, preview, route, summary};
 use crate::error::CliError;
 use crate::target::{self, ProjectArgs};
 use std::path::Path;
 
-const USAGE: &str = "usage: generate route NAME [--path /URL] [--dry-run]";
+const USAGE: &str = "usage: generate route NAME [--path /URL] \
+     [--dry-run]\n       \
+     generate model NAME [FIELD:TYPE[?]]... [--table TABLE] [--dry-run]";
 
 const NEEDS_PACKAGE: &str = "generate needs a Cargo package; cd into one";
 
@@ -58,6 +60,13 @@ fn generate(kind: &str, words: &[String], dir: &Path) -> Generated {
             Ok(Output {
                 files: vec![(route::file(&options), route::render(&options))],
                 next: route::instructions(dir, &options),
+            })
+        }
+        "model" => {
+            let options = model::parse(words)?;
+            Ok(Output {
+                files: vec![(model::file(&options), model::render(&options))],
+                next: model::instructions(dir, &options),
             })
         }
         _ => Err(CliError::usage(USAGE)),

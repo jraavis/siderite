@@ -290,7 +290,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: generated code compiles against actual public APIs, has docs and a
   unique operation ID; no fragile string-based rewriting of arbitrary routers.
 
-- [ ] **D07 — Generate a minimal model.**
+- [x] **D07 — Generate a minimal model.**
   Depends: D05. Scope: primary key and a documented initial scalar type set.
   Done: derives/attributes compile; model registration is explicit; generated
   metadata works with makemigrations. Reject unsupported types; add UUID/date

@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite generate model NAME [FIELD:TYPE[?]]... [--table T]`
+  writes a `Model` with an `id` primary key and scalar fields (`i32`,
+  `i64`, `f64`, `bool`, `String`, nullable with `?`); reserved and
+  unsupported names and types are refused. It is tested through
+  `makemigrations` and a SQLite round trip.
 - **CLI:** `siderite generate route NAME [--path /URL] [--dry-run]`
   writes `src/routes/NAME.rs` with a documented handler, an explicit
   operation ID and a `routes()` function, and prints the registration

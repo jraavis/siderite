@@ -143,3 +143,66 @@ mod route_generator {
         assert!(text.contains(".routes(routes::items::routes())"), "{text}");
     }
 }
+
+mod model_generator {
+    use crate::fixtures::ScratchDir;
+    use crate::generate::model::{file, instructions, parse, render};
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|a| (*a).to_owned()).collect()
+    }
+
+    #[test]
+    fn the_output_is_the_compiled_golden_file() {
+        let spec = [
+            "book",
+            "title:String",
+            "pages:i32?",
+            "views:i64",
+            "price:f64?",
+            "in_stock:bool",
+            "--table",
+            "books",
+        ];
+        let options = parse(&words(&spec)).unwrap();
+        assert_eq!(file(&options), "src/models/book.rs");
+        let golden = include_str!("../../tests/generated/model_book.rs");
+        assert_eq!(render(&options), golden);
+    }
+
+    #[test]
+    fn names_types_and_fields_are_checked() {
+        let bare = parse(&words(&["order_line"])).unwrap();
+        assert_eq!(bare.table, "order_line");
+        assert!(render(&bare).contains("pub struct OrderLine {"));
+        for bad in [
+            &[][..],
+            &["Book"],
+            &["book", "title"],
+            &["book", "title:str"],
+            &["book", "when:DateTime"],
+            &["book", "id:i64"],
+            &["book", "objects:i64"],
+            &["book", "save:bool"],
+            &["book", "a:i32", "a:i64"],
+            &["book", "Title:String"],
+            &["book", "--table", "Books"],
+            &["book", "--force"],
+        ] {
+            assert!(parse(&words(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn instructions_name_the_registration() {
+        let scratch = ScratchDir::new("model-steps");
+        let dir = scratch.path();
+        let options = parse(&words(&["book"])).unwrap();
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/lib.rs"), "").unwrap();
+        let text = instructions(dir, &options);
+        assert!(text.contains("pub mod book; }` to src/lib.rs"), "{text}");
+        assert!(text.contains("`models::book::Book::META`"), "{text}");
+        assert!(text.contains("siderite makemigrations"), "{text}");
+    }
+}
