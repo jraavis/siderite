@@ -3287,6 +3287,7 @@ name = "siderite"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "futures-util",
  "jsonschema",
  "regex",
  "rust_decimal",
