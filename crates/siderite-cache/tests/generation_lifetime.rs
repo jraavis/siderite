@@ -55,6 +55,11 @@ async fn send(client: &Client, method: Method, refresh: bool) -> TestResponse {
     client.send(req).await.expect("response")
 }
 
+fn expiring(millis: u64) -> RouteCache<MemoryCache> {
+    let ttl = Duration::from_millis(millis);
+    RouteCache::new(MemoryCache::new(64)).generation_ttl(ttl)
+}
+
 fn marker(response: &TestResponse) -> Option<&str> {
     response.headers.get("x-cache")?.to_str().ok()
 }
@@ -67,7 +72,7 @@ async fn wait(notify: &Notify) -> TestResult {
 #[tokio::test]
 async fn marker_expiry_during_a_fill_is_a_safe_miss() -> TestResult {
     let origin = Origin::default();
-    let layer = RouteCache::new(MemoryCache::new(64)).generation_ttl(Duration::from_millis(100));
+    let layer = expiring(100);
     let client = client(&origin, layer);
     assert_eq!(send(&client, Method::GET, false).await.text(), "0");
     origin.stall.store(1, Ordering::SeqCst);
@@ -92,7 +97,7 @@ async fn marker_expiry_during_a_fill_is_a_safe_miss() -> TestResult {
 #[tokio::test]
 async fn expiry_alone_rotates_and_refills() -> TestResult {
     let origin = Origin::default();
-    let layer = RouteCache::new(MemoryCache::new(64)).generation_ttl(Duration::from_millis(80));
+    let layer = expiring(80);
     let client = client(&origin, layer);
     send(&client, Method::GET, false).await;
     assert_eq!(
@@ -109,7 +114,7 @@ async fn expiry_alone_rotates_and_refills() -> TestResult {
 #[tokio::test]
 async fn concurrent_writes_and_fills_converge() -> TestResult {
     let origin = Origin::default();
-    let layer = RouteCache::new(MemoryCache::new(64)).generation_ttl(Duration::from_millis(30));
+    let layer = expiring(30);
     let client = client(&origin, layer);
     let mut tasks = Vec::new();
     for round in 0..64 {
@@ -247,7 +252,7 @@ impl Cache for Legacy {
 }
 
 #[tokio::test]
-async fn adapters_without_expiring_creation_bypass_without_probing() -> TestResult {
+async fn legacy_adapters_bypass_without_probing() -> TestResult {
     let origin = Origin::default();
     let legacy = Legacy {
         inner: MemoryCache::new(64),
@@ -270,5 +275,46 @@ async fn adapters_without_expiring_creation_bypass_without_probing() -> TestResu
     // nothing non-expiring was ever written and no round trip repeats.
     assert_eq!(legacy.calls.load(Ordering::SeqCst), 1);
     assert_eq!(legacy.inner.get("anything").await?, None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn zero_generation_ttl_disables_route_caching() -> TestResult {
+    let origin = Origin::default();
+    let legacy = Legacy {
+        inner: MemoryCache::new(64),
+        calls: Arc::default(),
+    };
+    let layer = RouteCache::new(legacy.clone()).generation_ttl(Duration::ZERO);
+    let client = client(&origin, layer);
+    for _ in 0..2 {
+        let response = send(&client, Method::GET, false).await;
+        assert_eq!(marker(&response), Some("miss"));
+    }
+    send(&client, Method::POST, false).await;
+    assert_eq!(origin.hits.load(Ordering::SeqCst), 2);
+    assert_eq!(legacy.calls.load(Ordering::SeqCst), 0, "no backend calls");
+    Ok(())
+}
+
+#[tokio::test]
+async fn write_during_a_fill_keeps_the_stale_fill_unreachable() -> TestResult {
+    let origin = Origin::default();
+    let client = client(&origin, RouteCache::new(MemoryCache::new(64)));
+    origin.stall.store(1, Ordering::SeqCst);
+    let pending = {
+        let client = client.clone();
+        tokio::spawn(async move { send(&client, Method::GET, false).await })
+    };
+    // The GET fill has read "0" and is held inside the origin.
+    wait(&origin.captured).await?;
+    send(&client, Method::POST, false).await;
+    origin.release.notify_one();
+    assert_eq!(pending.await?.text(), "0");
+    let fresh = send(&client, Method::GET, false).await;
+    assert_eq!(fresh.text(), "1", "stale fill must not be served");
+    assert_eq!(marker(&fresh), Some("miss"));
+    let again = send(&client, Method::GET, false).await;
+    assert_eq!((again.text(), marker(&again)), ("1".into(), Some("hit")));
     Ok(())
 }

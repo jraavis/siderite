@@ -10,7 +10,7 @@ use siderite_core::middleware::TrustedProxies;
 use siderite_core::middleware::{BoxService, Next, from_fn};
 use siderite_core::{ApiError, Body, IntoResponse, Request, Response};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use tower::Layer;
 
@@ -31,6 +31,12 @@ pub const DEFAULT_MAX_BODY_BYTES: u64 = 1024 * 1024;
 
 /// Default lifetime of a target's generation marker (one hour).
 pub const DEFAULT_GENERATION_TTL: Duration = Duration::from_secs(3600);
+
+/// Shared flag: a failed invalidation disabled the layer.
+const DISABLED: u8 = 1;
+/// Shared flag: no expiring generation markers (unsupported backend or a
+/// zero `generation_ttl`), so the layer neither stores nor invalidates.
+const NO_MARKERS: u8 = 2;
 
 /// Request headers that are part of the cache key; a response may `Vary` on
 /// these and still be stored.
@@ -131,12 +137,11 @@ pub struct RouteCache<C> {
     bypass: Arc<Vec<HeaderName>>,
     namespace: Arc<str>,
     proxies: TrustedProxies,
-    enabled: Arc<AtomicBool>,
+    flags: Arc<AtomicU8>,
     max_key: usize,
     max_headers: usize,
     max_encoded: usize,
     generation_ttl: Duration,
-    marker_support: Arc<AtomicBool>,
 }
 
 impl<C: Cache> RouteCache<C> {
@@ -150,12 +155,11 @@ impl<C: Cache> RouteCache<C> {
             max_body: DEFAULT_MAX_BODY_BYTES,
             namespace: uuid::Uuid::new_v4().to_string().into(),
             proxies: TrustedProxies::default(),
-            enabled: Arc::new(AtomicBool::new(true)),
+            flags: Arc::new(AtomicU8::new(0)),
             max_key: 4096,
             max_headers: 8192,
             max_encoded: 2 * 1024 * 1024,
             generation_ttl: DEFAULT_GENERATION_TTL,
-            marker_support: Arc::new(AtomicBool::new(true)),
             bypass: Arc::new(vec![
                 AUTHORIZATION,
                 PROXY_AUTHORIZATION,
@@ -219,9 +223,14 @@ impl<C: Cache> RouteCache<C> {
     /// fills become unreachable and read as safe misses.
     ///
     /// Args:
-    ///     ttl: Marker lifetime. Zero or above the backend's portable
-    ///         limit is rejected by the backend, so every request bypasses
-    ///         the cache (`x-cache: miss`).
+    ///     ttl: Marker lifetime. Zero means route caching is disabled:
+    ///         no request touches the backend, nothing is stored or
+    ///         invalidated, and responses carry `x-cache: miss`. A value
+    ///         above the backend's portable limit is rejected by the
+    ///         backend, so every request bypasses the cache.
+    ///
+    /// Note: `max-age`/`s-maxage` above `ttl` is capped to `ttl` (default
+    /// one hour), as is `default_ttl`.
     ///
     /// Returns:
     ///     Configured layer. A custom [`Cache`] without
@@ -229,6 +238,11 @@ impl<C: Cache> RouteCache<C> {
     #[must_use]
     pub fn generation_ttl(mut self, ttl: Duration) -> Self {
         self.generation_ttl = ttl;
+        if ttl.is_zero() {
+            self.flags.fetch_or(NO_MARKERS, Ordering::Release);
+        } else {
+            self.flags.fetch_and(!NO_MARKERS, Ordering::Release);
+        }
         self
     }
 
@@ -255,7 +269,7 @@ impl<C: Cache> RouteCache<C> {
         let backend = self.cache.as_ref();
         let result = generation::invalidate(backend, &target).await;
         if result.is_err() {
-            disable(&self.enabled);
+            disable(&self.flags);
         }
         result
     }
@@ -267,12 +281,11 @@ impl<C: Cache> RouteCache<C> {
             bypass: Arc::clone(&self.bypass),
             namespace: Arc::clone(&self.namespace),
             proxies: self.proxies.clone(),
-            enabled: Arc::clone(&self.enabled),
+            flags: Arc::clone(&self.flags),
             max_key: self.max_key,
             max_headers: self.max_headers,
             max_encoded: self.max_encoded,
             generation_ttl: self.generation_ttl,
-            marker_support: Arc::clone(&self.marker_support),
         }
     }
 
@@ -302,19 +315,17 @@ impl<C: Cache> RouteCache<C> {
 }
 
 /// Per-request view of the layer configuration.
-#[derive(Clone)]
 struct Policy {
     default_ttl: Option<Duration>,
     max_body: u64,
     bypass: Arc<Vec<HeaderName>>,
     namespace: Arc<str>,
     proxies: TrustedProxies,
-    enabled: Arc<AtomicBool>,
+    flags: Arc<AtomicU8>,
     max_key: usize,
     max_headers: usize,
     max_encoded: usize,
     generation_ttl: Duration,
-    marker_support: Arc<AtomicBool>,
 }
 
 impl<C: Cache> Layer<BoxService> for RouteCache<C> {
@@ -322,10 +333,10 @@ impl<C: Cache> Layer<BoxService> for RouteCache<C> {
 
     fn layer(&self, inner: BoxService) -> Self::Service {
         let cache = Arc::clone(&self.cache);
-        let policy = self.policy();
+        let policy = Arc::new(self.policy());
         from_fn(move |req: Request, next: Next| {
             let cache = Arc::clone(&cache);
-            let policy = policy.clone();
+            let policy = Arc::clone(&policy);
             async move { Dispatch { cache, policy }.run(req, next).await }
         })
         .layer(inner)
@@ -507,8 +518,8 @@ fn restore(method: &Method, headers: HeaderMap, body: Vec<u8>) -> Response {
     with_x_cache(response, HIT)
 }
 
-fn disable(enabled: &AtomicBool) {
-    enabled.store(false, Ordering::Release);
+fn disable(flags: &AtomicU8) {
+    flags.fetch_or(DISABLED, Ordering::Release);
     tracing::warn!("cache invalidation failed; cache layer disabled");
 }
 
@@ -556,13 +567,14 @@ async fn lookup<C: Cache>(cache: &C, key: &str, policy: &Policy) -> Hit {
 
 struct Dispatch<C> {
     cache: Arc<C>,
-    policy: Policy,
+    policy: Arc<Policy>,
 }
 
 impl<C: Cache> Dispatch<C> {
     async fn run(self, req: Request, next: Next) -> Response {
         let Self { cache, policy } = self;
-        if !policy.enabled.load(Ordering::Acquire) {
+        let flags = policy.flags.load(Ordering::Acquire);
+        if flags & DISABLED != 0 {
             return with_x_cache(next.run(req).await, MISS);
         }
         let context = match policy.proxies.resolve(&req) {
@@ -577,8 +589,8 @@ impl<C: Cache> Dispatch<C> {
             return with_x_cache(next.run(req).await, MISS);
         }
         if !is_cacheable_method(req.method()) {
-            let invalidate = generation::unsafe_method(req.method())
-                && policy.marker_support.load(Ordering::Acquire);
+            let write = generation::unsafe_method(req.method());
+            let invalidate = write && flags & NO_MARKERS == 0;
             let response = next.run(req).await;
             let status = response.status();
             let succeeded = status.is_success() || status.is_redirection();
@@ -590,7 +602,7 @@ impl<C: Cache> Dispatch<C> {
             {
                 // A completed write cannot be undone by a cache failure.
                 // Disable this layer rather than reuse stale local data.
-                disable(&policy.enabled);
+                disable(&policy.flags);
             }
             return response;
         }
@@ -603,13 +615,13 @@ impl<C: Cache> Dispatch<C> {
         {
             return with_x_cache(next.run(req).await, MISS);
         }
-        if !policy.marker_support.load(Ordering::Acquire) {
-            // The backend cannot create expiring markers atomically.
+        if flags & NO_MARKERS != 0 {
+            // No expiring markers: unsupported backend or zero lifetime.
             return with_x_cache(next.run(req).await, MISS);
         }
         let backend = cache.as_ref();
-        let (ttl, supported) = (policy.generation_ttl, &policy.marker_support);
-        let generation = match generation::current(backend, &target, ttl, supported).await {
+        let current = generation::current(backend, &target, &policy).await;
+        let generation = match current {
             Ok(generation) => generation,
             Err(_) => return with_x_cache(next.run(req).await, MISS),
         };

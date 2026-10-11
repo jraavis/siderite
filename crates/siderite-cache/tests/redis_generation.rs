@@ -103,6 +103,8 @@ struct Spy {
 }
 
 type Bytes = Option<Vec<u8>>;
+type Expiry = Option<Duration>;
+type Done = Result<(), CacheError>;
 
 #[async_trait::async_trait]
 impl Cache for Spy {
@@ -110,7 +112,7 @@ impl Cache for Spy {
         self.inner.get(key).await
     }
 
-    async fn set(&self, k: &str, v: Vec<u8>, t: Option<Duration>) -> Result<(), CacheError> {
+    async fn set(&self, k: &str, v: Vec<u8>, t: Expiry) -> Done {
         self.keys
             .lock()
             .map_err(|e| CacheError::Backend(e.to_string()))?
@@ -146,7 +148,7 @@ impl Cache for Spy {
 
 #[tokio::test]
 #[ignore = "requires REDIS_URL selecting database 15"]
-async fn markers_and_representations_carry_a_ttl_and_writes_delete() -> TestResult {
+async fn markers_carry_a_ttl_and_writes_delete() -> TestResult {
     let url = std::env::var("REDIS_URL")?;
     let store = RedisStore::connect(&url).await?;
     if store.database() != 15 {
