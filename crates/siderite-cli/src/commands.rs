@@ -410,6 +410,16 @@ pub const COMMANDS: &[Command] = &[
             "List commands, their needs and changes",
         )
     },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        ..cmd(
+            "completions",
+            Group::Tool,
+            "completions bash|zsh|fish",
+            "Print a shell completion script",
+        )
+    },
 ];
 
 /// The command for `word` (the first word, as typed).

@@ -71,6 +71,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         }
         return scaffold::run(raw);
     }
+    if command == "completions" {
+        return crate::completions::run(raw);
+    }
     if command == "commands" {
         return list_commands(raw);
     }

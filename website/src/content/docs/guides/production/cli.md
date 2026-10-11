@@ -185,6 +185,17 @@ to fix each gap for your operating system. `--install` runs only rustup
 commands (toolchain and components) and never edits shell profiles or
 installs system packages.
 
+## Shell completions
+
+```bash
+siderite completions bash > ~/.local/share/bash-completion/completions/siderite
+siderite completions fish > ~/.config/fish/completions/siderite.fish
+siderite completions zsh > "${fpath[1]}/_siderite"
+```
+
+Generated from the same command list as the help, so they never drift.
+Your shell profile is never edited.
+
 ## Doctor
 
 ```bash

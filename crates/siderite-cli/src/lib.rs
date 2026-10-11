@@ -18,6 +18,7 @@ mod app_cli;
 mod args;
 pub mod check;
 pub mod commands;
+mod completions;
 pub mod connect;
 pub mod dbshell;
 mod dev;
