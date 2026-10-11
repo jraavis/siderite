@@ -234,6 +234,12 @@ Ranking is keyword based (BM25 over the section text, with a bonus for words in 
 
 `data.docs_version` is the version the docs describe. When the nearest `Cargo.lock` above the current directory locks a different siderite version, the report adds a `docs.W001` warning naming both versions and the `cargo install siderite-cli --version ...` command for matching docs; the exit code stays `0`.
 
+## `explain`
+
+`siderite explain CODE [--json]` explains a diagnostic code: its cause, the minimal correction and the command that verifies the fix, plus the docs section (`docs search` id) and the first version that emits it. `siderite explain --list` lists every siderite code. Codes match case-insensitively. The catalog is checked against the source by a test, so every code siderite can report has an entry and no entry outlives its code.
+
+Rust compiler codes (`E0308`) and Clippy lints (`clippy::needless_return`) are not explained by siderite: the answer points to `rustc --explain` and the official error-code or lint page. Any other code is `explain.E001` and exits `1`. `--json` writes one `explain` envelope whose `data` is `{siderite, entries}`; each entry has `code`, `source` (`siderite`, `rustc` or `clippy`), `title`, `since`, `cause`, `fix`, `verify`, `docs` and `url`.
+
 ## `showmigrations --json`
 
 Works in the app binary and in the standalone `siderite` binary. `data` holds the selected `alias` (`null` in the standalone binary, which has no aliases), where the URL came from (`source`: `flag`, `settings` or `environment`; the URL itself is never printed), the `migrations` as `{id, applied}` in the order of the text output, and `applied` / `pending` counts. Both outputs come from the same `Migrator::show()` rows; nothing parses printed lines.

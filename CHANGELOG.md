@@ -8,6 +8,10 @@
 
 
 ### Added
+- **CLI:** `siderite explain CODE [--json]` and `explain --list`: the
+  cause, minimal fix and verification command of every siderite
+  diagnostic code, for this version. Compiler codes and Clippy lints point
+  to their official pages; unknown codes exit `1` (`explain.E001`).
 - **CLI:** `siderite docs search QUERY [--json] [--limit N]` searches
   a documentation index packaged with the CLI (website guides, reference,
   tutorials and the compiled examples) offline. Results carry the docs

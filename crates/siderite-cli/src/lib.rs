@@ -27,6 +27,7 @@ mod dispatch;
 mod docs;
 mod doctor;
 mod error;
+mod explain;
 #[cfg(test)]
 mod fixtures;
 mod fsio;

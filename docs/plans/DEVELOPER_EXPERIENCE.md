@@ -150,7 +150,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   Local search works offline; installed-version mismatch is clearly reported.
   Index only maintained public API documentation, not user secrets/source.
 
-- [ ] **X12 — Explain framework diagnostics.**
+- [x] **X12 — Explain framework diagnostics.**
   Depends: X11, C02. Scope: `explain CODE` for stable framework error codes.
   Done: each entry describes cause, minimal valid correction and verification
   command, tied to supported versions. Unknown/compiler codes link or point

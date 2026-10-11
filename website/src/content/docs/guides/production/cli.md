@@ -244,6 +244,19 @@ network connection. Results name the source file and line, link to it at
 the release tag and list the Cargo features the section mentions. If your
 project's `Cargo.lock` uses another siderite version, a warning says so.
 
+## Explain
+
+```bash
+siderite explain models.E003     # cause, fix, verification command
+siderite explain E0308           # points to rustc --explain
+siderite explain --list          # every siderite code
+```
+
+Every diagnostic code siderite reports has an entry: why it appears, the
+smallest correction and the command that shows it is fixed, for this
+version. Compiler codes and Clippy lints point to their official pages
+instead of a siderite explanation; an unknown code exits `1`.
+
 ## AI context
 
 ```bash
@@ -268,7 +281,7 @@ recognised.
 
 ## JSON output
 
-`check`, `docs search`, `doctor`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command
+`check`, `docs search`, `doctor`, `explain`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command
 (`siderite --json routes`, `siderite check --json`). Stdout then carries
 exactly one JSON value and a newline, a versioned envelope described by
 [`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):
