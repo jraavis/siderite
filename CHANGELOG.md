@@ -11,6 +11,11 @@
 - **Migrations:** documented and live-tested the crash boundaries between
   DDL execution and progress recording on PostgreSQL and MySQL (kill before
   a script, after DDL, after progress, after intent clear); no runtime change.
+- **Migrations:** live-tested kills immediately before and after the history
+  row insert and delete (apply and rollback) on PostgreSQL atomic and
+  non-atomic and MySQL; documented how `inspectmigrations` distinguishes
+  recorded success, rollback and uncertainty, with operator procedures;
+  no runtime change.
 - **Cache:** the route-cache metadata bound is enforced. Each namespace
   admits at most `RouteCache::max_new_targets` (default
   `DEFAULT_MAX_NEW_TARGETS`, 10,000) new target markers per

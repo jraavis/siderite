@@ -24,6 +24,14 @@ pub enum Point {
     AfterProgress,
     /// After an intent row delete affected a row.
     AfterIntentFinish,
+    /// Immediately before the history row insert is sent.
+    BeforeHistoryInsert,
+    /// After the history row insert affected a row.
+    AfterHistoryInsert,
+    /// Immediately before the history row delete is sent.
+    BeforeHistoryDelete,
+    /// After the history row delete affected a row.
+    AfterHistoryDelete,
 }
 
 /// Crash configuration: a point, a statement marker and matches to skip.
@@ -43,6 +51,10 @@ impl Hook {
             "after-ddl" => Point::AfterDdl,
             "after-progress" => Point::AfterProgress,
             "after-intent-finish" => Point::AfterIntentFinish,
+            "before-history-insert" => Point::BeforeHistoryInsert,
+            "after-history-insert" => Point::AfterHistoryInsert,
+            "before-history-delete" => Point::BeforeHistoryDelete,
+            "after-history-delete" => Point::AfterHistoryDelete,
             _ => return None,
         };
         let marker = parts.next()?.to_owned();
@@ -83,6 +95,23 @@ impl Hook {
         }
     }
 
+    /// The history table name never occurs inside the progress or intent
+    /// table names, so a substring test identifies history writes.
+    fn history(sql: &str, verb: &str) -> bool {
+        sql.starts_with(verb) && sql.contains("siderite_migrations")
+    }
+
+    fn before_raw(&self, sql: &str) {
+        let hit = match self.point {
+            Point::BeforeHistoryInsert => Self::history(sql, "INSERT INTO"),
+            Point::BeforeHistoryDelete => Self::history(sql, "DELETE FROM"),
+            _ => false,
+        };
+        if hit {
+            self.fire();
+        }
+    }
+
     fn raw(&self, sql: &str, affected: u64) {
         let upsert = sql.starts_with("INSERT INTO") || sql.starts_with("UPDATE");
         let hit = match self.point {
@@ -90,6 +119,8 @@ impl Hook {
             Point::AfterIntentFinish => {
                 sql.starts_with("DELETE FROM") && sql.contains("siderite_migration_intents")
             }
+            Point::AfterHistoryInsert => Self::history(sql, "INSERT INTO"),
+            Point::AfterHistoryDelete => Self::history(sql, "DELETE FROM"),
             _ => false,
         };
         if hit && affected > 0 {
@@ -144,6 +175,7 @@ macro_rules! delegate {
             }
 
             async fn execute_raw(&self, sql: &str, params: Vec<Value>) -> Result<u64, OrmError> {
+                self.hook.before_raw(sql);
                 let affected = self.inner.execute_raw(sql, params).await?;
                 self.hook.raw(sql, affected);
                 Ok(affected)

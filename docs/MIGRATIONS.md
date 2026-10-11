@@ -276,6 +276,31 @@ then re-run `migrate`, which resumes at the first unfinished operation.
 The tests exercise the drop-and-retry form of this procedure, and the
 delete-intent-then-resume form when progress already records the statement.
 
+#### History-write boundaries
+
+`tests/crash_history_live.rs` kills the process immediately before and after
+the history row is inserted (apply) or deleted (rollback), using generated
+two-operation `CreateModel` migrations on live PostgreSQL and MySQL. All DDL
+has finished at these points; only the history write is in question.
+`inspectmigrations` (`inspect_recovery`) tells the cases apart by comparing
+`applied` with the `partial` entry's `direction` and `history_applied`.
+
+| Kill point | PostgreSQL `atomic: true` | PostgreSQL `atomic: false` / MySQL |
+| --- | --- | --- |
+| Before history insert | Rolled back: no tables, no history, no progress. Plain retry applies | Tables exist; `applied` empty; one `apply` entry at all operations, `history_applied: false` (uncertain: only the catalog proves the DDL ran). Retry succeeds, writes the history row, replays no DDL. A changed file is refused (`changed since a partial apply`) |
+| After history insert | Rolled back as above (the insert was uncommitted) | Recorded success: `applied` lists the id and the `apply` entry has `history_applied: true`. Retry succeeds as a no-op and leaves the stale progress row. A changed file is refused (`checksum mismatch`). Repair: delete the stale `apply` progress row |
+| Before history delete (rollback) | Rolled back: tables and history intact; plain rollback works | Tables dropped, history row present; `unapply` entry with `history_applied: true`. Retrying `rollback` resumes, deletes the history row and replays no DDL |
+| After history delete (rollback) | Rolled back as above | Recorded rollback: `applied` empty, `unapply` entry with `history_applied: false`. Retrying `rollback` is a no-op and leaves the stale row; the next `migrate` clears it, or delete it by hand |
+
+A stale `apply` row after a recorded success is harmless: the next
+`rollback` replaces it with `unapply` progress. Neither stale direction
+caused a skipped or replayed operation in the cycle tests. Procedure: stop
+migration writers; run `inspectmigrations`; for `history_applied: true` on
+`apply` (or `false` on `unapply`) confirm the schema, then optionally delete
+the row from `siderite_migration_progress`; otherwise re-run the same
+command. No intent or schema reconciliation is needed because every
+operation is recorded as complete before the history write.
+
 ### Unconfirmed explicit work
 
 For MySQL and non-atomic PostgreSQL migrations, the executor records an
