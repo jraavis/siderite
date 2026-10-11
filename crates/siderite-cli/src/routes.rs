@@ -4,6 +4,8 @@
 //! their prefix and endpoints marked `hidden` are left out.
 
 use crate::error::CliError;
+use crate::report::build::route_reports;
+use crate::report::text::render_route_rows;
 use siderite_core::App;
 
 /// One row of the route table.
@@ -23,39 +25,25 @@ pub struct RouteRow {
 /// [`CliError::OpenApi`] when the OpenAPI document cannot be generated (for
 /// example on a duplicate operation).
 pub fn route_table(app: &App) -> Result<Vec<RouteRow>, CliError> {
-    let document = app
-        .openapi()
-        .map_err(|err| CliError::OpenApi(err.to_string()))?;
-    let mut rows = Vec::new();
-    for (path, item) in &document.paths {
-        for (method, operation) in &item.0 {
-            rows.push(RouteRow {
-                method: method.to_ascii_uppercase(),
-                path: path.clone(),
-                operation_id: operation.operation_id.clone(),
-            });
-        }
-    }
-    rows.sort_by(|a, b| (&a.path, &a.method).cmp(&(&b.path, &b.method)));
-    Ok(rows)
+    Ok(route_reports(app)?
+        .into_iter()
+        .map(|r| RouteRow {
+            method: r.method,
+            path: r.path,
+            operation_id: r.operation_id,
+        })
+        .collect())
 }
 
 /// Render `rows` as an aligned text table, one route per line.
 pub fn render_routes(rows: &[RouteRow]) -> String {
-    if rows.is_empty() {
-        return "No routes.\n".to_owned();
-    }
-    let method_width = rows.iter().map(|r| r.method.len()).max().unwrap_or(0);
-    let path_width = rows.iter().map(|r| r.path.len()).max().unwrap_or(0);
-    let mut out = String::new();
-    for row in rows {
-        let id = row.operation_id.as_deref().unwrap_or("-");
-        out.push_str(&format!(
-            "{:<method_width$}  {:<path_width$}  {id}\n",
-            row.method, row.path
-        ));
-    }
-    out
+    render_route_rows(rows.iter().map(|r| {
+        (
+            r.method.as_str(),
+            r.path.as_str(),
+            r.operation_id.as_deref(),
+        )
+    }))
 }
 
 #[cfg(test)]

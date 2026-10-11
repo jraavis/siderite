@@ -7,6 +7,15 @@
   and joined before resource teardown.
 
 
+### Added
+- **CLI:** typed reports and an output contract (`siderite_cli::report`):
+  a versioned JSON envelope (`schema_version`, `command`, `ok`, `data`,
+  `diagnostics`) with a JSON Schema in `docs/schemas/cli-report-v1.json`,
+  pure builders for `check`, routes and registered models, text and JSON
+  renderers, and a shared redaction helper. `check` and `routes` now render
+  through them with unchanged text output and exit codes. No `--json` flag
+  yet. `siderite_config::is_secret_key` is now public.
+
 ### Changed
 - **CLI:** explicit project selection. `siderite` discovers the app with
   `cargo metadata --no-deps` and accepts `--manifest-path`, `--package` /

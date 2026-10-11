@@ -23,6 +23,7 @@ mod error;
 #[cfg(test)]
 mod fixtures;
 mod project;
+pub mod report;
 pub mod routes;
 mod scaffold;
 pub mod settings;
