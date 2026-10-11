@@ -20,10 +20,27 @@ pub struct RecoveryEntry {
     pub completed_operations: usize,
     /// Completed statements within the next operation.
     pub completed_statements: usize,
+    /// Operation count of the migration in the supplied graph; `None`
+    /// when the graph does not contain the id.
+    pub total_operations: Option<usize>,
     /// Whether the supplied graph has the same file; None means unknown id.
     pub file_matches: Option<bool>,
     /// Whether this migration also has an applied history row.
     pub history_applied: bool,
+}
+
+impl RecoveryEntry {
+    /// Whether progress records every operation of the migration as
+    /// complete, so only the history write can be outstanding.
+    ///
+    /// Returns:
+    ///   `true` when `completed_operations` equals `total_operations`
+    ///   and no statement of a further operation is recorded; `false`
+    ///   when operations remain or the migration is not in the graph.
+    pub fn all_operations_recorded(&self) -> bool {
+        let done = Some(self.completed_operations);
+        self.total_operations == done && self.completed_statements == 0
+    }
 }
 
 /// Snapshot of applied ids and recorded partial work, without modifying SQL.
@@ -78,10 +95,9 @@ impl Migrator<'_> {
                 if !matches!(direction.as_str(), "apply" | "unapply") {
                     return Err(Error::state("invalid progress direction"));
                 }
-                let file_matches = self
-                    .graph
-                    .get(&migration_id)
-                    .map(|migration| migration.checksum == checksum);
+                let known = self.graph.get(&migration_id);
+                let file_matches = known.map(|m| m.checksum == checksum);
+                let total_operations = known.map(|m| m.operations.len());
                 partial.push(RecoveryEntry {
                     history_applied: history.ids.contains(&migration_id),
                     migration_id,
@@ -89,6 +105,7 @@ impl Migrator<'_> {
                     direction,
                     completed_operations: read_index(&row, "op_index")?,
                     completed_statements: read_index(&row, "stmt_index")?,
+                    total_operations,
                     file_matches,
                 });
             }
@@ -126,4 +143,30 @@ fn invalid_index() -> Error {
 
 fn positive_index(value: i64) -> Result<usize> {
     usize::try_from(value).map_err(|_| invalid_index())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RecoveryEntry as Entry;
+
+    fn entry(done: usize, stmts: usize, total: Option<usize>) -> Entry {
+        Entry {
+            migration_id: "0001_x".into(),
+            checksum: "c".into(),
+            direction: "apply".into(),
+            completed_operations: done,
+            completed_statements: stmts,
+            total_operations: total,
+            file_matches: Some(true),
+            history_applied: false,
+        }
+    }
+
+    #[test]
+    fn all_operations_recorded_needs_the_full_count() {
+        assert!(entry(2, 0, Some(2)).all_operations_recorded());
+        assert!(!entry(1, 0, Some(2)).all_operations_recorded());
+        assert!(!entry(1, 1, Some(2)).all_operations_recorded());
+        assert!(!entry(2, 0, None).all_operations_recorded());
+    }
 }

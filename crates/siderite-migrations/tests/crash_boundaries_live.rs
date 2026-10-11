@@ -12,16 +12,14 @@ mod common;
 mod crash_support;
 
 use common::scratch::ScratchDb;
-use crash_support::{CrashBackend, Hook};
+use crash_support::{CrashBackend, Hook, run_child, table_exists};
 use siderite_migrations::state::{FieldState, ModelState, SqlType};
 use siderite_migrations::{Migration, MigrationError, MigrationGraph};
 use siderite_migrations::{Migrator, Operation, RecoveryReport};
 use siderite_orm::{BackendKind, Db};
 use std::future::Future;
-use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
 type Result = std::result::Result<(), Failure>;
@@ -29,15 +27,6 @@ type Outcome = std::result::Result<(), MigrationError>;
 type GraphResult = std::result::Result<MigrationGraph, MigrationError>;
 
 const ID: &str = "0001_crash_boundary";
-
-struct OwnedChild(Child);
-
-impl Drop for OwnedChild {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn model(table: &str) -> Operation {
     let id = FieldState {
@@ -132,51 +121,20 @@ async fn crash_at(scratch: &ScratchDb, shape: Shape, spec: String) -> Result {
 }
 
 /// Run the child until it aborts at `spec`, and prove the hook fired.
-///
-/// The hook calls `abort()`, which raises SIGABRT, so the child may leave a
-/// core file behind depending on the host's `ulimit -c` / core pattern.
 async fn crash_mode(scratch: &ScratchDb, shape: Shape, spec: String, mode: &str) -> Result {
-    let name = format!("siderite-boundary-{}", Uuid::new_v4().simple());
-    let flag = std::env::temp_dir().join(name);
-    let mut child = OwnedChild(
-        Command::new(std::env::current_exe()?)
-            .args(["--ignored", "--exact", "boundary_recovery_child"])
-            .env("SIDERITE_BOUNDARY_URL", scratch.connection_url())
-            .env("SIDERITE_BOUNDARY_FLAG", &flag)
-            .env("SIDERITE_BOUNDARY_SPEC", spec)
-            .env("SIDERITE_BOUNDARY_MODE", mode)
-            .env("SIDERITE_BOUNDARY_SQL", shape.sql.to_string())
-            .env("SIDERITE_BOUNDARY_ATOMIC", shape.atomic.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?,
-    );
-    let status = tokio::time::timeout(Duration::from_secs(60), async {
-        loop {
-            if let Some(status) = child.0.try_wait()? {
-                return Ok::<_, std::io::Error>(status);
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await??;
-    let fired = flag.exists();
-    let _ = std::fs::remove_file(&flag);
-    if status.success() || !fired {
-        return Err(format!("child did not die at its hook: {status}").into());
-    }
-    Ok(())
-}
-
-async fn exists(db: &Db, table: &str) -> bool {
-    db.raw_sql(&format!("SELECT * FROM {table}"), vec![])
-        .await
-        .is_ok()
+    let envs = [
+        ("SIDERITE_BOUNDARY_URL", scratch.connection_url().to_owned()),
+        ("SIDERITE_BOUNDARY_SPEC", spec),
+        ("SIDERITE_BOUNDARY_MODE", mode.to_owned()),
+        ("SIDERITE_BOUNDARY_SQL", shape.sql.to_string()),
+        ("SIDERITE_BOUNDARY_ATOMIC", shape.atomic.to_string()),
+    ];
+    run_child("boundary_recovery_child", "SIDERITE_BOUNDARY_FLAG", &envs).await
 }
 
 async fn assert_tables(db: &Db, shape: Shape, want: [bool; 2]) -> Result {
     for (table, want) in shape.tables().iter().zip(want) {
-        if exists(db, table).await != want {
+        if table_exists(db, table).await? != want {
             return Err(format!("{table}: expected exists={want}").into());
         }
     }

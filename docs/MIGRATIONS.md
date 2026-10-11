@@ -303,26 +303,47 @@ delete-intent-then-resume form when progress already records the statement.
 
 `tests/crash_history_live.rs` kills the process immediately before and after
 the history row is inserted (apply) or deleted (rollback), using generated
-two-operation `CreateModel` migrations on live PostgreSQL and MySQL. All DDL
-has finished at these points; only the history write is in question.
-`inspectmigrations` (`inspect_recovery`) tells the cases apart by comparing
-`applied` with the `partial` entry's `direction` and `history_applied`.
+two-operation `CreateModel` migrations on live PostgreSQL (`atomic: true`
+and `false`) and MySQL (both values; MySQL DDL commits implicitly, so the
+flag changes nothing). All DDL has finished at these points; only the
+history write is in question. `inspectmigrations` (`inspect_recovery`)
+reports every one of these states with certainty: the `partial` entry has
+`completed_operations == total_operations` and `completed_statements: 0`
+(`RecoveryEntry::all_operations_recorded()`), and `history_applied` plus
+`applied` say whether the history write happened.
 
 | Kill point | PostgreSQL `atomic: true` | PostgreSQL `atomic: false` / MySQL |
 | --- | --- | --- |
-| Before history insert | Rolled back: no tables, no history, no progress. Plain retry applies | Tables exist; `applied` empty; one `apply` entry at all operations, `history_applied: false` (uncertain: only the catalog proves the DDL ran). Retry succeeds, writes the history row, replays no DDL. A changed file is refused (`changed since a partial apply`) |
+| Before history insert | Rolled back: no tables, no history, no progress. Plain retry applies | Tables exist; `applied` empty; one `apply` entry with all operations recorded and `history_applied: false`: the DDL finished, only the history row is missing. Retry succeeds, writes the history row, replays no DDL. A changed file is refused (`changed since a partial apply`) |
 | After history insert | Rolled back as above (the insert was uncommitted) | Recorded success: `applied` lists the id and the `apply` entry has `history_applied: true`. Retry succeeds as a no-op and leaves the stale progress row. A changed file is refused (`checksum mismatch`). Repair: delete the stale `apply` progress row |
-| Before history delete (rollback) | Rolled back: tables and history intact; plain rollback works | Tables dropped, history row present; `unapply` entry with `history_applied: true`. Retrying `rollback` resumes, deletes the history row and replays no DDL |
+| Before history delete (rollback) | Rolled back: tables and history intact; plain rollback works | Tables dropped, history row present; `unapply` entry with all operations recorded and `history_applied: true`. Retrying `rollback` resumes, deletes the history row and replays no DDL |
 | After history delete (rollback) | Rolled back as above | Recorded rollback: `applied` empty, `unapply` entry with `history_applied: false`. Retrying `rollback` is a no-op and leaves the stale row; the next `migrate` clears it, or delete it by hand |
 
 A stale `apply` row after a recorded success is harmless: the next
 `rollback` replaces it with `unapply` progress. Neither stale direction
-caused a skipped or replayed operation in the cycle tests. Procedure: stop
-migration writers; run `inspectmigrations`; for `history_applied: true` on
-`apply` (or `false` on `unapply`) confirm the schema, then optionally delete
-the row from `siderite_migration_progress`; otherwise re-run the same
-command. No intent or schema reconciliation is needed because every
-operation is recorded as complete before the history write.
+caused a skipped or replayed operation in the cycle tests.
+
+Procedure:
+
+1. Stop migration writers and run `inspectmigrations`.
+2. Continue only when `uncertain_steps` is empty and the entry has
+   `file_matches: true` and `completed_operations` equal to
+   `total_operations` with `completed_statements: 0`. Anything else is a
+   DDL-boundary or explicit-step case (see the sections above and below),
+   not a history-write case.
+3. History write done (`history_applied: true` on `apply`, or `false` on
+   `unapply`): confirm the schema in the catalog, then optionally delete
+   the row from `siderite_migration_progress`.
+4. History write missing (`history_applied: false` on `apply`, or `true`
+   on `unapply`): re-run the same command; it writes or deletes only the
+   history row.
+
+No intent or schema reconciliation is needed in these cases because every
+operation is recorded as complete before the history write. If you edit
+`siderite_migrations` by hand instead of re-running the command, delete the
+migration's row from `siderite_migration_progress` in the same change:
+leftover progress makes the next run resume, or refuse a changed file,
+against history you rewrote.
 
 ### Unconfirmed explicit work
 
