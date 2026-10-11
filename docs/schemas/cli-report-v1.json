@@ -135,6 +135,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "openapi diff" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/OpenApiDiff" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "explain" } } },
       "then": {
         "properties": {
@@ -423,6 +433,45 @@
               }
             }
           ]
+        }
+      }
+    },
+    "OpenApiDiff": {
+      "type": "object",
+      "required": ["base", "current", "summary", "changes"],
+      "properties": {
+        "base": { "type": "string" },
+        "current": { "type": "string" },
+        "summary": {
+          "type": "object",
+          "required": ["breaking", "unknown", "additive"],
+          "properties": {
+            "breaking": { "type": "integer", "minimum": 0 },
+            "unknown": { "type": "integer", "minimum": 0 },
+            "additive": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "impact",
+              "kind",
+              "operation",
+              "message",
+              "base",
+              "current"
+            ],
+            "properties": {
+              "impact": { "enum": ["breaking", "unknown", "additive"] },
+              "kind": { "type": "string", "minLength": 1 },
+              "operation": { "type": ["string", "null"] },
+              "message": { "type": "string" },
+              "base": { "type": ["string", "null"] },
+              "current": { "type": ["string", "null"] }
+            }
+          }
         }
       }
     },

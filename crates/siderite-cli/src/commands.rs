@@ -370,6 +370,17 @@ pub const COMMANDS: &[Command] = &[
         )
     },
     Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: TEXT_JSON,
+        ..cmd(
+            "openapi diff",
+            Group::App,
+            "openapi diff BASE CURRENT [--json]",
+            "Compare two OpenAPI documents for clients",
+        )
+    },
+    Command {
         live: Live::Always,
         ..cmd(
             "dbshell",

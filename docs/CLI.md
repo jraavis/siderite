@@ -304,6 +304,18 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--output` is relative to the directory `siderite` was run in. The file is written to a temporary sibling, synced, then linked into place, so readers never see a partial document. An existing file is never replaced without `--force`, including one created concurrently; `--force` replaces it with an atomic rename.
 - A document that cannot be generated (for example duplicate operation ids) exits `1` with nothing on stdout.
 
+## `openapi diff`
+
+`siderite openapi diff BASE CURRENT [--json]` compares two OpenAPI 3 JSON files (for example two `openapi export` outputs) for existing clients. It needs no package and connects to nothing.
+
+- **Matching.** Operations match by method and path template; parameter names are ignored, so `/books/{id}` and `/books/{key}` are the same route. Parameters match by location and name (header names case-insensitively), path-level parameters included.
+- **Breaking.** Removed operations; removed `2xx`/`3xx` responses; removed media types; new required parameters, parameters that became required and request bodies that became required. In request schemas: types no longer accepted (including `null`), removed enum values, a new enum, newly required properties, tightened `max*`/`min*` bounds, and removed properties when `additionalProperties` is `false`. In response schemas: new types (including `null`), removed properties and properties no longer required.
+- **Unknown, treated as incompatible.** References outside the document (never fetched) or that do not resolve; schemas using `oneOf`, `anyOf`, `allOf`, `not`, conditionals, `patternProperties` or `discriminator` that differ at all; changed `pattern` or `format`; new response enum values; removed parameters, request bodies and non-success responses; changed `security` or `callbacks`; nesting deeper than 32 levels.
+- **Additive.** New operations, optional parameters, optional request bodies, responses, media types, and properties (optional ones in requests).
+- **Not compared.** Response headers, links, examples, descriptions, servers and webhooks.
+
+Each change has `impact`, a stable `kind` (`operation_removed`, `required_property_added`, ...), the operation (`POST /books`), a message, and JSON pointers into BASE and CURRENT. A shared component is compared once per pair of locations, and its findings point into `components`. Breaking changes add `openapi.E002` and unknown ones `openapi.E003`; either makes the exit status `1`, and additive-only or identical documents exit `0`. `--json` writes an `openapi diff` envelope whose `data` is `{base, current, summary, changes}`. Changes are ordered breaking first, then unknown, then additive.
+
 ## `ai dump-context`
 
 `siderite ai dump-context [--format markdown|json] [--live] [--max-bytes N]` (`--json` is the same as `--format json`) prints the application snapshot below as context for AI tools: Markdown by default (headings and tables for databases, models with their fields, documented routes, migration status and notes), or the `ai dump-context` envelope whose `data` holds the `snapshot`, its `source` (binary name and build time, so a stale context can be spotted) and `migrations`.

@@ -412,6 +412,21 @@ disabled. Only the app factory runs, so keep it free of side effects. A
 relative `--output` is resolved against your current directory; the file
 is written atomically and an existing file is replaced only with `--force`.
 
+## Comparing OpenAPI documents
+
+```bash
+siderite openapi export --output openapi.json   # on the old version
+siderite openapi diff openapi.json new.json     # exit 1 on breaking
+```
+
+`openapi diff BASE CURRENT` reads two local JSON documents and lists what
+changed for existing clients. Changes are breaking (removed operations,
+newly required inputs, narrower request schemas, response properties that
+disappear), unknown (things it does not compare) or additive. Each change
+names its JSON pointer in either document. Only `#/` references are
+followed; nothing is fetched. Unknown counts as incompatible, so the exit
+status is `1` for breaking or unknown changes, which suits a CI check.
+
 ## `check`
 
 `check` runs without starting a server or opening a database. Each issue

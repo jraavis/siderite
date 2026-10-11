@@ -86,6 +86,10 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "add" || command == "remove" {
         return crate::deps::run(raw, cwd, &project);
     }
+    let diff = || commands::resolve(raw).map(|c| c.name);
+    if command == "openapi" && diff() == Some("openapi diff") {
+        return crate::openapi::diff::run(raw, cwd);
+    }
     if command == "explain" {
         return crate::explain::run(raw);
     }
