@@ -1,8 +1,9 @@
 //! [`RedisCache`]: a [`Cache`] over [`siderite_backends::redis::RedisStore`].
 
 use crate::cache::ttl_millis;
-use crate::{Cache, CacheError};
+use crate::{Admission, AdmitMarker, Cache, CacheError};
 use async_trait::async_trait;
+use siderite_backends::redis::{MarkerAdmission, MarkerReply};
 use siderite_backends::redis::{RedisError, RedisStore};
 use std::time::Duration;
 
@@ -168,6 +169,45 @@ impl Cache for RedisCache {
     async fn clear(&self) -> Result<(), CacheError> {
         self.store.delete_namespace().await?;
         Ok(())
+    }
+
+    async fn admit_marker(&self, req: &AdmitMarker<'_>) -> Result<Admission, CacheError> {
+        // One server-side script (EVALSHA): epoch check, marker find or
+        // create, and the budget counted in a window taken from the Redis
+        // clock, so processes with skewed clocks share one window.
+        let token = encode_bytes(req.token.to_vec());
+        let epoch = encode_bytes(req.epoch.to_vec());
+        let call = MarkerAdmission {
+            marker: req.marker,
+            token: &token,
+            epoch_key: req.epoch_key,
+            epoch: &epoch,
+            budget_prefix: req.budget_prefix,
+            max_new: req.max_new,
+            window: req.window,
+        };
+        match self.store.admit_marker(call).await? {
+            MarkerReply::Admitted(value) => decode_bytes(req.marker, value).map(Admission::Marker),
+            MarkerReply::Stale => Ok(Admission::Stale),
+            MarkerReply::Exhausted(resets_in) => Ok(Admission::Exhausted { resets_in }),
+        }
+    }
+
+    async fn invalidate_marker(
+        &self,
+        marker: &str,
+        epoch_key: &str,
+        epoch: &[u8],
+        ttl: Duration,
+    ) -> Result<(), CacheError> {
+        // `MULTI`/`EXEC`: the epoch replacement and marker delete are one
+        // round trip and one atomic step.
+        let epoch = encode_bytes(epoch.to_vec());
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        Ok(self
+            .store
+            .rotate_marker(marker, epoch_key, &epoch, ttl)
+            .await?)
     }
 }
 

@@ -135,9 +135,15 @@ Generations are the only mechanism that makes invalidation, expiry and
 eviction safe for route caching. The invariants below are normative for
 `RouteCache` and for every `Cache` backend it runs on.
 
-1. **Fresh random token.** A target's generation is a random UUID. Any
-   marker created after expiry, eviction, deletion or rotation carries a
-   newly drawn token, never a counter or a value derived from the old one.
+1. **Fresh unique token.** A target's generation is a 16-byte token.
+   Any marker created after expiry, eviction, deletion or rotation carries
+   a newly drawn token that no earlier marker of the target had. Tokens
+   are a random 64-bit seed drawn once per layer followed by a 64-bit
+   counter. A token only has to differ from every token a stale fill might
+   still hold; within a layer the counter guarantees that, and across
+   layers and processes two tokens can only coincide if both layers drew
+   the same seed (2^-64 per pair) and the same counter value. Tokens are
+   unique, not secret, and no per-write random-number syscall is needed.
 2. **Delayed fills stay dead.** Representation keys embed the generation.
    A fill that completes after rotation, expiry or eviction stores under an
    old key that no later reader computes.
@@ -156,8 +162,9 @@ eviction safe for route caching. The invariants below are normative for
    `invalidate_target`) deletes the target's marker instead of writing a
    new one. A missing marker yields a fresh random token (invariant 1), so
    deletion rotates the generation, and invalidation never creates a
-   marker. It does refresh one per-namespace epoch key (see "Fills that
-   start without a marker"), which is a constant, not a per-target, cost.
+   marker. It also replaces one of a fixed number (64) of per-namespace
+   epoch keys in the same backend call (see "Fills that start without a
+   marker"), which is a constant, not a per-target, cost.
    Rotating only an already existing marker, with the same TTL policy, is
    equally valid; writing a non-expiring marker is not.
 
@@ -199,31 +206,52 @@ Marker metadata is bounded across all processes sharing a backend. Each
 namespace admits at most `max_new_targets` (default 10,000,
 `RouteCache::max_new_targets`) new markers per `generation_ttl` window. The
 budget is a counter per window: the counter key embeds the window index
-`floor(unix_time / generation_ttl)`, so each window has its own key and
-nothing is shared across windows. Admission calls the optional
-`Cache::increment_with_expiry` primitive (`Unsupported` by default, like
-`set_if_absent_with_ttl`). It increments the key, creating it at zero when
-missing, and gives it an expiry only when it has none, in one atomic step.
-Redis runs `INCRBY` plus `PEXPIRE` (when `PTTL` is negative) in one `EVAL`
-script; `MemoryCache` does both under one lock. Separate `set_if_absent` and
-`increment` calls are not acceptable: if the counter expires or is evicted
-between them, `INCRBY` recreates it without a TTL, which is a permanent
-bypass. Eviction of the counter resets it, so the bound holds only while
-the counter is not evicted; deployments that need the bound must not evict
-these keys (for example Redis `noeviction` for the namespace or a dedicated
-database). The layer never changes a Redis server's eviction configuration.
+`floor(clock / generation_ttl)`, so each window has its own key and nothing
+is shared across windows.
 
-Because a marker lives at most `generation_ttl`, markers created in the
-last `generation_ttl` come from at most two windows, so a namespace holds
-at most `2 x max_new_targets` markers plus at most two counters and one
-epoch key. Nodes whose clocks differ can disagree on the window index; keep
-clocks synchronised, and treat a few seconds of skew as loosening the bound
-only at window edges. Each marker is a key of at most `byte_limits` key
-bytes (default 4 KiB) plus a 16-byte value plus per-key backend overhead
-(about 50 to 90 bytes in Redis), so the default worst case is approximately
-85 MB per namespace and typically far less. Measured: 10,000 admitted
-targets with short keys cost about 4.3 MB in `MemoryCache` and 8.0 MB of
-Redis `used_memory`, including their representations (see
+**Admission is one backend call.** The provided method
+`Cache::admit_marker` does, atomically for the bundled backends: compare
+the epoch with the one the fill observed (a missing epoch counts as
+changed), return the live marker if one exists (costing no budget), and
+otherwise check the window's counter, create the marker with
+`generation_ttl` and count it. Counting is exact: a marker that would
+exceed the budget is never created, so it is never visible. Redis runs
+this as one Lua script through `redis::Script` (`EVALSHA`, loading the
+script only when the server does not have it). `MemoryCache` does it under
+one lock.
+
+**The window follows the clock that expires the counter.** The Redis
+script reads the server clock (`TIME`) for the window index, and the
+counter expires `2 x generation_ttl` after its first increment, also on the
+server clock. A counter therefore always outlives its window, and every
+process sharing a namespace agrees on the window whatever its own clock
+says: client clock skew has no effect. (The script builds the counter key
+inside, so it needs a single Redis node, not Redis Cluster, and Redis 5 or
+newer.) `MemoryCache` is one process and uses its own clock.
+
+**Exact bound.** A marker lives `generation_ttl`, so markers alive at any
+instant were created in at most two consecutive windows: a namespace holds
+at most `2 x max_new_targets` markers, at most two counters (three keys
+for up to one more window of TTL tail) and at most 64 epoch keys. A
+representation is stored with a TTL clamped to `generation_ttl` from the
+moment it is stored, and it can be stored up to one `generation_ttl` after
+its marker was created (a fill that read the marker late in its life), so
+representations come from at most three windows: at most
+`3 x max_new_targets x v`, where `v` is the number of request variants
+(method, `Accept`, `Accept-Encoding`) cached per target. Fills still in
+the origin when their marker ages out add at most one representation each.
+Eviction of the counter resets it, so the bound holds only while the
+counter is not evicted; deployments that need the bound must not evict
+these keys (for example Redis `noeviction` for the namespace or a dedicated
+database). The layer never changes a Redis server's eviction
+configuration.
+
+Each marker is a key of at most `byte_limits` key bytes (default 4 KiB)
+plus a 16-byte value plus per-key backend overhead (about 50 to 90 bytes in
+Redis), so the default worst case is approximately 85 MB per namespace and
+typically far less. Measured: 10,000 admitted targets with short keys cost
+about 4.3 MB in `MemoryCache` and 8.0 MB of Redis `used_memory`, including
+their representations (see
 `benchmarks/evidence/cache-metadata-bound-20261011/`). Targets whose key
 exceeds the key limit never create a marker.
 
@@ -232,11 +260,10 @@ actually stored under it, not when the marker is first looked up. Otherwise
 about 10,000 unique `GET`s to uncacheable responders would exhaust the
 budget and starve cacheable targets. Markers are therefore created lazily:
 a request that finds no marker proceeds to the origin, and only a response
-that will be stored creates the marker (after a re-read, so concurrent
-creators share one and are counted once) and consumes one budget unit. The
-counter can exceed the number of live markers (a creator that lost a race
-or whose fill was refused still counted); this only makes the bound
-conservative.
+that will be stored creates the marker and consumes one budget unit (one
+creator wins a race and is counted once; later requests find its marker).
+A counted marker that is then deleted by a write still stays counted for
+its window; this only makes the bound conservative.
 
 When the window budget is exhausted, or the target is uncacheable
 (credentials, `no-store` request, non-`GET`/`HEAD`, oversized key),
@@ -244,8 +271,15 @@ the layer **bypasses**: it serves the origin response, creates no marker,
 stores no representation and marks the response `x-cache: miss`. Targets
 that already have a marker keep hitting and refilling for the rest of the
 window. Unique targets (for example per-request query strings) therefore
-cannot grow metadata beyond the bound. `max_new_targets(0)` stores nothing
-and makes no backend calls.
+cannot grow metadata beyond the bound. Once an admission reports the
+window's budget spent, the layer remembers it in memory until the window
+ends (the backend reports the time left), so further over-budget requests
+make a single backend read (the marker) instead of three calls. The note
+is per layer and only ever skips work that would be refused; it does not
+touch the hit path. `max_new_targets(0)` admits nothing, so `GET`/`HEAD`
+requests make no backend calls; successful writes still invalidate (one
+backend call each), because other processes sharing the namespace may have
+markers.
 
 The hit path is unchanged: a request whose marker exists performs the same
 single marker `get` and single representation `get`, with no budget
@@ -253,33 +287,42 @@ accounting. Budget and epoch work run only for requests that found no
 marker (first request per target per window) and, for admission, only when
 a response is storable.
 
-If the backend returns `Unsupported` from `increment_with_expiry`, the bound
-cannot be enforced, so the layer fails closed exactly as it does for
-`set_if_absent_with_ttl`: it logs one warning, stops storing for the life
+If the backend returns `Unsupported` from `increment_with_expiry` or
+`set_if_absent_with_ttl`, the bound cannot be enforced, so the layer fails
+closed exactly as before: it logs one warning, stops storing for the life
 of the layer and serves every response as `x-cache: miss`. It never falls
-back to unbounded markers. An adapter that wraps another `Cache` must
-forward `increment_with_expiry` (`Arc<T>` and `MemoryCache`/`RedisCache`
-already do).
+back to unbounded markers.
 
 #### Fills that start without a marker
 
-This is a correction to the original design. With eager marker creation a
-write that completes while a fill is in the origin deletes the marker the
-fill is using, so the stale fill lands under a dead key (invariant 2).
-With lazy creation a request that found no marker has nothing for the
-write to delete, so a naive late fill would create a new marker and store
-pre-write data under it. The design therefore adds a per-namespace
-**epoch** key: every successful write or `invalidate_target` first replaces
-it with a fresh random token (TTL `generation_ttl`) and then deletes the
-target marker. A request that finds no marker snapshots the epoch before
-the origin runs. At admission the fill creates or finds the marker first,
-then re-reads the epoch and stores only if it is unchanged, so any write
-either changed the epoch before the check (fill refused) or deletes the
-already created marker after it (fill unreachable). A request that outlives
-one `generation_ttl` is also refused, so an expired epoch cannot repeat a
-token. Cost: one extra `get` before the origin when no marker exists, two
-`get`s plus the increment and marker creation at admission, and one extra
-`set` per write. The epoch is one key per namespace.
+With lazy creation a request that found no marker has nothing for a
+concurrent write to delete, so a naive late fill would create a new marker
+and store pre-write data under it. The design therefore adds **epoch**
+keys: a fixed number (64) per namespace, one of which a target hashes to
+(a stable FNV-1a hash of the target, identical in every process and
+build). Every successful write or `invalidate_target` replaces its
+target's epoch with a fresh token (TTL `generation_ttl`) and deletes the
+target marker in one backend call (`Cache::invalidate_marker`: a single
+`MULTI`/`EXEC` on Redis, one lock in `MemoryCache`).
+
+A request that finds no marker reads its epoch before the origin runs. A
+missing epoch (first use, expiry, eviction) is created with a random value
+by that request (`set_if_absent_with_ttl`, about once per
+`generation_ttl` per stripe), so the epoch exists for the whole life of
+the fill. Admission then stores only if the epoch is still equal; a
+missing epoch counts as changed. Hence an epoch evicted or expired after a
+write cannot let a pre-write fill through (this was a defect in the
+earlier design, which treated a missing epoch as unchanged). A write
+either replaced the epoch before the admission (fill refused) or deletes
+the marker the admission created (fill unreachable); both steps are atomic
+on the bundled backends, so there is no window between creating the marker
+and reading the epoch. Striping means a write refuses first fills only of
+targets that share its stripe (about 1 in 64), not of every in-flight
+fill of the namespace; a refused fill is a safe miss.
+
+Cost: one `get` of the epoch before the origin when no marker exists (two
+more calls once per stripe per `generation_ttl`), one `admit_marker` call
+at admission, one backend call per write.
 
 ### Retired namespaces
 
@@ -296,14 +339,47 @@ long-lived deployments so restarts do not orphan namespaces.
 `set_if_absent_with_ttl` and `increment_with_expiry` are provided methods
 whose defaults return `CacheError::Unsupported`, so existing adapters keep
 compiling unchanged; route caching stays off (one warning) until both are
-implemented atomically.
-`RouteCache` treats that error as a backend limitation: the first
-`Unsupported` clears a shared capability flag, and from then on every
-request is served from the origin with `x-cache: miss`, without any further
-backend round trip (no marker `get`, no creation attempt, no invalidation
-delete). It never falls back to non-expiring markers or to non-atomic
-emulation. Adapters opt in by implementing the method atomically (for
-Redis: a single `SET key value NX PX ms`). `Arc<T>` forwards it.
+implemented atomically. `admit_marker` and `invalidate_marker` are also
+provided methods. Their defaults run the generic sequence from the
+primitives, so an adapter that forwards `get`, `set`, `delete`,
+`set_if_absent_with_ttl` and `increment_with_expiry` needs no change and
+stays correct:
+
+- `admit_marker` creates the marker with the expiring insert, counts it
+  with `increment_with_expiry` only when this call created it, deletes it
+  again when it is over budget, then compares the epoch. Because the
+  marker is created before it is counted, an adapter that supports the
+  insert but not the increment fails with `Unsupported` after deleting the
+  marker it created, before spending any budget; an adapter with the
+  increment but not the insert fails at the insert, with no budget spent.
+  The fallback is not atomic: an over-budget marker is briefly visible
+  between its creation and its deletion, so concurrent first requests can
+  each store a representation under it (unreachable after the delete and
+  gone within `generation_ttl`), and a crash between the two steps leaves
+  one uncounted marker that expires after `generation_ttl`.
+- The window index of the fallback comes from each process's wall clock, so
+  processes whose clocks differ by a large fraction of `generation_ttl`
+  count against different counters and can each spend a full budget.
+  Override `admit_marker` and take the window from the store's own clock to
+  remove this, as the bundled Redis backend does.
+- `invalidate_marker` defaults to `set` of the epoch followed by `delete`
+  of the marker (two calls).
+
+Upgrade impact for third-party adapters: the epoch is created through
+`set_if_absent_with_ttl` and the budget counter through
+`increment_with_expiry`, both already required; a wrapper that forwards
+the two new methods (as `Arc<T>`, `MemoryCache` and `RedisCache` do)
+inherits the atomic implementation of the inner cache, and one that does
+not simply uses the generic sequence. Wrappers that count or restrict calls
+see two extra calls per first request (epoch read and, once per stripe, its
+creation).
+
+`RouteCache` treats `Unsupported` as a backend limitation: the first one
+clears a shared capability flag, and from then on every request is served
+from the origin with `x-cache: miss`, without any further backend round
+trip (no marker `get`, no creation attempt, no invalidation delete). It
+never falls back to non-expiring markers or to non-atomic emulation of the
+creation.
 
 Status: invariants 1 to 6 and the metadata bound are enforced (R04, R05)
 on `MemoryCache` and live Redis. Load regressions drive sustained distinct

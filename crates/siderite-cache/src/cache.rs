@@ -1,6 +1,7 @@
 //! [`Cache`] and the [`CacheExt`] JSON helpers.
 
 use crate::CacheError;
+use crate::admission::{Admission, AdmitMarker, admit_generic};
 use async_trait::async_trait;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -144,6 +145,48 @@ pub trait Cache: Send + Sync + 'static {
             operation: "increment_with_expiry",
         })
     }
+
+    /// Admit a route-cache generation marker (provided; overriding is an
+    /// optimisation, never a requirement).
+    ///
+    /// The default runs the generic sequence from the primitives above:
+    /// create the marker with [`set_if_absent_with_ttl`], count it with
+    /// [`increment_with_expiry`] only when this call created it, delete it
+    /// again when over budget, then compare the epoch. An adapter lacking
+    /// either primitive therefore fails with [`CacheError::Unsupported`]
+    /// before any budget is spent and without leaving a marker behind.
+    /// Backends that can do the whole thing atomically (the bundled ones)
+    /// override it: one lock for [`MemoryCache`](crate::MemoryCache), one
+    /// server-side script for Redis, whose window follows the server
+    /// clock. See `docs/CACHE.md`.
+    ///
+    /// # Errors
+    /// Backend failures, and [`CacheError::Unsupported`] from the defaults
+    /// of the primitives.
+    ///
+    /// [`set_if_absent_with_ttl`]: Cache::set_if_absent_with_ttl
+    /// [`increment_with_expiry`]: Cache::increment_with_expiry
+    async fn admit_marker(&self, req: &AdmitMarker<'_>) -> Result<Admission, CacheError> {
+        admit_generic(self, req).await
+    }
+
+    /// Replace the invalidation epoch and delete a marker (provided).
+    ///
+    /// The default does `set` with `ttl`, then `delete`. Backends override
+    /// it to make the pair one atomic backend call (the bundled ones do).
+    ///
+    /// # Errors
+    /// Backend failures.
+    async fn invalidate_marker(
+        &self,
+        marker: &str,
+        epoch_key: &str,
+        epoch: &[u8],
+        ttl: Duration,
+    ) -> Result<(), CacheError> {
+        self.set(epoch_key, epoch.to_vec(), Some(ttl)).await?;
+        self.delete(marker).await.map(drop)
+    }
 }
 
 #[async_trait]
@@ -193,6 +236,22 @@ impl<T: Cache + ?Sized> Cache for Arc<T> {
         ttl: Duration,
     ) -> Result<i64, CacheError> {
         (**self).increment_with_expiry(key, by, ttl).await
+    }
+
+    async fn admit_marker(&self, req: &AdmitMarker<'_>) -> Result<Admission, CacheError> {
+        (**self).admit_marker(req).await
+    }
+
+    async fn invalidate_marker(
+        &self,
+        marker: &str,
+        epoch_key: &str,
+        epoch: &[u8],
+        ttl: Duration,
+    ) -> Result<(), CacheError> {
+        (**self)
+            .invalidate_marker(marker, epoch_key, epoch, ttl)
+            .await
     }
 }
 

@@ -11,16 +11,36 @@
 - **Cache:** the route-cache metadata bound is enforced. Each namespace
   admits at most `RouteCache::max_new_targets` (default
   `DEFAULT_MAX_NEW_TARGETS`, 10,000) new target markers per
-  `generation_ttl` window, counted with the new atomic
-  `Cache::increment_with_expiry` (Redis `INCRBY` plus `PEXPIRE` in one
-  script, `MemoryCache` under one lock; `Unsupported` by default, forwarded
-  by `Arc`). Markers are created lazily when a response is first stored, so
-  uncacheable responses never use budget; once the window budget is spent,
-  new targets bypass with `x-cache: miss`. Invalidation now also refreshes
-  one per-namespace epoch key so a fill that began before a write cannot
-  store without a marker. Custom `Cache` wrappers must forward
-  `increment_with_expiry`, or route caching stays off with one warning.
-  The hit path is unchanged. Redis eviction settings are never modified.
+  `generation_ttl` window, counted exactly. Markers are created lazily when
+  a response is first stored, so uncacheable responses never use budget;
+  once the window budget is spent, new targets bypass with
+  `x-cache: miss` and the layer remembers the spent window, so such
+  requests make one backend read. Admission is one backend call through the
+  new provided method `Cache::admit_marker` (Redis: one `EVALSHA` script
+  whose window comes from the server `TIME`, so client clock skew cannot
+  loosen the bound; `MemoryCache`: one lock), and a write is one call
+  through the new provided method `Cache::invalidate_marker` (Redis
+  `MULTI`/`EXEC`). `Cache::increment_with_expiry` is the new atomic
+  counter primitive behind the generic fallback. Fills that begin without
+  a marker are guarded by 64 striped epoch keys per namespace: a missing
+  or changed epoch refuses the fill (a write refuses only first fills in
+  its stripe), and the epoch is created by the first request that needs it.
+  Documented bound: at most `2 x max_new_targets` markers and
+  `3 x max_new_targets x variants` representations per namespace.
+  Generation tokens are now a per-layer random seed plus a counter (unique,
+  not secret), so a write draws no random bytes. Third-party `Cache`
+  adapters need no change: both new methods have defaults built from
+  `get`, `set`, `delete`, `set_if_absent_with_ttl` and
+  `increment_with_expiry`. An adapter lacking either of the last two
+  makes route caching stop storing (one warning) before any budget is
+  spent and without leaving a marker. The generic sequence is not atomic
+  and takes its window from each process's clock; override
+  `admit_marker`/`invalidate_marker` for the store's atomic path.
+  Wrappers that count calls see an extra epoch read per first request.
+  `MemoryCache::stored_bytes` is new. Redis scripts now run through
+  `redis::Script` (`EVALSHA`), which enables the `redis` crate's `script`
+  feature (adds `sha1_smol`). The hit path is unchanged. Redis eviction
+  settings are never modified.
 - **Cache:** route-cache generation markers are now finite. They are
   created with `set_if_absent_with_ttl` and the new
   `RouteCache::generation_ttl` (default one hour,

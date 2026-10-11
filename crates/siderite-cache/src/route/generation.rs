@@ -4,10 +4,11 @@
 //!
 //! Enforced today:
 //!
-//! 1. A generation is an unguessable random token. Whenever a marker is
-//!    created after expiry, eviction, deletion or rotation, the token is
-//!    freshly random; it is never derived from the previous one or from a
-//!    counter, so an older token cannot be reproduced.
+//! 1. A generation is a unique token: a random per-layer 64-bit seed plus a
+//!    counter (see [`Local`]). Whenever a marker is created after expiry,
+//!    eviction, deletion or rotation, its token differs from every earlier
+//!    one, so an older token cannot be reproduced. Tokens are unique, not
+//!    secret.
 //! 2. A representation key embeds its generation, so a delayed fill that
 //!    finishes after rotation lands under a key no reader will compute.
 //!
@@ -16,8 +17,9 @@
 //!    `generation_ttl`, but it is unreachable: a recreated marker carries a
 //!    fresh token (invariant 1), so no reader computes the old key.
 //! 4. Marker creation goes through atomic expiring creation
-//!    (`set_if_absent_with_ttl`); a backend without it makes the layer
-//!    bypass storage rather than emulate it. The first `Unsupported` is
+//!    (`Cache::admit_marker`, built on `set_if_absent_with_ttl` by default);
+//!    a backend without it makes the layer bypass storage rather than
+//!    emulate it. The first `Unsupported` is
 //!    remembered (with one warning, never reset) so later requests skip
 //!    the backend entirely.
 //! 5. Markers are finite: they carry `generation_ttl` (default one hour).
@@ -26,20 +28,115 @@
 //!    the generation and creates no metadata outside the admission budget.
 
 use super::{NO_MARKERS, Policy, cache_key, push_part};
-use crate::{Cache, CacheError};
+use crate::{Admission, AdmitMarker, Cache, CacheError};
 use http::Method;
 use siderite_core::Request;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 type CacheResult<T> = Result<T, CacheError>;
 type Stamp = CacheResult<Uuid>;
 type Outcome = Result<(), CacheError>;
 
+/// Epoch keys per namespace. Targets hash onto one of these, so a write
+/// refuses only first fills of targets that share its stripe.
+pub(super) const STRIPES: usize = 64;
+
+/// Key text fixed per namespace, built once per layer.
+#[derive(Debug)]
+pub(super) struct Keys {
+    target_head: String,
+    response_head: String,
+    budget: String,
+    epochs: Box<[String]>,
+}
+
+impl Keys {
+    pub(super) fn new(namespace: &str) -> Self {
+        let part = |role: &str| {
+            let mut head = String::from(role);
+            push_part(&mut head, namespace.as_bytes());
+            head
+        };
+        let epoch = part("route-v2-epoch:");
+        Self {
+            target_head: part("route-v2-target:"),
+            response_head: part("route-v2-response:"),
+            budget: part("route-v2-budget:"),
+            epochs: (0..STRIPES).map(|n| format!("{epoch}{n}")).collect(),
+        }
+    }
+}
+
+/// Per-layer state that never touches the backend: identifier source and the
+/// local note that a window's budget is spent.
+///
+/// Identifiers are a random 64-bit seed drawn once per layer plus a counter.
+/// They only have to differ from every identifier another request might still
+/// hold (a token, or an epoch value a stale fill observed). Within a layer the
+/// counter guarantees that; across layers and processes two identifiers
+/// collide only if both draw the same seed (2^-64 per pair) and the same
+/// counter. They are unique, not secret: nothing is learned from one.
+#[derive(Debug)]
+pub(super) struct Local {
+    seed: [u8; 8],
+    counter: AtomicU64,
+    base: Instant,
+    /// Milliseconds after `base` until which the budget is known spent.
+    spent_until: AtomicU64,
+}
+
+impl Local {
+    pub(super) fn new() -> Self {
+        let random = *Uuid::new_v4().as_bytes();
+        let [a, b, c, d, e, f, g, h, ..] = random;
+        Self {
+            seed: [a, b, c, d, e, f, g, h],
+            counter: AtomicU64::new(0),
+            base: Instant::now(),
+            spent_until: AtomicU64::new(0),
+        }
+    }
+
+    /// A fresh 16-byte identifier: seed followed by a counter.
+    pub(super) fn next_id(&self) -> [u8; 16] {
+        let n = self.counter.fetch_add(1, Ordering::Relaxed).to_be_bytes();
+        let [a, b, c, d, e, f, g, h] = self.seed;
+        let [i, j, k, l, m, o, p, q] = n;
+        [a, b, c, d, e, f, g, h, i, j, k, l, m, o, p, q]
+    }
+
+    /// True while a recent admission reported the window's budget spent.
+    pub(super) fn spent(&self) -> bool {
+        let until = self.spent_until.load(Ordering::Relaxed);
+        until != 0 && millis(self.base.elapsed()) < until
+    }
+
+    fn spend(&self, resets_in: Duration) {
+        let until = millis(self.base.elapsed()).saturating_add(millis(resets_in));
+        self.spent_until.fetch_max(until.max(1), Ordering::Relaxed);
+    }
+}
+
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// FNV-1a: stable across builds and processes, unlike `DefaultHasher`.
+fn stripe(target: &str) -> usize {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in target.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    usize::try_from(hash % STRIPES as u64).unwrap_or(0)
+}
+
 pub(super) fn target(req: &Request, policy: &Policy, scheme: &str) -> String {
-    let mut target = String::from("route-v2-target:");
-    push_part(&mut target, policy.namespace.as_bytes());
+    let head = &policy.keys.target_head;
+    let mut target = String::with_capacity(head.len() + 96);
+    target.push_str(head);
     push_part(&mut target, scheme.as_bytes());
     let host = req
         .headers()
@@ -64,8 +161,9 @@ pub(super) fn representation_key(
 
 /// Representation key from a precomputed [`cache_key`] suffix.
 pub(super) fn key_for(policy: &Policy, generation: Uuid, suffix: &str) -> String {
-    let mut key = String::from("route-v2-response:");
-    push_part(&mut key, policy.namespace.as_bytes());
+    let head = &policy.keys.response_head;
+    let mut key = String::with_capacity(head.len() + suffix.len() + 40);
+    key.push_str(head);
     push_part(&mut key, generation.as_bytes());
     push_part(&mut key, suffix.as_bytes());
     key
@@ -73,9 +171,9 @@ pub(super) fn key_for(policy: &Policy, generation: Uuid, suffix: &str) -> String
 
 /// What a request knew about its target before the origin ran.
 pub(super) struct Started {
-    /// Invalidation epoch observed while the marker was absent.
-    epoch: Option<Vec<u8>>,
-    at: Instant,
+    /// The invalidation epoch observed before the origin read.
+    epoch: Vec<u8>,
+    stripe: usize,
 }
 
 /// Read the marker without creating it: the hit path is one `get`.
@@ -97,87 +195,76 @@ where
 ///
 /// A write that completes while such a request is still in the origin
 /// finds no marker to delete, so the epoch is how the late fill notices
-/// it. This costs one `get` and happens only when the marker is absent.
-pub(super) async fn begin<C: Cache>(cache: &C, policy: &Policy) -> CacheResult<Started> {
-    let epoch = cache.get(&epoch_key(policy)).await?;
-    Ok(Started {
-        epoch,
-        at: Instant::now(),
-    })
-}
-
-fn epoch_key(policy: &Policy) -> String {
-    let mut key = String::from("route-v2-epoch:");
-    push_part(&mut key, policy.namespace.as_bytes());
-    key
-}
-
-/// Window index `floor(now / ttl)`; the budget counter key embeds it.
-pub(super) fn window(now: Duration, ttl: Duration) -> u64 {
-    let ms = ttl.as_millis().max(1);
-    u64::try_from(now.as_millis() / ms).unwrap_or(u64::MAX)
-}
-
-fn budget_key(policy: &Policy) -> String {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH);
-    let window = window(now.unwrap_or_default(), policy.generation_ttl);
-    let mut key = String::from("route-v2-budget:");
-    push_part(&mut key, policy.namespace.as_bytes());
-    key.push_str(&window.to_string());
-    key
+/// it. The epoch always exists afterwards: a missing one (first use,
+/// expiry, eviction) is created here with a fresh random value, about once
+/// per `generation_ttl` per stripe, so a later disappearance of the epoch
+/// is itself a change that [`admit`] refuses. The usual cost is one `get`.
+///
+/// # Errors
+/// Backend failures; `Unsupported` also sets the shared `NO_MARKERS` flag.
+pub(super) async fn begin<C: Cache>(
+    cache: &C,
+    policy: &Policy,
+    target: &str,
+) -> CacheResult<Started> {
+    let stripe = stripe(target);
+    let key = &policy.keys.epochs[stripe];
+    if let Some(epoch) = cache.get(key).await? {
+        return Ok(Started { epoch, stripe });
+    }
+    let fresh = policy.local.next_id().to_vec();
+    let ttl = policy.generation_ttl;
+    let made = cache.set_if_absent_with_ttl(key, fresh.clone(), ttl).await;
+    if made.inspect_err(|error| note_error(error, &policy.flags))? {
+        return Ok(Started {
+            epoch: fresh,
+            stripe,
+        });
+    }
+    match cache.get(key).await? {
+        Some(epoch) => Ok(Started { epoch, stripe }),
+        None => Err(CacheError::Backend("epoch was evicted".into())),
+    }
 }
 
 /// Admit a storable response: find or create the marker and return its
-/// token, or `None` when the response must bypass (budget exhausted, the
-/// request outlived a generation, or a write intervened).
+/// token, or `None` when the response must bypass (budget exhausted or a
+/// write intervened).
 ///
-/// A new marker is counted against the namespace's per-window budget with
-/// one atomic increment-with-expiry. The invalidation epoch is read only
-/// after the marker exists: a write that lands later deletes that marker,
-/// and one that landed earlier changed the epoch, so a fill that began
-/// before a write can never become reachable.
+/// One backend call ([`Cache::admit_marker`]) checks the epoch, finds or
+/// creates the marker and counts a creation against the namespace's
+/// window budget. A write that lands after the marker exists deletes it;
+/// one that landed earlier replaced the epoch (or evicted it), which the
+/// call reports as stale. A fill that began before a write therefore can
+/// never become reachable.
 ///
 /// # Errors
-/// Backend failures. `Unsupported` from the increment also sets the shared
-/// `NO_MARKERS` flag (one warning), so the layer stops storing.
+/// Backend failures. `Unsupported` also sets the shared `NO_MARKERS` flag
+/// (one warning), so the layer stops storing.
 pub(super) async fn admit<C: Cache>(
     cache: &C,
     target: &str,
     policy: &Policy,
     started: &Started,
 ) -> CacheResult<Option<Uuid>> {
-    if started.at.elapsed() >= policy.generation_ttl {
-        return Ok(None);
-    }
-    let token = match peek(cache, target).await? {
-        Some(existing) => existing,
-        None => match create(cache, target, policy).await? {
-            Some(created) => created,
-            None => return Ok(None),
-        },
+    let candidate = policy.local.next_id();
+    let request = AdmitMarker {
+        marker: target,
+        token: &candidate,
+        epoch_key: &policy.keys.epochs[started.stripe],
+        epoch: &started.epoch,
+        budget_prefix: &policy.keys.budget,
+        max_new: policy.max_new_targets,
+        window: policy.generation_ttl,
     };
-    let epoch = cache.get(&epoch_key(policy)).await?;
-    Ok((epoch == started.epoch).then_some(token))
-}
-
-async fn create<C: Cache>(cache: &C, target: &str, policy: &Policy) -> CacheResult<Option<Uuid>> {
-    let (ttl, budget) = (policy.generation_ttl, policy.max_new_targets);
-    let used = cache
-        .increment_with_expiry(&budget_key(policy), 1, ttl)
-        .await;
-    let used = used.inspect_err(|error| note_error(error, &policy.flags))?;
-    if u64::try_from(used).map_or(true, |used| used > budget) {
-        return Ok(None);
-    }
-    let candidate = Uuid::new_v4();
-    let seed = candidate.as_bytes().to_vec();
-    let created = cache.set_if_absent_with_ttl(target, seed, ttl).await;
-    match created.inspect_err(|error| note_error(error, &policy.flags))? {
-        true => Ok(Some(candidate)),
-        false => match cache.get(target).await? {
-            Some(value) => decode(&value).map(Some),
-            None => Err(CacheError::Backend("generation was evicted".into())),
-        },
+    let admission = cache.admit_marker(&request).await;
+    match admission.inspect_err(|error| note_error(error, &policy.flags))? {
+        Admission::Marker(token) => decode(&token).map(Some),
+        Admission::Exhausted { resets_in } => {
+            policy.local.spend(resets_in);
+            Ok(None)
+        }
+        _ => Ok(None),
     }
 }
 
@@ -205,15 +292,17 @@ fn decode(value: &[u8]) -> Stamp {
 
 /// Rotate by deleting the marker; a missing marker draws a fresh token.
 ///
-/// The namespace epoch is replaced first (one bounded key, refreshed with
-/// the marker lifetime) so fills that began without a marker are refused.
+/// The stripe's epoch is replaced in the same backend call (bounded keys,
+/// refreshed with the marker lifetime) so fills that began without a marker
+/// are refused.
 pub(super) async fn invalidate<C: Cache>(cache: &C, key: &str, policy: &Policy) -> Outcome {
-    if !policy.generation_ttl.is_zero() {
-        let token = Uuid::new_v4().as_bytes().to_vec();
-        let ttl = Some(policy.generation_ttl);
-        cache.set(&epoch_key(policy), token, ttl).await?;
+    if policy.generation_ttl.is_zero() {
+        return cache.delete(key).await.map(drop);
     }
-    cache.delete(key).await.map(drop)
+    let epoch = policy.local.next_id();
+    let epoch_key = &policy.keys.epochs[stripe(key)];
+    let ttl = policy.generation_ttl;
+    cache.invalidate_marker(key, epoch_key, &epoch, ttl).await
 }
 
 pub(super) fn unsafe_method(method: &Method) -> bool {
@@ -243,7 +332,7 @@ mod tests {
 
     /// Find or create the marker like a storing request would.
     async fn current<C: Cache>(cache: &C, key: &str, p: &Policy) -> Stamp {
-        let started = begin(cache, p).await?;
+        let started = begin(cache, p, key).await?;
         let admitted = admit(cache, key, p, &started).await?;
         admitted.ok_or_else(|| CacheError::Backend("bypassed".into()))
     }
@@ -334,6 +423,68 @@ mod tests {
             assert_eq!(cache.get(&new_key).await?, None);
         }
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn evicted_epoch_refuses_a_stale_fill() -> TestResult {
+        // The write's epoch is pushed out of a tiny cache before the
+        // delayed fill is admitted: a missing epoch must read as changed.
+        let cache = MemoryCache::new(8);
+        let p = policy(TTL);
+        let started = begin(&cache, &p, MARKER).await?;
+        invalidate(&cache, MARKER, &p).await?;
+        for n in 0..16 {
+            cache.set(&format!("unrelated-{n}"), vec![1], None).await?;
+        }
+        assert_eq!(cache.get(&p.keys.epochs[stripe(MARKER)]).await?, None);
+        assert_eq!(admit(&cache, MARKER, &p, &started).await?, None);
+        // The next request recreates the epoch and is admitted.
+        assert!(current(&cache, MARKER, &p).await.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_creates_a_missing_epoch_once() -> TestResult {
+        let cache = MemoryCache::new(8);
+        let p = policy(TTL);
+        let first = begin(&cache, &p, MARKER).await?;
+        let second = begin(&cache, &p, MARKER).await?;
+        assert_eq!(first.epoch, second.epoch);
+        let key = &p.keys.epochs[stripe(MARKER)];
+        assert_eq!(cache.get(key).await?, Some(first.epoch));
+        Ok(())
+    }
+
+    #[test]
+    fn stripes_are_stable_and_bounded() {
+        assert_eq!(stripe("route-v2-target:a"), stripe("route-v2-target:a"));
+        let seen: std::collections::HashSet<usize> = (0..2000)
+            .map(|n| stripe(&format!("route-v2-target:{n}")))
+            .collect();
+        assert!(seen.iter().all(|s| *s < STRIPES));
+        assert!(seen.len() > STRIPES / 2, "spread over stripes");
+        // Fixed vector: stripes must not change between builds.
+        assert_eq!(stripe(""), 0xcbf2_9ce4_8422_2325 % 64);
+    }
+
+    #[test]
+    fn identifiers_are_unique_within_and_across_layers() {
+        let (a, b) = (Local::new(), Local::new());
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..1000 {
+            assert!(seen.insert(a.next_id()));
+            assert!(seen.insert(b.next_id()));
+        }
+    }
+
+    #[test]
+    fn spent_note_expires_with_its_window() {
+        let local = Local::new();
+        assert!(!local.spent());
+        local.spend(Duration::from_millis(30));
+        assert!(local.spent());
+        std::thread::sleep(Duration::from_millis(60));
+        assert!(!local.spent());
     }
 
     #[derive(Clone, Copy)]

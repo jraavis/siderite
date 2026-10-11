@@ -109,7 +109,7 @@ Two details matter in practice:
 * Values are UTF-8; TTLs are milliseconds (`PX`/`PEXPIRE`), rejected below 1 ms. `set_nx` sets no TTL; `set` without a TTL clears an existing one.
 * A command Redis rejects while queueing aborts the whole batch; a command failing during `EXEC` does not undo earlier ones.
 * `pipeline` does not prefix keys: pass `store.key(..)`. `delete_namespace` matches `prefix*`, so end prefixes with a separator.
-* Single server only: no cluster, pub/sub, lists, sorted sets, streams or Lua.
+* Single server only: no cluster, pub/sub, lists, sorted sets or streams. Lua is used internally only for the atomic cache primitives (`incr_by_expire`, route-cache admission); there is no general script API.
 
 ## Locking notes
 

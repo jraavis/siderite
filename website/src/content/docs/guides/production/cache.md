@@ -175,23 +175,39 @@ the namespace changes).
 
 Unique targets (for example per-request query strings) cannot grow the
 backend without limit. Each namespace admits at most `.max_new_targets(n)`
-new target markers per `generation_ttl` window (10,000 by default). A
-marker is created, and counted, only when a response is actually stored, so
+new target markers per `generation_ttl` window (10,000 by default),
+counted exactly: a marker over the budget is never created. A marker is
+created, and counted, only when a response is actually stored, so
 uncacheable responders never use the budget. When the window's budget is
-spent, new targets are served from the origin with `x-cache: miss`; targets
-that already have a marker keep hitting. A namespace therefore holds at most
-`2 x max_new_targets` markers, two window counters and one invalidation
-epoch key; ten thousand admitted targets measured about 8 MB of Redis
-`used_memory`. `max_new_targets(0)` stores nothing.
+spent, new targets are served from the origin with `x-cache: miss` (the
+layer remembers the spent window and makes one backend read per such
+request); targets that already have a marker keep hitting. A namespace
+therefore holds at most `2 x max_new_targets` markers, two or three window
+counters and 64 invalidation epoch keys, and at most
+`3 x max_new_targets x variants` representations (a representation can
+outlive its marker's creation window by up to one `generation_ttl`);
+ten thousand admitted targets measured about 8 MB of Redis `used_memory`.
+`max_new_targets(0)` stores nothing: `GET` and `HEAD` make no backend
+calls, but successful writes still invalidate with one call, because other
+processes sharing the namespace may have markers.
 
 The counter lives in the backend, so the bound holds across processes that
 share a namespace, but only while the backend does not evict it. Use Redis
 `noeviction` or a dedicated database for cache metadata; the layer never
-changes the server's eviction policy. Keep node clocks synchronised, since
-the window index comes from wall-clock time. A custom `Cache` must forward
-`increment_with_expiry` (a wrapper that does not makes the layer stop
-storing, with one warning). The cache hit path is unchanged and does no
-budget accounting.
+changes the server's eviction policy. With Redis the window index comes
+from the Redis server clock inside the admission script, so client clock
+skew does not matter (a single Redis node, version 5 or newer, is
+required). Admission, and a write's epoch replacement plus marker delete,
+are one backend call each.
+
+A custom `Cache` that forwards `get`, `set`, `delete`,
+`set_if_absent_with_ttl` and `increment_with_expiry` keeps working: the
+provided `admit_marker` and `invalidate_marker` methods run the same steps
+from those primitives (not atomic, and the window then comes from each
+process's own clock; override them to take the store's atomic path). An
+adapter missing either primitive makes the layer stop storing, with one
+warning, before any budget is spent. The cache hit path is unchanged and
+does no budget accounting.
 
 ## Byte budgets
 
