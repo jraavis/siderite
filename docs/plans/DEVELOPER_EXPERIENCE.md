@@ -194,7 +194,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   databases and build caches. Smoke-test without Cargo installed. Packaging
   does not deploy or apply migrations; native runtime dependencies are listed.
 
-- [ ] **X18 — Generate a project CI workflow.**
+- [x] **X18 — Generate a project CI workflow.**
   Depends: X04, X06. Scope: one supported CI provider template.
   Done: CI runs the same verification contract with pinned project toolchain,
   explicit live-test jobs and useful artifacts; preserve existing workflow

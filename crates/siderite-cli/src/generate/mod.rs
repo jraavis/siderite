@@ -2,6 +2,7 @@
 //! and the generators): validated identifiers, a write plan that never
 //! overwrites user files, exact dry-run previews and line diffs.
 
+pub(crate) mod ci;
 pub(crate) mod command;
 pub(crate) mod diff;
 pub(crate) mod ident;
@@ -13,6 +14,8 @@ pub(crate) mod test;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_ci;
 
 pub(crate) use plan::{Plan, preview, summary};
 

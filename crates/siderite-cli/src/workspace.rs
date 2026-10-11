@@ -29,6 +29,8 @@ pub(crate) struct Package {
     pub version: String,
     /// `[package.metadata.siderite]`, or `null`.
     pub siderite: Value,
+    /// The normal dependencies as `cargo metadata` lists them.
+    pub specs: Vec<Value>,
 }
 
 impl Package {
@@ -125,10 +127,14 @@ fn package(item: &Value) -> Option<Package> {
     let manifest_path = manifest;
     let listed = item.get("dependencies").and_then(Value::as_array);
     let uses_siderite = listed.is_some_and(|d| d.iter().any(is_framework_dep));
-    let dependencies = listed
+    let specs: Vec<Value> = listed
         .into_iter()
         .flatten()
         .filter(|d| is_normal(d))
+        .cloned()
+        .collect();
+    let dependencies = specs
+        .iter()
         .filter_map(|d| d.get("name")?.as_str().map(str::to_owned))
         .collect();
     let bins = item
@@ -157,6 +163,7 @@ fn package(item: &Value) -> Option<Package> {
         rust_version,
         version,
         siderite: metadata.cloned().unwrap_or(Value::Null),
+        specs,
     })
 }
 

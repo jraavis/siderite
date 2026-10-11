@@ -202,6 +202,22 @@ a create-then-fetch round trip, and failure cases (a `405`, rejected
 bodies, a `404`). A resource test creates a throwaway in-memory SQLite
 database from the model, so your configured databases are never used.
 
+### CI workflow
+
+```bash
+siderite generate ci --dry-run   # .github/workflows/siderite.yml
+siderite generate ci
+```
+
+A GitHub Actions workflow that runs `siderite verify` on every push and
+pull request and keeps the JSON report as an artifact. A separate `live`
+job runs `siderite verify --live` only by hand or on `main`, with
+PostgreSQL or MySQL service containers when the CLI is built with those
+features. The Rust version is pinned (toolchain file, `rust-version`, or
+the `rustc` you use now) and the CLI is installed exactly as
+`Cargo.lock` pins it. The workflow holds no secrets. An existing workflow
+is never overwritten; `--update` replaces only one this command wrote.
+
 ## Dependencies
 
 ```bash

@@ -37,6 +37,30 @@ pub(crate) fn locked(text: &str, name: &str) -> Vec<String> {
     found
 }
 
+/// A locked package's version and source.
+pub(crate) type Locked = (String, String);
+
+/// The `source` of package `name` in lock file `text` (`git+URL#COMMIT`,
+/// `registry+URL`), with its version; `None` for a path package.
+pub(crate) fn locked_source(text: &str, name: &str) -> Option<Locked> {
+    let mut current: Option<&str> = None;
+    let mut version = None;
+    for line in text.lines().map(str::trim) {
+        if line == "[[package]]" {
+            (current, version) = (None, None);
+        } else if let Some(value) = string_value(line, "name") {
+            current = Some(value);
+        } else if current != Some(name) {
+            continue;
+        } else if let Some(value) = string_value(line, "version") {
+            version = Some(value.to_owned());
+        } else if let Some(value) = string_value(line, "source") {
+            return Some((version?, value.to_owned()));
+        }
+    }
+    None
+}
+
 /// `value` of a `key = "value"` line.
 fn string_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let rest = line.strip_prefix(key)?.trim_start().strip_prefix('=')?;
