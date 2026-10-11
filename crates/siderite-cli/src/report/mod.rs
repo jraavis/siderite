@@ -26,7 +26,8 @@ mod tests;
 
 pub use redact::{REDACTED, redact_field, redact_text};
 
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 
 /// Version of the JSON envelope. Bumped only for breaking changes.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -42,7 +43,8 @@ pub const EXIT_USAGE: u8 = 2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
-    /// Informational only.
+    /// Informational only. Reserved: no command emits it yet, but
+    /// consumers must accept it, and it never makes a report fail.
     Info,
     /// Worth fixing; the app still runs.
     Warning,
@@ -61,26 +63,33 @@ impl Severity {
     }
 }
 
-/// One finding. Free-text fields are passed through [`redact_text`] by
-/// [`Diagnostic::new`], so a connection string never leaks.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One finding.
+///
+/// The fields are private so that every diagnostic is built through
+/// [`Diagnostic::new`], which passes free text through [`redact_text`].
+/// Serialization and the text renderer redact again, so a deserialized
+/// diagnostic cannot leak a connection string either.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Diagnostic {
-    /// Stable identifier such as `models.E003`.
-    pub code: String,
-    /// Severity.
-    pub severity: Severity,
-    /// Human-readable description.
-    pub message: String,
-    /// Where the problem is (a file, model or route), if known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub location: Option<String>,
-    /// How to fix it, if known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hint: Option<String>,
+    code: String,
+    severity: Severity,
+    message: String,
+    #[serde(default)]
+    location: Option<String>,
+    #[serde(default)]
+    hint: Option<String>,
 }
 
 impl Diagnostic {
     /// Create a diagnostic with a redacted `message`.
+    ///
+    /// Args:
+    ///   code: Stable identifier such as `models.E003`.
+    ///   severity: How serious the finding is.
+    ///   msg: Human-readable description.
+    ///
+    /// Returns:
+    ///   The diagnostic, without location or hint.
     pub fn new(code: &str, severity: Severity, msg: &str) -> Self {
         Self {
             code: code.to_owned(),
@@ -103,6 +112,49 @@ impl Diagnostic {
     pub fn with_hint(mut self, hint: &str) -> Self {
         self.hint = Some(redact_text(hint));
         self
+    }
+
+    /// Stable identifier such as `models.E003`.
+    pub fn code(&self) -> &str {
+        &self.code
+    }
+
+    /// How serious the finding is.
+    pub const fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    /// Human-readable description.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Where the problem is (a file, model or route), if known.
+    pub fn location(&self) -> Option<&str> {
+        self.location.as_deref()
+    }
+
+    /// How to fix it, if known.
+    pub fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
+}
+
+impl Serialize for Diagnostic {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        let optional = [self.location.is_some(), self.hint.is_some()];
+        let len = 3 + optional.iter().filter(|set| **set).count();
+        let mut out = ser.serialize_struct("Diagnostic", len)?;
+        out.serialize_field("code", &self.code)?;
+        out.serialize_field("severity", &self.severity)?;
+        out.serialize_field("message", &redact_text(&self.message))?;
+        if let Some(location) = &self.location {
+            out.serialize_field("location", &redact_text(location))?;
+        }
+        if let Some(hint) = &self.hint {
+            out.serialize_field("hint", &redact_text(hint))?;
+        }
+        out.end()
     }
 }
 

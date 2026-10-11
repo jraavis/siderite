@@ -54,6 +54,10 @@ fn path_is_secret(path: &[String]) -> bool {
 /// Whether a config key may hold a secret. Errs toward redacting: a false
 /// positive only hides a value in an error message, a false negative leaks it.
 ///
+/// Configuration errors and the CLI reports share this rule, so it may
+/// only ever widen: removing a key pattern would start printing values
+/// that earlier releases hid.
+///
 /// Args:
 ///   key: A configuration key, query parameter or field name.
 ///
@@ -61,9 +65,11 @@ fn path_is_secret(path: &[String]) -> bool {
 ///   `true` when values stored under `key` must be redacted.
 pub fn is_secret_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase().replace('-', "_");
-    const CONTAINS: [&str; 9] = [
+    const CONTAINS: [&str; 11] = [
         "secret",
         "passw",
+        "pwd",
+        "signature",
         "passphrase",
         "token",
         "credential",
@@ -82,6 +88,8 @@ pub fn is_secret_key(key: &str) -> bool {
         || key.ends_with("_dsn")
         || key == "key"
         || key.ends_with("_key")
+        || key == "sig"
+        || key.ends_with("_sig")
 }
 
 fn format_kind(kind: &Kind, redact: bool) -> String {
@@ -153,6 +161,10 @@ mod tests {
             "sentry_dsn",
             "pass",
             "smtp_pass",
+            "pwd",
+            "db_pwd",
+            "sig",
+            "signature",
         ] {
             assert!(is_secret_key(key), "{key} should be secret");
         }

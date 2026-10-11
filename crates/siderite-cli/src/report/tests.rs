@@ -5,12 +5,11 @@
 use super::*;
 use crate::app_cli::Env;
 use crate::check::{CheckIssue, check, check_build, has_errors};
-use crate::fixtures::{author, book, no_pk};
+use crate::fixtures::{ScratchDir, author, book, no_pk};
 use crate::settings::CliSettings;
 use crate::{AppCli, routes};
 use serde_json::Value;
 use siderite_core::{App, get, post};
-use std::path::PathBuf;
 
 fn app() -> App {
     let v1 = App::new()
@@ -25,13 +24,6 @@ fn app() -> App {
         .route("/health", get(|| async { "ok" }).operation_id("health"))
         .route("/secret", get(|| async { "s" }).hidden())
         .mount("/api/v1", v1)
-}
-
-fn empty_dir(tag: &str) -> PathBuf {
-    let name = format!("siderite-cli-report-{tag}-{}", std::process::id());
-    let dir = std::env::temp_dir().join(name);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
 }
 
 /// The pre-refactor `AppCli::check` output, kept as the reference.
@@ -65,9 +57,10 @@ fn legacy_issues(
 
 #[test]
 fn check_text_matches_the_historical_output() {
-    let dir = empty_dir("golden");
+    let scratch = ScratchDir::new("report-golden");
+    let dir = scratch.path();
     let none = CliSettings::new();
-    let clean = build::check_report(&app, &[], &none, Some(&dir));
+    let clean = build::check_report(&app, &[], &none, Some(dir));
     assert_eq!(
         text::render_check(&clean),
         "System check identified no issues.\n"
@@ -75,7 +68,7 @@ fn check_text_matches_the_historical_output() {
 
     let settings = CliSettings::new().database("default", "sqlite::memory:");
     let models = [author(), book(), no_pk()];
-    let report = build::check_report(&app, &models, &settings, Some(&dir));
+    let report = build::check_report(&app, &models, &settings, Some(dir));
     let text = text::render_check(&report);
     assert_eq!(
         text,
@@ -84,7 +77,7 @@ fn check_text_matches_the_historical_output() {
          migration records; run `makemigrations`\n\
          System check identified 2 issue(s).\n"
     );
-    let issues = legacy_issues(&models, &settings, &dir);
+    let issues = legacy_issues(&models, &settings, dir);
     assert_eq!(text, legacy_check_text(&issues));
     assert_eq!(report.exit_code(), u8::from(has_errors(&issues)));
 }
@@ -148,7 +141,7 @@ fn diagnostics_redact_connection_strings() {
         assert!(!json.contains(secret), "{json}");
     }
     assert_eq!(
-        d.message,
+        d.message(),
         "cannot open postgres://app:***@db:5432/x?sslmode=require&\
          password=*** now"
     );
@@ -166,7 +159,8 @@ fn outputs_validate_against_the_published_schema() {
     ));
     let schema: Value = serde_json::from_str(SCHEMA).unwrap();
     let validator = jsonschema::validator_for(&schema).unwrap();
-    let dir = empty_dir("schema");
+    let scratch = ScratchDir::new("report-schema");
+    let dir = scratch.path();
     let settings = CliSettings::new().database("default", "sqlite::memory:");
     let samples = [
         json::render(&build::routes(&app()).unwrap()).unwrap(),
@@ -175,7 +169,7 @@ fn outputs_validate_against_the_published_schema() {
             &app,
             &[author(), book(), no_pk()],
             &settings,
-            Some(&dir),
+            Some(dir),
         ))
         .unwrap(),
         json::render(&Envelope::new(
@@ -231,12 +225,53 @@ fn code(cli: &AppCli, args: &[&str]) -> u8 {
 
 #[test]
 fn exit_code_snapshots() {
-    let dir = empty_dir("exit");
-    assert_eq!(code(&cli().migrations_dir(&dir), &["check"]), EXIT_OK);
+    let scratch = ScratchDir::new("report-exit");
+    let dir = scratch.path();
+    assert_eq!(code(&cli().migrations_dir(dir), &["check"]), EXIT_OK);
     assert_eq!(code(&cli(), &["routes"]), EXIT_OK);
-    let failing = cli().models(&[no_pk()]).migrations_dir(&dir);
+    let failing = cli().models(&[no_pk()]).migrations_dir(dir);
     assert_eq!(code(&failing, &["check"]), EXIT_FAILURE);
     assert_eq!(code(&cli(), &["check", "--nope"]), EXIT_USAGE);
     assert_eq!(code(&cli(), &["frobnicate"]), EXIT_USAGE);
     assert_eq!(code(&cli(), &[]), EXIT_USAGE);
+}
+
+#[test]
+fn deserialized_diagnostics_are_redacted_on_output() {
+    let raw = r#"{"code":"x.E001","severity":"error",
+        "message":"postgres://u:hunter2@h","location":"password=hunter3",
+        "hint":"Pwd=hunter4"}"#;
+    let d: Diagnostic = serde_json::from_str(raw).unwrap();
+    let json = serde_json::to_string(&d).unwrap();
+    let line = text::diagnostic_line(&d);
+    for secret in ["hunter2", "hunter3", "hunter4"] {
+        assert!(!json.contains(secret), "{json}");
+        assert!(!line.contains(secret), "{line}");
+    }
+    assert_eq!(line, "error: [x.E001] postgres://u:***@h");
+}
+
+#[test]
+fn every_check_code_matches_the_schema_pattern() {
+    let schema: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/cli-report-v1.json"
+    )))
+    .unwrap();
+    let code = &schema["$defs"]["Diagnostic"]["properties"]["code"];
+    let validator = jsonschema::validator_for(code).unwrap();
+    let scratch = ScratchDir::new("report-codes");
+    let settings = CliSettings::new()
+        .database("default", "sqlite::memory:")
+        .database("bad", "nope://x");
+    let models = [author(), no_pk(), crate::fixtures::same_table()];
+    let dir = Some(scratch.path());
+    let report = build::check_report(&app, &models, &settings, dir);
+    assert!(!report.diagnostics.is_empty());
+    for d in &report.diagnostics {
+        assert!(validator.is_valid(&Value::from(d.code())), "{}", d.code());
+    }
+    for bad in ["E001", "models.e001", "Models.E001", "models.X001"] {
+        assert!(!validator.is_valid(&Value::from(bad)), "{bad}");
+    }
 }

@@ -14,7 +14,12 @@
   pure builders for `check`, routes and registered models, text and JSON
   renderers, and a shared redaction helper. `check` and `routes` now render
   through them with unchanged text output and exit codes. No `--json` flag
-  yet. `siderite_config::is_secret_key` is now public.
+  yet. `siderite_config::is_secret_key` is now public and also treats
+  `pwd`, `sig` and `signature` keys as secret. Redaction covers passwords
+  with unencoded `/ ? # @`, spaces or quotes, comma-separated URL lists and
+  `key=value` secrets outside URLs (libpq DSNs, `;Pwd=`, `sig=`).
+  `Diagnostic` fields are private (use its accessors) and are redacted
+  again when serialized or rendered.
 
 ### Changed
 - **CLI:** explicit project selection. `siderite` discovers the app with
