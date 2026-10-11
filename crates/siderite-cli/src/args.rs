@@ -4,6 +4,7 @@
 //! passed through untouched, in order, for the command to parse (the migration
 //! commands parse their own flags in `siderite_migrations::cli`).
 
+use crate::commands;
 use crate::error::CliError;
 use std::path::PathBuf;
 
@@ -79,29 +80,23 @@ pub fn json_requested(args: &[String]) -> bool {
         .any(|a| a == "--json" || a.starts_with("--json="))
 }
 
-/// The commands that support `--json`.
-pub const JSON_COMMANDS: &[&str] = &[
-    "ai",
-    "check",
-    "doctor",
-    "routes",
-    // A live read, explicitly requested.
-    "showmigrations",
-];
-
-/// Validate a `--json` command line: it needs one of [`JSON_COMMANDS`]
-/// and cannot be combined with `--help`.
+/// Validate a `--json` command line: the command must offer JSON (see
+/// the command contract) and `--help` cannot be combined with it.
 ///
 /// Errors:
 ///   A usage error naming the problem.
 pub fn check_json_args(args: &[String], command: Option<&str>) -> Usage {
-    let names = JSON_COMMANDS.join(", ");
+    let json = commands::COMMANDS.iter().filter(|c| c.json());
+    let names: Vec<_> = json.map(|c| c.name).collect();
+    let names = names.join(", ");
     let Some(command) = command else {
         let msg = format!("--json needs a command: {names}");
         return Err(CliError::usage(msg));
     };
-    if !JSON_COMMANDS.contains(&command) {
-        let msg = format!("--json is supported by {names}, not `{command}`");
+    let named = commands::resolve(args).filter(|c| c.word() == command);
+    if !named.is_some_and(commands::Command::json) {
+        let shown = named.map_or(command, |c| c.name);
+        let msg = format!("--json is supported by {names}, not `{shown}`");
         return Err(CliError::usage(msg));
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {

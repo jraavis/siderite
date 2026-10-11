@@ -8,6 +8,10 @@
 
 
 ### Added
+- **CLI:** a command contract (`siderite_cli::commands`): each command
+  declares where it runs, what it needs, what it may change, live access
+  and output formats. Help texts and dispatch are derived from it, and
+  `siderite commands [--json]` lists it (versioned) for AI clients.
 - **CLI:** `ai init [--check] [--dry-run] [--force]` writes
   `.siderite/context.md`: a generated block (commands, conventions, the
   project's models and routes, and examples compiled in the test suite

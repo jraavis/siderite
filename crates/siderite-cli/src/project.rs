@@ -1,32 +1,12 @@
 //! Invoke `cargo run` / `cargo test`.
 
+use crate::commands::{self, Runner};
 use crate::error::CliError;
 use crate::fsio;
 use crate::report::channel::{self, NO_REPORT_CODE, REPORT_PATH_ENV};
 use crate::workspace::spawn_error;
 use std::path::Path;
 use std::process::{Command, Stdio};
-
-/// Commands that `AppCli` in the application binary understands.
-pub const APP_COMMANDS: &[&str] = &[
-    "run",
-    "ai",
-    "openapi",
-    "routes",
-    "check",
-    "dbshell",
-    "makemigrations",
-    "migrate",
-    "rollback",
-    "showmigrations",
-    "inspectmigrations",
-    "squashmigrations",
-];
-
-/// Whether `command` is forwarded to the application binary.
-pub fn is_app_command(command: &str) -> bool {
-    APP_COMMANDS.contains(&command)
-}
 
 type CliResult = Result<u8, CliError>;
 type Done = Result<(), CliError>;
@@ -139,41 +119,6 @@ pub struct Passthrough {
     pub component: Option<&'static str>,
 }
 
-/// The Cargo passthroughs. `lint` is Clippy (Rust lints), unrelated to
-/// the framework's `check`; `clean` only ever runs when invoked.
-pub const PASSTHROUGHS: &[Passthrough] = &[
-    Passthrough {
-        command: "build",
-        cargo: "build",
-        takes_bin: true,
-        component: None,
-    },
-    Passthrough {
-        command: "test",
-        cargo: "test",
-        takes_bin: true,
-        component: None,
-    },
-    Passthrough {
-        command: "fmt",
-        cargo: "fmt",
-        takes_bin: false,
-        component: Some("rustfmt"),
-    },
-    Passthrough {
-        command: "lint",
-        cargo: "clippy",
-        takes_bin: true,
-        component: Some("clippy"),
-    },
-    Passthrough {
-        command: "clean",
-        cargo: "clean",
-        takes_bin: false,
-        component: None,
-    },
-];
-
 impl Passthrough {
     /// Reject `--bin` for subcommands without binaries.
     ///
@@ -189,9 +134,28 @@ impl Passthrough {
     }
 }
 
-/// The passthrough for `command`, if it is one.
-pub fn passthrough(command: &str) -> Option<&'static Passthrough> {
-    PASSTHROUGHS.iter().find(|p| p.command == command)
+/// The passthrough for `command`, if the command contract runs it
+/// through Cargo. `lint` is Clippy, unrelated to the framework `check`;
+/// `clean` only ever runs when invoked.
+pub fn passthrough(command: &str) -> Option<Passthrough> {
+    passthrough_of(commands::find(command)?)
+}
+
+/// The passthrough a contract entry describes, if it runs through Cargo.
+pub fn passthrough_of(found: &commands::Command) -> Option<Passthrough> {
+    match found.runner {
+        Runner::Cargo {
+            cargo,
+            takes_bin,
+            component,
+        } => Some(Passthrough {
+            command: found.name,
+            cargo,
+            takes_bin,
+            component,
+        }),
+        _ => None,
+    }
 }
 
 /// `cargo <sub>` in `package_dir` with the args after the `siderite`

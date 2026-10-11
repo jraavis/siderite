@@ -189,3 +189,30 @@ fn ai_context_reaches_stdout_without_factory_noise() {
     let out = siderite(&app, &path, &args, &fake);
     assert_eq!((out.status.code(), stdout(&out).as_str()), (Some(1), ""));
 }
+
+#[test]
+fn the_command_list_is_one_versioned_value() {
+    let root = scratch("commands");
+    let path = std::env::var("PATH").unwrap_or_default();
+    let out = siderite(&root.0, &path, &["commands", "--json"], &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let value = one_value(&out);
+    let text = include_str!("../../../docs/schemas/cli-report-v1.json");
+    let schema: serde_json::Value = serde_json::from_str(text).unwrap();
+    let validator = jsonschema::validator_for(&schema).unwrap();
+    let errors: Vec<_> = validator.iter_errors(&value).collect();
+    assert!(errors.is_empty(), "{errors:?}");
+    let names: Vec<&str> = value["data"]["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    for name in ["new", "dev", "check", "lint", "ai init", "migrate"] {
+        assert!(names.contains(&name), "{name}");
+    }
+    let out = siderite(&root.0, &path, &["--json", "ai", "init"], &[]);
+    assert_eq!(out.status.code(), Some(2));
+    let message = one_value(&out)["diagnostics"][0]["message"].clone();
+    assert!(message.as_str().unwrap().contains("not `ai init`"));
+}
