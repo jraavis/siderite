@@ -68,6 +68,7 @@ impl Hook {
         }
         // The flag proves the process died at the hook, not elsewhere.
         let _ = std::fs::write(&self.flag, "fired");
+        // `abort` raises SIGABRT, so the host may write a core file.
         std::process::abort();
     }
 

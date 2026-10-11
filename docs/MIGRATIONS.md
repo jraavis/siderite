@@ -243,22 +243,25 @@ PostgreSQL and MySQL. Two operations are used: generated `CreateModel` DDL
 
 | Kill point | PostgreSQL `atomic: true` | PostgreSQL `atomic: false` / MySQL |
 | --- | --- | --- |
-| Script intent written, script not yet run (`RunSQL`) | Rolled back; no intent, no schema change; retry applies | Intent only, no schema change. Retry fails `UncertainSqlStep` |
+| Script intent written, script not yet run (`RunSQL`) | No intent is ever written (atomic runs are not resumable); the kill rolls back, inspection is empty, plain retry applies | Intent only, no schema change. Retry fails `UncertainSqlStep` |
 | DDL committed, progress not written (first op) | Rolled back; schema, progress and history empty; plain retry applies | Table exists; inspection shows no partial entry. Retry fails loudly ("already exists"); `RunSQL` fails `UncertainSqlStep` first |
-| DDL committed, progress not written (later op) | Rolled back as above | Inspection shows the earlier ops as `partial`; retry fails loudly as above |
-| Progress written (`RunSQL`: intent not yet cleared) | Not applicable | Progress shows the statement complete. Generated DDL resumes with a plain retry; `RunSQL` still fails `UncertainSqlStep` |
+| DDL committed, progress not written (later op) | Rolled back as above; no progress row, so earlier ops are not `partial` | Inspection shows the earlier ops as `partial`; retry fails loudly as above |
+| Progress written (`RunSQL`: intent not yet cleared) | Not applicable (no progress or intent) | Progress shows the statement complete. Generated DDL resumes with a plain retry; `RunSQL` still fails `UncertainSqlStep` |
 | Intent cleared after progress | Not applicable | No uncertainty; plain retry resumes without replay |
+| Rollback (`rollback`) killed after its first DDL (generated) | Not tested (same transaction rollback as apply) | Table dropped, history row and progress unchanged. Retry fails loudly (table missing) and changes no bookkeeping; recreate the dropped object, then roll back again |
 
 Rules the tests enforce:
 
 - A retry never silently replays DDL or scripts whose completion is
   unrecorded. It stops with `UncertainSqlStep` or the database's own
-  "already exists" error, and does not run later operations.
+  "already exists" error, and does not run later operations; the tests
+  assert the error kind and that inspection output is unchanged afterwards.
 - A changed migration file is refused while recorded progress or an intent
   exists (`changed since a partial ...`); inspection shows
-  `file_matches: false`. The checksum safeguard does not apply to the window
-  where nothing was recorded yet (first row above), which is why that row
-  needs catalog reconciliation.
+  `file_matches: false`. The checksum safeguard does not apply to the
+  generated-DDL "DDL committed, progress not written (first op)" window,
+  where nothing was recorded yet, which is why that case needs catalog
+  reconciliation.
 - PostgreSQL atomic migrations are all-or-nothing; the history row commits
   with the schema, so there is nothing to reconcile.
 - MySQL and PostgreSQL non-atomic runs cannot be made exactly-once: DDL
