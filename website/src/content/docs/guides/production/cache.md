@@ -139,8 +139,12 @@ peer policy as redirect and rate limiting; untrusted forwarded headers are
 ignored. The proxy must replace headers. Malformed trusted context fails.
 
 The cache requires atomic `Cache::set_if_absent`; MemoryCache and RedisCache
-implement it. Custom backends without it bypass route storage. Generation
-markers have no TTL; backend capacity/eviction governs their lifetime.
+implement it. Custom backends without it bypass route storage. Today,
+generation markers have no TTL, and backend capacity/eviction governs their
+lifetime. The target design gives markers a finite `generation_ttl`,
+bounds new markers per window, and makes invalidation delete the marker
+instead of writing one; see `docs/CACHE.md` (generation contract) for the
+planned limits and caveats.
 Backend read/store errors serve the origin. Failed write invalidation
 disables the affected layer, preserving the already completed write.
 Database commits and cache invalidation are separate operations: other

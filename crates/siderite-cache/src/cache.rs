@@ -20,8 +20,10 @@ use std::time::Duration;
 /// Only `get`, `set`, `delete`, `increment` and `clear` are required. The
 /// atomic creation methods ([`set_if_absent`](Cache::set_if_absent) and
 /// [`set_if_absent_with_ttl`](Cache::set_if_absent_with_ttl)) are provided
-/// methods whose defaults report an unsupported capability, so adding them
-/// never breaks an existing implementation. Callers that need atomic
+/// methods, so adding them never breaks an existing implementation. The
+/// legacy `set_if_absent` default returns [`CacheError::Backend`] ("atomic
+/// insertion is unsupported"); the default of `set_if_absent_with_ttl`
+/// returns [`CacheError::Unsupported`]. Callers that need atomic
 /// creation (RouteCache generation markers) treat that error as "bypass":
 /// they serve the origin and store nothing. They never emulate creation
 /// with `get` followed by `set`, which would let two creators both win and

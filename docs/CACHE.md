@@ -141,15 +141,28 @@ eviction safe for route caching. The invariants below are normative for
 2. **Delayed fills stay dead.** Representation keys embed the generation.
    A fill that completes after rotation, expiry or eviction stores under an
    old key that no later reader computes.
-3. **Entries never outlive their marker.** A representation's TTL is
-   clamped to the marker's remaining lifetime, so when a marker expires all
-   representations written under it are already gone, and a recreated
-   marker cannot re-expose old data.
+3. **Representation TTL.** A representation's TTL is clamped to
+   `min(response ttl, generation_ttl)`. A representation may outlive its
+   marker by at most `generation_ttl`, but it is unreachable: a marker
+   recreated after expiry carries a fresh token (invariant 1), so no reader
+   computes the old key. (The marker's remaining lifetime is not
+   observable, and the marker value is only a 16-byte token.)
 4. **Atomic creation only.** Markers are created with
    `set_if_absent_with_ttl`. Expiry and insertion are one atomic step;
    `get` followed by `set` is never an acceptable substitute.
 5. **Finite lifetime.** Markers carry a TTL (`generation_ttl`, default one
    hour). A marker without a TTL is a leak under unique targets.
+6. **Invalidation deletes the marker.** A successful unsafe write (and
+   `invalidate_target`) deletes the target's marker instead of writing a
+   new one. A missing marker yields a fresh random token (invariant 1), so
+   deletion rotates the generation, and invalidation never creates a marker
+   or any metadata outside the admission budget below. Rotating only an
+   already existing marker, with the same TTL policy, is equally valid;
+   writing a non-expiring marker is not.
+
+Invariants 3 to 6 are the target state implemented by roadmap task R04.
+Today's `RouteCache` still writes non-expiring markers on creation and on
+invalidation (see Status below).
 
 `set_if_absent_with_ttl` semantics: a zero TTL is rejected with
 `CacheError::InvalidTtl`; TTLs round up to whole milliseconds (a 1 ns TTL
@@ -162,21 +175,43 @@ value and deadline untouched; exactly one concurrent creator wins.
 
 Marker metadata is bounded across all processes sharing a backend. Each
 namespace admits at most `max_new_targets` (default 10,000) new markers per
-`generation_ttl` window, counted by one shared counter key created and
-expired through the same atomic primitives. Because a marker lives at most
-`generation_ttl`, at most two windows are live, so a namespace holds at
-most `2 x max_new_targets` markers. Each marker is a key of at most
-`byte_limits` key bytes (default 4 KiB) plus a 16-byte value, so the
-default worst case is about 82 MB per namespace and typically far less.
-Targets whose key exceeds the key limit never create a marker.
+`generation_ttl` window. The budget is enforced by a counter per window:
+the counter key embeds the window index `floor(now / generation_ttl)`, so
+each window has its own key and nothing is shared across windows. Admission
+calls a new atomic increment-with-expiry primitive, to be added to the
+`Cache` trait as an optional method with an `Unsupported` default (like
+`set_if_absent_with_ttl`): it increments the key, creating it at zero when
+missing, and sets the expiry only when the key has none, in one step. Redis
+runs `INCRBY` plus `PEXPIRE ... NX` in one Lua script (or `MULTI`);
+`MemoryCache` does both under one lock. Separate `set_if_absent_with_ttl`
+and `increment` calls are not acceptable: if the counter expires or is
+evicted between them, Redis `INCRBY` recreates it without a TTL, which is a
+permanent bypass. Eviction of the counter resets it, so the bound holds
+only while the counter is not evicted; deployments that need the bound
+must not evict these keys (for example Redis `noeviction` for the
+namespace or a dedicated database).
+
+Because a marker lives at most `generation_ttl`, at most two windows are
+live, so a namespace holds at most `2 x max_new_targets` markers. Each
+marker is a key of at most `byte_limits` key bytes (default 4 KiB) plus a
+16-byte value plus per-key backend overhead (about 50 to 90 bytes in
+Redis), so the default worst case is approximately 85 MB per namespace and
+typically far less. Targets whose key exceeds the key limit never create a
+marker.
+
+A marker is counted against the budget only when a representation is
+actually stored under it, not when the marker is first looked up. Otherwise
+about 10,000 unique `GET`s to uncacheable responders would exhaust the
+budget and starve cacheable targets. Markers are created lazily at the
+first store.
 
 When the window budget is exhausted, or the target is uncacheable
 (credentials, `no-store` request, non-`GET`/`HEAD`, oversized key),
 the layer **bypasses**: it serves the origin response, creates no marker,
 stores no representation and marks the response `x-cache: miss`. Unique
 targets (for example per-request query strings) therefore cannot grow
-metadata beyond the bound, and a responder that is uncacheable leaves at
-most the already counted marker, which expires by TTL.
+metadata beyond the bound. Invalidation never creates markers (invariant
+6), so writes cannot exceed the bound either.
 
 ### Retired namespaces
 
@@ -201,7 +236,9 @@ method atomically (for Redis: a single `SET key value NX PX ms`).
 Status: the contract, the trait method and `MemoryCache` are in place.
 The Redis adapter, the generation lifetime policy and the admission budget
 are tracked as roadmap tasks R03 to R05; until they land, `RouteCache`
-still creates non-expiring markers via `set_if_absent`.
+still creates non-expiring markers via `set_if_absent`, and its
+invalidation writes a new non-expiring marker, so the metadata bound above
+is not yet enforced.
 
 ### Failures and consistency
 

@@ -2,17 +2,28 @@
 //!
 //! Invariants (full contract in `docs/CACHE.md`):
 //!
+//! Enforced today:
+//!
 //! 1. A generation is an unguessable random token. Whenever a marker is
 //!    created after expiry, eviction, deletion or rotation, the token is
 //!    freshly random; it is never derived from the previous one or from a
 //!    counter, so an older token cannot be reproduced.
 //! 2. A representation key embeds its generation, so a delayed fill that
 //!    finishes after rotation lands under a key no reader will compute.
-//! 3. A representation must not outlive its marker: its TTL is clamped to
-//!    the marker's lifetime. Hence a marker that expires or is evicted
-//!    never re-exposes entries written under it.
-//! 4. Marker creation goes through atomic creation only. A backend without
-//!    it makes the layer bypass storage rather than emulate it.
+//!
+//! Target state (roadmap R04; not yet enforced by this module, which still
+//! creates non-expiring markers through `set_if_absent`):
+//!
+//! 3. A representation's TTL is clamped to `min(response ttl,
+//!    generation_ttl)`. A representation may outlive its marker by at most
+//!    `generation_ttl`, but it is unreachable: a recreated marker carries a
+//!    fresh token (invariant 1), so no reader computes the old key.
+//! 4. Marker creation goes through atomic expiring creation
+//!    (`set_if_absent_with_ttl`); a backend without it makes the layer
+//!    bypass storage rather than emulate it.
+//! 5. Invalidation deletes the marker instead of writing a new one. A missing
+//!    marker yields a fresh random token (invariant 1), so deletion rotates
+//!    the generation and creates no metadata outside the admission budget.
 
 use super::{Policy, cache_key, push_part};
 use crate::{Cache, CacheError};
@@ -90,7 +101,9 @@ pub(super) fn unsafe_method(method: &Method) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MemoryCache;
+    use crate::{MemoryCache, RouteCache};
+    use siderite_core::Body;
+    use std::sync::Arc;
     use std::time::Duration;
 
     type TestResult = Result<(), CacheError>;
@@ -115,9 +128,12 @@ mod tests {
         let cache = MemoryCache::new(1);
         let first = current(&cache, MARKER).await?;
         cache.set("other", vec![1], None).await?;
-        assert_ne!(current(&cache, MARKER).await?, first);
+        let second = current(&cache, MARKER).await?;
+        assert_ne!(second, first);
         cache.delete(MARKER).await?;
-        assert_ne!(current(&cache, MARKER).await?, first);
+        let third = current(&cache, MARKER).await?;
+        assert_ne!(third, second);
+        assert_ne!(third, first);
         Ok(())
     }
 
@@ -131,21 +147,43 @@ mod tests {
         Ok(())
     }
 
+    fn request() -> Result<Request, http::Error> {
+        let uri = "/item";
+        http::Request::builder().uri(uri).body(Body::empty())
+    }
+
     #[tokio::test]
     async fn delayed_fill_cannot_revive_old_data() -> TestResult {
-        let cache = MemoryCache::new(8);
-        let reader = current(&cache, MARKER).await?;
-        let mut stale = String::from("route-v2-response:");
-        push_part(&mut stale, reader.as_bytes());
-        // A write rotates the generation while the origin read is pending.
-        invalidate(&cache, MARKER).await?;
-        // The delayed fill finishes and stores under the old generation.
-        cache.set(&stale, b"old".to_vec(), None).await?;
-        let next = current(&cache, MARKER).await?;
-        let mut fresh = String::from("route-v2-response:");
-        push_part(&mut fresh, next.as_bytes());
-        assert_ne!(stale, fresh);
-        assert_eq!(cache.get(&fresh).await?, None);
+        let cache = Arc::new(MemoryCache::new(16));
+        let policy = RouteCache::new(Arc::clone(&cache)).policy();
+        let req = request().map_err(|e| CacheError::Backend(e.to_string()))?;
+        let target = target(&req, &policy, "http");
+        for rotate in [Rotation::Invalidate, Rotation::Evict] {
+            let old = current(cache.as_ref(), &target).await?;
+            let old_key = representation_key(&req, &policy, "http", old);
+            // The rotation happens while the origin read is still pending.
+            match rotate {
+                Rotation::Invalidate => {
+                    invalidate(cache.as_ref(), &target).await?;
+                }
+                Rotation::Evict => {
+                    cache.delete(&target).await?;
+                }
+            }
+            // The delayed fill now lands under the old generation key.
+            cache.set(&old_key, b"old".to_vec(), None).await?;
+            let new = current(cache.as_ref(), &target).await?;
+            assert_ne!(new, old, "rotation must not reuse the old token");
+            let new_key = representation_key(&req, &policy, "http", new);
+            assert_ne!(new_key, old_key);
+            assert_eq!(cache.get(&new_key).await?, None);
+        }
         Ok(())
+    }
+
+    #[derive(Clone, Copy)]
+    enum Rotation {
+        Invalidate,
+        Evict,
     }
 }
