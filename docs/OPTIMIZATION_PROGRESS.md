@@ -6,6 +6,21 @@ acceptance gates in [plan 3](INSERT_OPTIMIZATION_PLAN_3.md) and the
 [gap closure plan](FRAMEWORK_GAP_CLOSURE_PLAN.md). Historical forecasts in
 [plan 2](INSERT_OPTIMIZATION_PLAN_2.md) remain unverified.
 
+## Roadmap reliability checkpoint: 2026-10-11
+
+- G18 is closed: R10-R13 split every oversized file, the oversize
+  inventory in `scripts/size_baseline.json` is empty, and
+  `scripts/check_size.py --strict` (run in CI) fails on any new file of
+  1,000 lines or more and on growth of the per-package line-width counts.
+- G19 is closed for its stated scope: R01-R05 give route-cache generations
+  finite lifetimes on both the initialization and invalidation paths,
+  atomic expiring insertion (`set_if_absent_with_ttl`) for MemoryCache and
+  Redis, and an enforced admission budget. The siderite-cache suite,
+  including the live Redis tests, passes against MemoryCache and Redis.
+  Finite TTL bounds retention; a shared Redis server's eviction policy is
+  still the operator's to configure.
+- G14 remains partial; see the migration recovery section below.
+
 ## SQLite write gate and group commit checkpoint: 2026-10-04
 
 Implemented in-process FIFO write serialization (`WriteGate`) and opt-in group commit (`GroupCommit`) on `SqliteBackend`:
