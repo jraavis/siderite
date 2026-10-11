@@ -34,11 +34,16 @@ Branch from `master`; never push to it directly. A PR is merged only when:
 - User-visible changes add an entry to `CHANGELOG.md`, and public API changes
   update `docs/` and `website/`.
 - Rust files stay below 1,000 lines and new code stays within 79 columns.
-  `python3 scripts/check_size.py` (run in CI) fails on any new oversize file,
-  any line over 100 characters (rustfmt's `max_width`), and any growth of the
-  per-file exceptions recorded in `scripts/size_baseline.json`. Existing
-  exceptions may only shrink; after splitting a file or wrapping lines run
-  `python3 scripts/check_size.py --update` to ratchet the baseline down.
+  `python3 scripts/check_size.py` (run in CI) fails on any new file of 1,000
+  lines or more and on growth of the existing per-file exceptions in
+  `scripts/size_baseline.json`. Line width is a per-package ratchet (package =
+  `crates/<name>`, `examples/<name>` or `benchmarks/<name>`): the number of
+  lines over 100 columns (rustfmt's `max_width`) and the number over 79 columns
+  may not grow in any package, so splitting a file within a package never
+  trips the guard. Packages not in the baseline have a budget of zero.
+  Existing exceptions may only shrink; after splitting a file or wrapping
+  lines run `python3 scripts/check_size.py --update` to ratchet the baseline
+  down. Exit status is 1 for violations and 2 for usage or I/O errors.
 - New dependencies pass `cargo deny check` and build on the MSRV.
 
 PRs are squash-merged; the PR title becomes the commit subject.
