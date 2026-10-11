@@ -33,6 +33,12 @@ Branch from `master`; never push to it directly. A PR is merged only when:
   services; CI runs them with `--include-ignored`.
 - User-visible changes add an entry to `CHANGELOG.md`, and public API changes
   update `docs/` and `website/`.
+- Rust files stay below 1,000 lines and new code stays within 79 columns.
+  `python3 scripts/check_size.py` (run in CI) fails on any new oversize file,
+  any line over 100 characters (rustfmt's `max_width`), and any growth of the
+  per-file exceptions recorded in `scripts/size_baseline.json`. Existing
+  exceptions may only shrink; after splitting a file or wrapping lines run
+  `python3 scripts/check_size.py --update` to ratchet the baseline down.
 - New dependencies pass `cargo deny check` and build on the MSRV.
 
 PRs are squash-merged; the PR title becomes the commit subject.
