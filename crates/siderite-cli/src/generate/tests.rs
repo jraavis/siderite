@@ -1,0 +1,73 @@
+//! Write plans against real directories.
+
+#![allow(clippy::unwrap_used)]
+
+use super::plan::Action;
+use super::*;
+use crate::fixtures::ScratchDir;
+
+fn read(root: &std::path::Path, rel: &str) -> String {
+    std::fs::read_to_string(root.join(rel)).unwrap()
+}
+
+#[test]
+fn creates_then_reports_unchanged_and_conflicts() {
+    let scratch = ScratchDir::new("plan");
+    let root = scratch.path();
+    let mut plan = Plan::new(root);
+    plan.add("src/a.rs", "fn a() {}\n").unwrap();
+    plan.add("README.md", "# x\n").unwrap();
+    let preview_text = preview(&plan.check().unwrap());
+    assert!(preview_text.contains("create src/a.rs\n"), "{preview_text}");
+    assert!(preview_text.contains("+fn a() {}\n"), "{preview_text}");
+    assert!(!root.join("src").exists(), "check wrote something");
+    plan.apply().unwrap();
+    assert_eq!(read(root, "src/a.rs"), "fn a() {}\n");
+    // Again: identical files are left alone.
+    let again = plan.apply().unwrap();
+    assert!(again.iter().all(|c| c.action == Action::Unchanged));
+    // The user edits a file: a plain create now conflicts, nothing written.
+    std::fs::write(root.join("src/a.rs"), "fn a() { mine() }\n").unwrap();
+    let mut other = Plan::new(root);
+    other.add("src/a.rs", "fn a() {}\n").unwrap();
+    other.add("src/b.rs", "fn b() {}\n").unwrap();
+    let err = other.apply().unwrap_err();
+    assert_eq!(err.exit_code(), 2);
+    assert!(err.to_string().contains("src/a.rs"), "{err}");
+    assert!(!root.join("src/b.rs").exists(), "partial write");
+    assert_eq!(read(root, "src/a.rs"), "fn a() { mine() }\n");
+    let text = preview(&other.check().unwrap());
+    assert!(text.contains("conflict src/a.rs (kept)"), "{text}");
+    assert!(text.contains("-fn a() { mine() }"), "{text}");
+}
+
+#[test]
+fn bad_paths_are_rejected() {
+    let mut plan = Plan::new("/nowhere");
+    for bad in ["", "/etc/passwd", "../x", "a/../../x", "./a"] {
+        assert!(plan.add(bad, "").is_err(), "{bad}");
+    }
+    plan.add("a/b.rs", "").unwrap();
+    for clash in ["a/b.rs", "a", "a/b.rs/c"] {
+        assert!(plan.add(clash, "").is_err(), "{clash}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symbolic_links_cannot_redirect_writes() {
+    let scratch = ScratchDir::new("plan-links");
+    let outside = ScratchDir::new("plan-outside");
+    let root = scratch.path();
+    std::os::unix::fs::symlink(outside.path(), root.join("src")).unwrap();
+    let mut plan = Plan::new(root);
+    plan.add("src/evil.rs", "x").unwrap();
+    assert!(
+        plan.check()
+            .unwrap_err()
+            .to_string()
+            .contains("symbolic link")
+    );
+    assert!(plan.apply().is_err());
+    assert!(!outside.path().join("evil.rs").exists());
+}
