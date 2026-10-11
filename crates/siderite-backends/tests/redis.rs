@@ -91,6 +91,35 @@ async fn string_keys_ttl_and_counters() {
         assert!(store.set_nx("name", "fresh").await.unwrap());
         assert_eq!(store.get("name").await.unwrap().as_deref(), Some("fresh"));
 
+        // `set_nx_px` creates with a TTL in one command, truncating to ms.
+        assert!(
+            store
+                .set_nx_px("nx-px", "a", Duration::from_micros(1_900_500))
+                .await
+                .unwrap()
+        );
+        match store.ttl("nx-px").await.unwrap() {
+            Ttl::ExpiresIn(left) => {
+                assert!(left > Duration::ZERO && left <= Duration::from_millis(1900));
+            }
+            other => panic!("expected a ttl, got {other:?}"),
+        }
+        // A loser keeps the value and deadline; invalid TTLs send nothing.
+        assert!(
+            !store
+                .set_nx_px("nx-px", "b", Duration::from_secs(60))
+                .await
+                .unwrap()
+        );
+        assert_eq!(store.get("nx-px").await.unwrap().as_deref(), Some("a"));
+        for bad in [Duration::ZERO, Duration::from_micros(999), Duration::MAX] {
+            assert!(matches!(
+                store.set_nx_px("nx-bad", "x", bad).await,
+                Err(RedisError::Invalid(_))
+            ));
+        }
+        assert_eq!(store.get("nx-bad").await.unwrap(), None);
+
         assert!(
             !store
                 .expire("absent", Duration::from_secs(5))
