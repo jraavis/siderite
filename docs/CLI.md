@@ -165,6 +165,10 @@ siderite completions fish > ~/.config/fish/completions/siderite.fish
 
 The scripts are tested by running them in bash, zsh and fish.
 
+## `add` and `remove`
+
+`siderite add CRATE... [cargo add options]` and `siderite remove CRATE... [cargo remove options]` run `cargo add` / `cargo remove --package NAME` for the selected app package (`--manifest-path` and `--package` choose it as for other commands), so Cargo makes every manifest edit: workspace inheritance (`workspace = true`), path and git sources and formatting are kept as Cargo keeps them (Cargo may rewrite a path dependency relative to the manifest). The command is printed before it runs, and Cargo's exit code is returned.
+
 ## `new`
 
 `siderite new NAME [--database sqlite|postgres|mysql] [--path DIR] [--dry-run]` writes an API crate in `NAME/`, which must not exist or be empty. `--dry-run` prints every file it would create with its full contents (as a diff from nothing) and writes nothing.

@@ -267,7 +267,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Coalesce changes during builds and recover from watcher overflow. Migration
   edits never apply migrations automatically. Test build-restart loops.
 
-- [ ] **D03 — Add dependency add/remove passthrough.**
+- [x] **D03 — Add dependency add/remove passthrough.**
   Depends: C01. Scope: Cargo-owned manifest edits with explicit package.
   Done: preserve workspace inheritance and dependency source; propagate
   failures; do not claim rollback after partial edits without verifying it.

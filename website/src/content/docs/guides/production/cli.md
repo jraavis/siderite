@@ -172,6 +172,16 @@ after `--grace-ms`, default 5 s, including anything it started) and waits
 for its port to be free before starting the new one. Ctrl-C cancels a
 build and stops the app. This restarts the process; it is not hot reload.
 
+## Dependencies
+
+```bash
+siderite add serde --features derive   # cargo add for the app package
+siderite remove serde
+```
+
+Cargo makes every manifest edit, so `workspace = true` and path or git
+sources stay as they are.
+
 ## Setup
 
 ```bash

@@ -21,6 +21,8 @@ pub(crate) struct Package {
     pub bins: Vec<String>,
     /// `default-run` of the package, when set.
     pub default_run: Option<String>,
+    /// Names of the normal (not dev or build) dependencies.
+    pub dependencies: Vec<String>,
     /// `rust-version` of the package (resolved from the workspace).
     pub rust_version: Option<String>,
 }
@@ -117,10 +119,14 @@ fn package(item: &Value) -> Option<Package> {
     let name = item.get("name")?.as_str()?.to_owned();
     let manifest = PathBuf::from(item.get("manifest_path")?.as_str()?);
     let manifest_path = manifest;
-    let uses_siderite = item
-        .get("dependencies")
-        .and_then(Value::as_array)
-        .is_some_and(|d| d.iter().any(is_framework_dep));
+    let listed = item.get("dependencies").and_then(Value::as_array);
+    let uses_siderite = listed.is_some_and(|d| d.iter().any(is_framework_dep));
+    let dependencies = listed
+        .into_iter()
+        .flatten()
+        .filter(|d| is_normal(d))
+        .filter_map(|d| d.get("name")?.as_str().map(str::to_owned))
+        .collect();
     let bins = item
         .get("targets")
         .and_then(Value::as_array)
@@ -138,16 +144,22 @@ fn package(item: &Value) -> Option<Package> {
         name,
         manifest_path,
         uses_siderite,
+        dependencies,
         bins,
         default_run,
         rust_version,
     })
 }
 
-/// A normal (not dev or build) dependency on the framework crate.
+/// A normal (not dev or build) dependency.
+fn is_normal(dep: &Value) -> bool {
+    dep.get("kind").is_none_or(Value::is_null)
+}
+
+/// A normal dependency on the framework crate.
 fn is_framework_dep(dep: &Value) -> bool {
-    let normal = dep.get("kind").is_none_or(Value::is_null);
-    normal && dep.get("name").and_then(Value::as_str) == Some(FRAMEWORK)
+    let name = dep.get("name").and_then(Value::as_str);
+    is_normal(dep) && name == Some(FRAMEWORK)
 }
 
 fn bin_name(target: &Value) -> Option<String> {
