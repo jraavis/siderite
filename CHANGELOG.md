@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite generate resource NAME [FIELD:TYPE[?]]...` writes
+  a model and `POST /TABLE` / `GET /TABLE/{id}` handlers with validated
+  request bodies (422), 404 for missing rows and `State<Databases>`
+  access; tested against SQLite. Unauthenticated examples; no migration
+  is run.
 - **CLI:** `siderite generate model NAME [FIELD:TYPE[?]]... [--table T]`
   writes a `Model` with an `id` primary key and scalar fields (`i32`,
   `i64`, `f64`, `bool`, `String`, nullable with `?`); reserved and
