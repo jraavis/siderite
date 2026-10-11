@@ -5,6 +5,7 @@
 pub(crate) mod command;
 pub(crate) mod diff;
 pub(crate) mod ident;
+pub(crate) mod model;
 pub(crate) mod plan;
 pub(crate) mod route;
 

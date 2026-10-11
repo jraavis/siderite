@@ -177,12 +177,16 @@ build and stops the app. This restarts the process; it is not hot reload.
 ```bash
 siderite generate route items             # src/routes/items.rs
 siderite generate route items --dry-run   # show it only
+siderite generate model book title:String pages:i32? --table books
 ```
 
 A generated route module has one documented handler (`GET /items`,
 operation ID `items_index`), its response type and a `routes()` function.
 siderite never edits your existing code; it prints the two lines that
-register the module. Existing files are never overwritten.
+register the module. A generated model has an `id` primary key and
+fields of type `i32`, `i64`, `f64`, `bool` or `String` (`?` for nullable);
+register its `META` with `AppCli::models`, then run `makemigrations`.
+Existing files are never overwritten.
 
 ## Dependencies
 
