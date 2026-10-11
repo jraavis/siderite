@@ -198,3 +198,49 @@ fn shutdown_cancels_a_running_build() {
         until("build group gone", || !group.exists()).await;
     });
 }
+
+#[test]
+fn source_edits_restart_and_runtime_files_do_not() {
+    use super::watch::{Layout, Watch};
+    let scratch = ScratchDir::new("dev-loop");
+    let dir = scratch.path().to_path_buf();
+    let spec = project(&dir, true, "0");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "[package]\n").unwrap();
+    let main = dir.join("src/main.rs");
+    let deps = format!("{}: {}\n", dir.join("app").display(), main.display());
+    std::fs::write(dir.join("app.d"), deps).unwrap();
+    let layout = Layout {
+        package: dir.clone(),
+        root: dir.clone(),
+        target: dir.join("target"),
+        migrations: dir.join("migrations"),
+    };
+    block_on(async {
+        let (tx, mut rx) = mpsc::channel(16);
+        let (built, builds) = mpsc::unbounded_channel();
+        let watch = Watch::start().unwrap();
+        let watched = command::watch_loop(watch, layout, builds, tx.clone());
+        let watching = tokio::spawn(watched);
+        let args = vec!["run".to_owned()];
+        let supervisor = Supervisor::new(spec, args, DEFAULT_GRACE);
+        let supervisor = supervisor.report_builds(built);
+        let running = async move { supervisor.run(&mut rx).await };
+        let handle = tokio::spawn(running);
+        until("first start", || pids(&dir, "pids").len() == 1).await;
+        // Let the watcher switch to the dep-info inputs.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        std::fs::write(&main, "fn main() { }\n").unwrap();
+        until("restart on edit", || pids(&dir, "pids").len() == 2).await;
+        for i in 0..10 {
+            std::fs::write(dir.join("app.db"), format!("{i}")).unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(pids(&dir, "pids").len(), 2, "runtime files restarted");
+        assert_eq!(lines(&dir, "builds").len(), 2);
+        tx.send(Event::Shutdown).await.unwrap();
+        handle.await.unwrap().unwrap();
+        watching.abort();
+    });
+}

@@ -12,9 +12,12 @@
 mod build;
 mod command;
 mod process;
+mod watch;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_watch;
 
 pub(crate) use build::BuildSpec;
 pub(crate) use command::run;
@@ -25,9 +28,10 @@ use process::App;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::time::Duration;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, UnboundedSender};
 
 type Args = Vec<String>;
+type Builds = UnboundedSender<PathBuf>;
 type Code = Result<u8, CliError>;
 type Events<'a> = &'a mut Receiver<Event>;
 /// `Ok(None)` on shutdown, `Ok(Some(again))` after a build.
@@ -54,6 +58,8 @@ pub(crate) struct Supervisor {
     args: Vec<String>,
     grace: Duration,
     app: Option<App>,
+    /// Receives the executable of every successful build.
+    built: Option<UnboundedSender<PathBuf>>,
 }
 
 /// How a build attempt ended.
@@ -72,7 +78,15 @@ impl Supervisor {
             args,
             grace,
             app: None,
+            built: None,
         }
+    }
+
+    /// Send the executable of every successful build to `built`.
+    #[must_use]
+    pub(crate) fn report_builds(mut self, built: Builds) -> Self {
+        self.built = Some(built);
+        self
     }
 
     /// Build and run, then rebuild on every [`Event::Changed`] until
@@ -127,7 +141,12 @@ impl Supervisor {
                 log("build failed; the previous version keeps running");
             }
             Built::Failed => log("build failed; waiting for changes"),
-            Built::Ready(exe) => self.swap(&exe).await?,
+            Built::Ready(exe) => {
+                if let Some(built) = &self.built {
+                    let _ = built.send(exe.clone());
+                }
+                self.swap(&exe).await?;
+            }
         }
         Ok(Some(again))
     }

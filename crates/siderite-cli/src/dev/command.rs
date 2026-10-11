@@ -1,5 +1,6 @@
 //! `siderite dev [--grace-ms N] [-- APP ARGS]`.
 
+use super::watch::{Inputs, Layout, Watch};
 use super::{BuildSpec, DEFAULT_GRACE, Event, Supervisor};
 use crate::error::CliError;
 use crate::target::{self, ProjectArgs};
@@ -70,12 +71,26 @@ pub(crate) async fn run(raw: &[String], cwd: &Path, p: &ProjectArgs) -> Code {
              `siderite new`",
         )
     })?;
+    let layout = layout(&app.dir);
     let spec = BuildSpec {
         cargo: PathBuf::from("cargo"),
         dir: app.dir,
         bin: app.bin.or(app.default_run),
     };
     let (events, mut received) = mpsc::channel(64);
+    let (built, builds) = mpsc::unbounded_channel();
+    let watching = match Watch::start() {
+        Ok(watch) => Some(tokio::spawn(watch_loop(
+            watch,
+            layout,
+            builds,
+            events.clone(),
+        ))),
+        Err(err) => {
+            eprintln!("siderite dev: cannot watch files ({err}); use r+Enter");
+            None
+        }
+    };
     let shutdown = events.clone();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
@@ -83,10 +98,57 @@ pub(crate) async fn run(raw: &[String], cwd: &Path, p: &ProjectArgs) -> Code {
         }
     });
     tokio::spawn(restart_on_enter(events.clone()));
-    let supervisor = Supervisor::new(spec, options.app_args, options.grace);
+    let Options { grace, app_args } = options;
+    let supervisor = Supervisor::new(spec, app_args, grace);
+    let supervisor = supervisor.report_builds(built);
     let code = supervisor.run(&mut received).await;
+    if let Some(watching) = watching {
+        watching.abort();
+    }
     drop(events);
     code
+}
+
+/// Where the package, workspace, target and migrations directories are.
+/// `cargo metadata` is asked once, when `dev` starts.
+fn layout(package: &Path) -> Layout {
+    let manifest = package.join("Cargo.toml");
+    let found = crate::workspace::load("cargo", package, Some(&manifest)).ok();
+    let root = found.as_ref().and_then(|w| w.root.clone());
+    let target = found.and_then(|w| w.target_dir);
+    Layout {
+        package: package.to_path_buf(),
+        root: root.unwrap_or_else(|| package.to_path_buf()),
+        target: target.unwrap_or_else(|| package.join("target")),
+        migrations: package.join("migrations"),
+    }
+}
+
+/// Forward debounced changes as rebuilds; after each successful build,
+/// watch the inputs listed in the new binary's dep-info.
+pub(super) async fn watch_loop(
+    mut watch: Watch,
+    layout: Layout,
+    mut builds: mpsc::UnboundedReceiver<PathBuf>,
+    events: mpsc::Sender<Event>,
+) {
+    let mut inputs = Inputs::initial(&layout);
+    watch.set(&inputs);
+    loop {
+        tokio::select! {
+            changed = watch.changed(&inputs) => {
+                let Some(event) = changed else { return };
+                if events.send(event).await.is_err() {
+                    return;
+                }
+            }
+            exe = builds.recv() => {
+                let Some(exe) = exe else { return };
+                inputs = Inputs::built(&layout, &exe);
+                watch.set(&inputs);
+            }
+        }
+    }
 }
 
 /// `r` + Enter on stdin rebuilds and restarts. The app never reads

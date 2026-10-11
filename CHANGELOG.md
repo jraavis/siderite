@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite dev` watches the app's inputs: the source files in
+  the binary's dep-info (path dependencies included), manifests,
+  `Cargo.lock`, `siderite.toml` and `migrations/`, never the target or
+  VCS directories. Bursts are debounced, watcher overflows count as
+  changes, and migrations are never applied automatically. Uses `notify`
+  8.2 (CC0-1.0).
 - **CLI:** `siderite dev [--grace-ms N] [-- ARGS]` supervises the app: it
   builds with structured cargo output, runs the built binary, keeps the
   last healthy process on a failed build, and replaces it on success after

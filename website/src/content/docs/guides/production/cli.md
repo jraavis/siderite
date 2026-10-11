@@ -162,8 +162,12 @@ siderite dev                       # build, run, r+Enter rebuilds
 siderite dev -- --addr 0.0.0.0:8000
 ```
 
-`dev` builds the app and runs it. A failed build keeps the previous version
-serving; a successful one stops the old process (SIGTERM, then SIGKILL
+`dev` builds the app, runs it, and rebuilds when a file the binary was
+compiled from changes (taken from cargo's dep-info, so path dependencies
+and `include_str!` files count), or `Cargo.toml`, `Cargo.lock`,
+`siderite.toml` or `migrations/`. Files the app writes at run time never
+trigger a rebuild, and editing a migration never applies it. A failed
+build keeps the previous version serving; a successful one stops the old process (SIGTERM, then SIGKILL
 after `--grace-ms`, default 5 s, including anything it started) and waits
 for its port to be free before starting the new one. Ctrl-C cancels a
 build and stops the app. This restarts the process; it is not hot reload.
