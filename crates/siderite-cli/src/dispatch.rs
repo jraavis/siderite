@@ -69,6 +69,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         }
         return scaffold::run(raw);
     }
+    if command == "dev" {
+        return crate::dev::run(raw, cwd, &project).await;
+    }
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
@@ -179,6 +182,8 @@ siderite {} — FastAPI-style Rust web framework
 
 Create and run an app:
   new NAME                      Write a new API crate
+  dev [-- ARGS]                 Build and run the app; r+Enter rebuilds,
+                                Ctrl-C stops it
   doctor [--json] [--live]      Check the toolchain, project and config
                                 (--live: read-only database probes)
   run [--addr ADDR]             Serve the app

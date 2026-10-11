@@ -21,8 +21,11 @@ siderite-core.workspace = true
 siderite-migrations.workspace = true
 siderite-orm.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["io-std", "io-util", "process", "sync", "time"] }
 url.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
 
 [dev-dependencies]
 jsonschema.workspace = true

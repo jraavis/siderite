@@ -18,6 +18,7 @@ mod args;
 pub mod check;
 pub mod connect;
 pub mod dbshell;
+mod dev;
 mod dispatch;
 mod doctor;
 mod error;
