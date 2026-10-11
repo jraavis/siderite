@@ -4,7 +4,7 @@ use crate::error::CliError;
 use crate::project::{self, CARGO_COMMANDS, is_app_command};
 use crate::scaffold;
 use crate::standalone;
-use crate::target::{self, Selected, split_project};
+use crate::target::{self, ProjectArgs, Selected, split_project};
 use std::env;
 
 /// Entry point of the `siderite` binary.
@@ -32,6 +32,11 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         return Ok(if command == "help" { 0 } else { 2 });
     }
     if command == "new" {
+        if project != ProjectArgs::default() {
+            return Err(CliError::usage(
+                "--manifest-path, --package and --bin do not apply to `new`",
+            ));
+        }
         return scaffold::run(raw);
     }
     if CARGO_COMMANDS.contains(&command) {

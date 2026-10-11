@@ -61,7 +61,7 @@ pub(crate) fn split_project(args: &[String]) -> Split {
             break;
         }
         let (flag, inline) = match arg.split_once('=') {
-            Some((f, v)) if f.starts_with("--") => (f, Some(v)),
+            Some((f, v)) if f.starts_with('-') => (f, Some(v)),
             _ => (arg.as_str(), None),
         };
         let slot = match flag {
@@ -129,12 +129,31 @@ pub(crate) struct Selected {
 ///
 /// `one_bin` is true for commands that run a binary (`run`, `routes`...)
 /// and false for `build` / `test`, which cover every target.
+///
+/// Without project flags, a plain single-binary package is found by
+/// reading manifests, without running `cargo metadata`.
 pub(crate) fn locate(
     cargo: &str,
     cwd: &Path,
     args: &ProjectArgs,
     one_bin: bool,
 ) -> Result<Option<Selected>, CliError> {
+    let explicit = args.is_explicit() || args.bin.is_some();
+    let mut lenient = false;
+    if !explicit {
+        match quick_scan(cwd) {
+            Quick::Simple(dir) => {
+                let package = package_name(&dir);
+                return Ok(Some(Selected {
+                    package,
+                    dir,
+                    bin: None,
+                }));
+            }
+            Quick::NoPackage => lenient = true,
+            Quick::Complex => {}
+        }
+    }
     let manifest = match &args.manifest_path {
         Some(path) => Some(resolve_manifest(cwd, path)?),
         None => None,
@@ -142,9 +161,16 @@ pub(crate) fn locate(
     if manifest.is_none() && !has_manifest_above(cwd) {
         return explicit_or_none(args, "no Cargo.toml found");
     }
-    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-    let ws = workspace::load(cargo, &cwd, manifest.as_deref())?;
-    let Some(pkg) = select(&ws, args, manifest.as_deref(), &cwd)? else {
+    let ws = match workspace::load(cargo, cwd, manifest.as_deref()) {
+        Ok(ws) => ws,
+        // Nothing the old lookup could use: stay in standalone mode.
+        Err(_) if lenient => return Ok(None),
+        Err(err) => return Err(err),
+    };
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.into());
+    let manifest = manifest.map(|m| canon(&m));
+    let found = select(&ws, args, manifest.as_deref(), &canon(cwd))?;
+    let Some(pkg) = found else {
         return explicit_or_none(args, "no siderite application found");
     };
     let bin = resolve_bin(pkg, args.bin.as_deref(), one_bin)?;
@@ -153,6 +179,68 @@ pub(crate) fn locate(
         dir: pkg.dir().to_path_buf(),
         bin,
     }))
+}
+
+/// Outcome of reading manifests above the cwd.
+enum Quick {
+    /// A package with no extra binaries: run cargo in this directory.
+    Simple(PathBuf),
+    /// A package that needs `cargo metadata` to choose a binary.
+    Complex,
+    /// No `[package]` manifest above the cwd.
+    NoPackage,
+}
+
+/// Walk up to the nearest manifest with a `[package]` table.
+fn quick_scan(cwd: &Path) -> Quick {
+    for dir in cwd.ancestors() {
+        let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        if !text.contains("[package]") {
+            continue;
+        }
+        if is_simple(dir, &text) {
+            return Quick::Simple(dir.to_path_buf());
+        }
+        return Quick::Complex;
+    }
+    Quick::NoPackage
+}
+
+/// Cheap textual check that a package has at most one binary and no
+/// `default-run`. Anything unusual (any array-of-tables, a `bin` key,
+/// `autobins`, `src/bin/`) is "not simple" so metadata decides.
+fn is_simple(dir: &Path, text: &str) -> bool {
+    if dir.join("src/bin").exists() {
+        return false;
+    }
+    let mut has_package = false;
+    for line in text.lines().map(str::trim) {
+        has_package |= line.starts_with("[package]");
+        let odd = line.starts_with("[[")
+            || line.starts_with("bin")
+            || line.contains("autobins")
+            || line.contains("default-run")
+            || line.contains("default_run");
+        if odd {
+            return false;
+        }
+    }
+    has_package
+}
+
+/// Best-effort `name = "..."` of the package table (display only).
+fn package_name(dir: &Path) -> String {
+    let text = std::fs::read_to_string(dir.join("Cargo.toml"));
+    let text = text.unwrap_or_default();
+    let line = text.lines().map(str::trim).find(|l| l.starts_with("name"));
+    let value = line.and_then(|l| l.split_once('=')).map(|(_, v)| v);
+    let name = value.map(|v| v.trim().trim_matches('"'));
+    name.map(str::to_owned).unwrap_or_else(|| {
+        dir.file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into())
+    })
 }
 
 type Located = Result<Option<Selected>, CliError>;
@@ -166,15 +254,19 @@ fn explicit_or_none(args: &ProjectArgs, why: &str) -> Located {
     Ok(None)
 }
 
+/// The manifest to use; a directory means its `Cargo.toml`.
 fn resolve_manifest(cwd: &Path, given: &Path) -> Result<PathBuf, CliError> {
-    let path = cwd.join(given);
+    let mut path = cwd.join(given);
+    if path.is_dir() {
+        path.push("Cargo.toml");
+    }
     if !path.is_file() {
         return Err(CliError::usage(format!(
             "--manifest-path {}: no such file",
             given.display()
         )));
     }
-    Ok(path.canonicalize().unwrap_or(path))
+    Ok(path)
 }
 
 /// Whether `cwd` or an ancestor holds a `Cargo.toml`.
@@ -183,7 +275,8 @@ fn has_manifest_above(cwd: &Path) -> bool {
 }
 
 /// Pick the package per the module rules; `None` when implicit
-/// selection finds no application.
+/// selection finds no application. `manifest` and `cwd` are canonical,
+/// for comparison with the (canonicalized) package directories.
 pub(crate) fn select<'a>(
     ws: &'a Workspace,
     args: &ProjectArgs,
@@ -202,7 +295,7 @@ pub(crate) fn select<'a>(
         let nearest = ws
             .packages
             .iter()
-            .filter(|p| cwd.starts_with(p.dir()))
+            .filter(|p| cwd.starts_with(p.canonical_dir()))
             .max_by_key(|p| p.dir().components().count());
         if nearest.is_some() {
             return Ok(nearest);
@@ -225,7 +318,8 @@ pub(crate) fn select<'a>(
 }
 
 fn same(pkg: &Package, manifest: &Path) -> bool {
-    pkg.manifest_path == manifest
+    let file = pkg.manifest_path.canonicalize();
+    file.unwrap_or_else(|_| pkg.manifest_path.clone()) == manifest
 }
 
 fn named<'a>(ws: &'a Workspace, name: &str) -> Result<&'a Package, CliError> {

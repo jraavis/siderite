@@ -28,6 +28,13 @@ impl Package {
     pub fn dir(&self) -> &Path {
         self.manifest_path.parent().unwrap_or(Path::new(""))
     }
+
+    /// Canonical directory, for comparisons only (on Windows this is a
+    /// `\\?\` verbatim path that must not be shown or run in).
+    pub fn canonical_dir(&self) -> PathBuf {
+        let dir = self.dir();
+        dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf())
+    }
 }
 
 /// The members of a Cargo workspace (or the one package of a crate).
@@ -97,11 +104,11 @@ pub(crate) fn parse(json: &str) -> Result<Workspace, CliError> {
 fn package(item: &Value) -> Option<Package> {
     let name = item.get("name")?.as_str()?.to_owned();
     let manifest = PathBuf::from(item.get("manifest_path")?.as_str()?);
-    let manifest_path = manifest.canonicalize().unwrap_or(manifest);
+    let manifest_path = manifest;
     let uses_siderite = item
         .get("dependencies")
         .and_then(Value::as_array)
-        .is_some_and(|d| d.iter().any(|d| dep_name(d) == Some(FRAMEWORK)));
+        .is_some_and(|d| d.iter().any(is_framework_dep));
     let bins = item
         .get("targets")
         .and_then(Value::as_array)
@@ -120,8 +127,10 @@ fn package(item: &Value) -> Option<Package> {
     })
 }
 
-fn dep_name(dep: &Value) -> Option<&str> {
-    dep.get("name")?.as_str()
+/// A normal (not dev or build) dependency on the framework crate.
+fn is_framework_dep(dep: &Value) -> bool {
+    let normal = dep.get("kind").is_none_or(Value::is_null);
+    normal && dep.get("name").and_then(Value::as_str) == Some(FRAMEWORK)
 }
 
 fn bin_name(target: &Value) -> Option<String> {
