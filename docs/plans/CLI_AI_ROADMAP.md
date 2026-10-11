@@ -279,7 +279,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   remain valid; fixture apps compile. Removal does not discard shared features
   or credentials. Redis/Mongo presets require separate integration designs.
 
-- [ ] **D05 — Extract reusable generation/write helpers.**
+- [x] **D05 — Extract reusable generation/write helpers.**
   Depends: C01. Scope: existing `scaffold.rs`, templates and write planning.
   Done: dry-run displays exact changes; reject traversal, invalid identifiers,
   symlink escapes and collisions; default writes never overwrite user files.
@@ -314,19 +314,19 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
 
 ### D. AI context and MCP
 
-- [ ] **A01 — Build a bounded application metadata snapshot.**
+- [x] **A01 — Build a bounded application metadata snapshot.**
   Depends: C02, C04. Scope: registered models, documented routes and spec.
   Done: include format/framework version, selected features and completeness
   markers; stable output has size limits and explicit truncation/errors.
   Include alias names/backend kinds only, never URLs, secrets or row data.
 
-- [ ] **A02 — Add ai dump-context.**
+- [x] **A02 — Add ai dump-context.**
   Depends: A01, C01. Scope: JSON/Markdown adapters and app bridge.
   Done: offline by default; unknown/stale data is labeled; optional live
   migration status uses C05 explicitly. Tests cover secret-bearing errors,
   oversized metadata and stdout contamination from application factories.
 
-- [ ] **A03 — Add ai init with one owned context file.**
+- [x] **A03 — Add ai init with one owned context file.**
   Depends: A02, D05. Scope: `.siderite/context.md` and versioned examples.
   Done: examples compile; reruns detect stale versions and show a diff;
   preserve user edits. Do not copy entire source trees or fetch external text.
