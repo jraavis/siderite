@@ -136,7 +136,7 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 - `ok` is `false` when any diagnostic has severity `error`. A diagnostic has `code` (the stable `check` ids below), `severity` (`info`, `warning`, `error`), `message` and optional `location` and `hint`. Codes match `^[a-z][a-z0-9_]*\.[EWI][0-9]{3}$`; `info` is reserved and never makes a report fail. Free text is redacted when the diagnostic is built and again when it is rendered: URL passwords (the userinfo ends at the last `@`, so unencoded `/ ? # @`, spaces and quotes are covered), every URL of a comma-separated list, and secret-looking `key=value` pairs anywhere (query parameters, libpq DSNs, `;Pwd=`, `sig=`) become `***`.
 - Reports are sorted deterministically: routes by path then method, models by name then table, fields by name then column, tags alphabetically. `routes` lists documented routes (from OpenAPI; hidden endpoints are omitted), not a complete runtime inventory.
 - Exit codes: `0` success, `1` failure (including a `check` that finds an error), `2` usage error.
-- JSON mode (`--json`, accepted before or after `check`, `routes` and `showmigrations`) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
+- JSON mode (`--json`, accepted before or after `check`, `doctor`, `routes` and `showmigrations`) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
 - In JSON mode every failure is an envelope as well, with `ok: false`, `data: null` and one diagnostic:
 
   | Code | Exit | Meaning |
@@ -146,6 +146,23 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
   | `cli.E003` | `1` (`2` if the app exited `2`) | the application exited without a valid report: a build failure, a crash, or a `siderite-cli` that predates `--json` |
 
 - `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
+
+## `doctor`
+
+`siderite doctor [--json]` runs in the standalone binary, so it works even when the app does not compile. It never connects to a database, builds the project or changes anything.
+
+| Check | Fails (error) when | Warns when |
+|---|---|---|
+| `project` | | project selection is ambiguous or invalid (`doctor.W005`) |
+| `toolchain.rustc` | `rustc` is missing (`doctor.E001`), older than siderite's `rust-version` (`doctor.E003`) or the project's (`doctor.E004`) | its version cannot be read (`doctor.W006`) |
+| `toolchain.cargo` | `cargo` is missing (`doctor.E002`) | |
+| `toolchain.rustfmt`, `toolchain.clippy` | | the component is not installed (`doctor.W001`, `doctor.W002`) |
+| `config` | `siderite.toml` or `SIDERITE_*` variables do not load (`doctor.E005`; values of secret keys are not shown) | |
+| `database.ALIAS` | the URL has no or an unsupported scheme (`doctor.E006`) | this `siderite` binary was built without that backend's feature (`doctor.W003`) |
+| `client.sqlite3`, `client.psql`, `client.mysql` | | never: missing clients are `info`, only `dbshell` needs them |
+| `server.addr` | | the address is in use or cannot be bound (`doctor.W004`). Advisory: the port may change state before `run` |
+
+Tools are probed in the project directory (so `rust-toolchain.toml` applies) with a 20-second bound each, in parallel. URLs are never printed, only alias and scheme. The exit code is `1` when any check fails, else `0`; `--json` writes one envelope whose `data.checks` lists `{name, status, detail}` in the order above, with a diagnostic (code, hint) per warning or error.
 
 ## `showmigrations --json`
 

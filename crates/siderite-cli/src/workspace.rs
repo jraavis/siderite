@@ -21,6 +21,8 @@ pub(crate) struct Package {
     pub bins: Vec<String>,
     /// `default-run` of the package, when set.
     pub default_run: Option<String>,
+    /// `rust-version` of the package (resolved from the workspace).
+    pub rust_version: Option<String>,
 }
 
 impl Package {
@@ -118,12 +120,17 @@ fn package(item: &Value) -> Option<Package> {
         .get("default_run")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let rust_version = item
+        .get("rust_version")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Some(Package {
         name,
         manifest_path,
         uses_siderite,
         bins,
         default_run,
+        rust_version,
     })
 }
 

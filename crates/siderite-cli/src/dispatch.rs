@@ -1,6 +1,7 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
 use crate::args::{check_json_args, json_requested};
+use crate::doctor;
 use crate::error::CliError;
 use crate::openapi;
 use crate::project::{self, CARGO_COMMANDS, Missing, is_app_command};
@@ -67,6 +68,12 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
             ));
         }
         return scaffold::run(raw);
+    }
+    if command == "doctor" {
+        let rest = raw.iter().skip_while(|a| *a != "doctor").cloned();
+        let rest: Vec<String> = rest.collect();
+        let json = json_requested(raw);
+        return doctor::run(&rest, cwd.to_path_buf(), project, json);
     }
     if CARGO_COMMANDS.contains(&command) {
         let found = target::locate("cargo", cwd, &project, false)?;
@@ -174,6 +181,7 @@ siderite {} — FastAPI-style Rust web framework
 
 Create and run an app:
   new NAME                      Write a new API crate
+  doctor [--json]               Check the toolchain, project and config
   run [--addr ADDR]             Serve the app
   routes [--json]               List METHOD PATH operation_id
   check [--json]                Validate config, models, migrations and routes

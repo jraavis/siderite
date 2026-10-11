@@ -151,9 +151,24 @@ count as unset.
 for the `default` alias only, `DATABASE_URL`. With none of those, the
 command fails with a “no database” error naming the alias.
 
+## Doctor
+
+```bash
+siderite doctor          # or: siderite doctor --json
+```
+
+Checks, without building the app or touching a database: `rustc` and
+`cargo` are present and at least the Rust version siderite and your
+package need; `rustfmt` and `clippy` are installed; `siderite.toml` and
+`SIDERITE_*` variables load; each database alias uses a supported scheme
+that this `siderite` binary was built for; and whether the listen address
+is free (advisory). Missing `psql`/`mysql`/`sqlite3` clients are reported
+for information only. Every warning or error comes with a fix hint; the
+exit code is `1` when a check fails.
+
 ## JSON output
 
-`check`, `routes` and `showmigrations` accept `--json`, before or after the command
+`check`, `doctor`, `routes` and `showmigrations` accept `--json`, before or after the command
 (`siderite --json routes`, `siderite check --json`). Stdout then carries
 exactly one JSON value and a newline, a versioned envelope described by
 [`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):

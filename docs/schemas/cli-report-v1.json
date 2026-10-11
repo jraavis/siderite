@@ -60,6 +60,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "doctor" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/DoctorData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "models" } } },
       "then": {
         "properties": {
@@ -107,6 +117,24 @@
         },
         "applied": { "type": "integer", "minimum": 0 },
         "pending": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "DoctorData": {
+      "type": "object",
+      "required": ["checks"],
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status", "detail"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "status": { "enum": ["ok", "info", "warning", "error"] },
+              "detail": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "CheckSummary": {

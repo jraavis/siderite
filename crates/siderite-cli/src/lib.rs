@@ -19,6 +19,7 @@ pub mod check;
 pub mod connect;
 pub mod dbshell;
 mod dispatch;
+mod doctor;
 mod error;
 #[cfg(test)]
 mod fixtures;

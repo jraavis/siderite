@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite doctor [--json]`: offline checks of `rustc`/`cargo`
+  against siderite's and the project's `rust-version`, `rustfmt` and
+  `clippy`, configuration loading, database URL schemes against the
+  backends compiled into the binary, and (advisory) the listen address.
+  Missing native database clients are informational. Each problem has a
+  code and a fix hint; nothing connects, builds or writes.
 - **CLI:** `showmigrations --json`, in the app binary and the standalone
   binary: the selected alias, the URL source (never the URL), and every
   migration's `id` / `applied` flag in text order, from the same
