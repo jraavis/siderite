@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite generate ci` writes a GitHub Actions workflow running
+  `siderite verify` with the report kept as an artifact, plus an explicit
+  live job with database service containers (no secrets). The toolchain
+  and the CLI version are pinned from the project; existing workflows are
+  never overwritten, and `--update` only replaces a generated one.
 - **CLI:** `siderite package --release` builds a release directory for
   the host target with `--locked`: the binary, declared assets and
   migrations, a manifest with versions and SHA-256 checksums,

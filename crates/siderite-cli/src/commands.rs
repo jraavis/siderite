@@ -261,6 +261,17 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Package,
         mutates: &[Mutation::ProjectFiles],
         ..cmd(
+            "generate ci",
+            Group::App,
+            "generate ci [--update] [--dry-run]",
+            "Write a GitHub Actions verify workflow",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
             "generate model",
             Group::App,
             "generate model NAME [FIELD:TYPE]... [--table T] [--dry-run]",
