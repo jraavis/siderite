@@ -90,6 +90,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "explain" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/ExplainData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "verify" } } },
       "then": {
         "properties": {
@@ -245,6 +255,41 @@
               "excerpt": { "type": "array", "items": { "type": "string" } },
               "text": { "type": "string" },
               "truncated": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "ExplainData": {
+      "type": "object",
+      "required": ["siderite", "entries"],
+      "properties": {
+        "siderite": { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "source",
+              "title",
+              "since",
+              "cause",
+              "fix",
+              "verify",
+              "docs",
+              "url"
+            ],
+            "properties": {
+              "code": { "type": "string", "minLength": 1 },
+              "source": { "enum": ["siderite", "rustc", "clippy"] },
+              "title": { "type": "string" },
+              "since": { "type": ["string", "null"] },
+              "cause": { "type": "string" },
+              "fix": { "type": "string" },
+              "verify": { "type": "string" },
+              "docs": { "type": ["string", "null"] },
+              "url": { "type": ["string", "null"] }
             }
           }
         }

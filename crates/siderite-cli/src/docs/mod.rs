@@ -230,6 +230,13 @@ pub(crate) fn render(report: &Envelope<DocsData>) -> String {
     out
 }
 
+/// The ids of the packaged index, for checks of links into the docs.
+#[cfg(test)]
+pub(crate) fn packaged_ids() -> std::collections::HashSet<String> {
+    let index = index::packaged().unwrap_or_else(|e| panic!("{e}"));
+    index.entries.into_iter().map(|e| e.id).collect()
+}
+
 /// `siderite docs search` from `cwd`.
 ///
 /// Errors:

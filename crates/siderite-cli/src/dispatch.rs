@@ -80,6 +80,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "dev" {
         return crate::dev::run(raw, cwd, &project).await;
     }
+    if command == "explain" {
+        return crate::explain::run(raw);
+    }
     if command == "docs" {
         return crate::docs::run(raw, cwd);
     }

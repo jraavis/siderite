@@ -427,6 +427,17 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
         formats: TEXT_JSON,
         ..cmd(
+            "explain",
+            Group::Tool,
+            "explain CODE [--json] | explain --list [--json]",
+            "Explain a diagnostic code and how to fix it",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: TEXT_JSON,
+        ..cmd(
             "commands",
             Group::Tool,
             "commands [--json]",
