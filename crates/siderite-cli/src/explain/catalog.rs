@@ -23,6 +23,7 @@ pub(crate) struct Explanation {
 
 const CHECK: &str = "guides/production/cli#check";
 const CONFIG: &str = "guides/production/cli#configuration";
+const OPENAPI_DIFF: &str = "guides/production/cli#comparing-openapi-documents";
 const SEED: &str = "guides/production/cli#seed-datasets";
 const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
@@ -520,6 +521,33 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite openapi export",
         CHECK,
+    ),
+    entry(
+        "openapi.E002",
+        "Breaking API changes",
+        [
+            "`openapi diff` found changes that can break existing \
+             clients: removed operations or responses, newly required \
+             inputs, or narrower or changed schemas.",
+            "Keep the old contract (add, do not remove or require), or \
+             version the API and tell clients; each change names its \
+             JSON pointer.",
+        ],
+        "siderite openapi diff BASE CURRENT",
+        OPENAPI_DIFF,
+    ),
+    entry(
+        "openapi.E003",
+        "API changes not compared",
+        [
+            "`openapi diff` met something it does not compare: external \
+             references, composed schemas (oneOf, anyOf, allOf), security \
+             or callbacks. Unknown is treated as incompatible.",
+            "Review each listed change by hand; prefer local `#/` \
+             references so the comparison can follow them.",
+        ],
+        "siderite openapi diff BASE CURRENT",
+        OPENAPI_DIFF,
     ),
     entry(
         "routes.E001",

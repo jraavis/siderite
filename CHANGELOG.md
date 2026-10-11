@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite openapi diff BASE CURRENT [--json]` compares two
+  local OpenAPI documents for existing clients: breaking, unknown
+  (treated as incompatible) and additive changes, each with JSON pointers.
+  Only local `#/` references are followed; nothing is fetched. Exits `1`
+  for breaking or unknown changes.
 - **CLI:** `siderite generate test route|resource NAME ...` writes an
   integration test through `siderite-testkit`: status, content type,
   documentation, a create-then-fetch round trip and failure cases

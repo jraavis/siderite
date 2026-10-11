@@ -13,6 +13,8 @@ use crate::report::channel;
 use siderite_core::App;
 use std::path::{Path, PathBuf};
 
+pub(crate) mod diff;
+
 /// Parsed `openapi export` arguments.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Export {

@@ -180,7 +180,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
 
 ### Make changes and releases easier to review
 
-- [ ] **X16 — Compare exported OpenAPI contracts.**
+- [x] **X16 — Compare exported OpenAPI contracts.**
   Depends: C04. Scope: `openapi diff BASE CURRENT` for local JSON files.
   Done: report removed paths/operations, newly required inputs and changed
   response contracts with source pointers. Document supported schema cases;
