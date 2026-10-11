@@ -168,8 +168,12 @@ invalidation (see Status below).
 `CacheError::InvalidTtl`; TTLs round up to whole milliseconds (a 1 ns TTL
 lives 1 ms, 1.5 ms lives 2 ms) so entries never expire earlier than asked;
 an expired entry counts as absent; a losing creator leaves the winner's
-value and deadline untouched; exactly one concurrent creator wins.
-`MemoryCache` implements this under one lock acquisition.
+value and deadline untouched; exactly one concurrent creator wins. A TTL
+above `i64::MAX / 2` milliseconds is rejected with `InvalidTtl` (never
+clamped), so every backend agrees and Redis never sees a deadline that
+overflows its clock. `MemoryCache` implements this under one lock
+acquisition; `RedisCache` sends a single `SET key value NX PX ms` on the
+prefixed key, so a dropped future leaves either no key or an expiring one.
 
 ### Metadata resource bound
 
@@ -233,9 +237,9 @@ markers or to non-atomic emulation. Adapters opt in by implementing the
 method atomically (for Redis: a single `SET key value NX PX ms`).
 `Arc<T>` forwards it.
 
-Status: the contract, the trait method and `MemoryCache` are in place.
-The Redis adapter, the generation lifetime policy and the admission budget
-are tracked as roadmap tasks R03 to R05; until they land, `RouteCache`
+Status: the contract, the trait method, `MemoryCache` and `RedisCache`
+are in place. The generation lifetime policy and the admission budget
+are tracked as roadmap tasks R04 and R05; until they land, `RouteCache`
 still creates non-expiring markers via `set_if_absent`, and its
 invalidation writes a new non-expiring marker, so the metadata bound above
 is not yet enforced.

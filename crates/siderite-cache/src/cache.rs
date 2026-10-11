@@ -82,7 +82,8 @@ pub trait Cache: Send + Sync + 'static {
     ///     Whether this call created the entry.
     ///
     /// # Errors
-    /// [`CacheError::InvalidTtl`] for a zero or unrepresentable `ttl`,
+    /// [`CacheError::InvalidTtl`] for a zero `ttl` or one above the portable
+    /// limit (`i64::MAX / 2` milliseconds), never clamped,
     /// checked before the key is examined. [`CacheError::SizeLimit`] when
     /// the entry is refused by byte admission. [`CacheError::Unsupported`]
     /// from the default implementation: backends that cannot create and
@@ -153,21 +154,33 @@ impl<T: Cache + ?Sized> Cache for Arc<T> {
     }
 }
 
+/// Largest TTL, in milliseconds, accepted by `set_if_absent_with_ttl`.
+///
+/// Half of `i64::MAX`: Redis rejects `PX` values whose deadline (now plus
+/// the TTL) overflows a signed 64-bit millisecond clock, so the portable
+/// limit leaves room for any realistic clock value. Larger TTLs are
+/// rejected, never clamped.
+pub(crate) const MAX_TTL_MILLIS: u64 = (i64::MAX / 2) as u64;
+
 /// Round `ttl` up to whole milliseconds, the portable TTL granularity.
 ///
 /// # Errors
-/// [`CacheError::InvalidTtl`] for zero or when the millisecond count does
-/// not fit in `u64`.
+/// [`CacheError::InvalidTtl`] for zero or when the millisecond count
+/// exceeds [`MAX_TTL_MILLIS`].
 pub(crate) fn ttl_millis(ttl: Duration) -> Result<u64, CacheError> {
     if ttl.is_zero() {
         return Err(CacheError::InvalidTtl);
     }
     let whole = u64::try_from(ttl.as_millis()).map_err(|_| CacheError::InvalidTtl)?;
-    if ttl.subsec_nanos().is_multiple_of(1_000_000) {
-        Ok(whole)
+    let ms = if ttl.subsec_nanos().is_multiple_of(1_000_000) {
+        whole
     } else {
-        whole.checked_add(1).ok_or(CacheError::InvalidTtl)
+        whole.checked_add(1).ok_or(CacheError::InvalidTtl)?
+    };
+    if ms > MAX_TTL_MILLIS {
+        return Err(CacheError::InvalidTtl);
     }
+    Ok(ms)
 }
 
 /// JSON helpers implemented for every [`Cache`].
@@ -413,6 +426,10 @@ mod tests {
         assert_eq!(ttl_millis(Duration::from_micros(1001)).unwrap(), 2);
         assert_eq!(ttl_millis(Duration::new(2, 1)).unwrap(), 2001);
         assert!(ttl_millis(Duration::MAX).is_err());
+        let max = Duration::from_millis(MAX_TTL_MILLIS);
+        assert_eq!(ttl_millis(max).unwrap(), MAX_TTL_MILLIS);
+        assert!(ttl_millis(max + Duration::from_millis(1)).is_err());
+        assert!(ttl_millis(max + Duration::from_nanos(1)).is_err());
     }
 
     #[tokio::test]

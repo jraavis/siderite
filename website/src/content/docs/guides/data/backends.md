@@ -158,13 +158,14 @@ gates. This adapter is experimental and has not replaced the default driver.
 ## Redis
 
 `RedisStore` wraps a `ConnectionManager` with an optional key prefix: keys
-(`get`, `set` with TTL, `set_nx`, `del`, `exists`, `expire`, `ttl`,
+(`get`, `set` with TTL, `set_nx`, `set_nx_px`, `del`, `exists`, `expire`, `ttl`,
 `incr_by`), hashes, sets, `get_json` / `set_json`, and atomic `MULTI` /
 `EXEC` pipelines. It does not implement QuerySet traits;
 `BackendCapabilities::redis()` rejects every relational feature.
 
 - Values are UTF-8; TTLs are milliseconds (`PX` / `PEXPIRE`), rejected
-  below 1 ms. `set_nx` sets no TTL; `set` without a TTL clears an existing
+  below 1 ms. `set_nx` sets no TTL (`set_nx_px` creates with one in a single
+  `SET NX PX`); `set` without a TTL clears an existing
   one.
 - A command Redis rejects while queueing aborts the whole batch; a command
   failing during `EXEC` does not undo earlier ones.
