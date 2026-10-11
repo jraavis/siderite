@@ -90,6 +90,20 @@
       }
     },
     {
+      "if": {
+        "properties": {
+          "command": { "enum": ["config show", "config validate"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/ConfigData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "explain" } } },
       "then": {
         "properties": {
@@ -275,6 +289,35 @@
               "excerpt": { "type": "array", "items": { "type": "string" } },
               "text": { "type": "string" },
               "truncated": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "ConfigData": {
+      "type": "object",
+      "required": ["file", "file_exists", "entries"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "file_exists": { "type": "boolean" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "value", "source"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "value": {},
+              "source": {
+                "type": "object",
+                "required": ["kind", "detail"],
+                "properties": {
+                  "kind": {
+                    "enum": ["default", "file", "environment", "override"]
+                  },
+                  "detail": { "type": ["string", "null"] }
+                }
+              }
             }
           }
         }

@@ -115,7 +115,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   instructions; generated project passes verify. Keep the existing default
   template compatible. Additional templates must each pass the same checks.
 
-- [ ] **X07 — Explain effective configuration.**
+- [x] **X07 — Explain effective configuration.**
   Depends: C02, C06. Scope: `config show --redacted` and `config validate`.
   Done: display resolved non-secret values with their source/precedence;
   redact credentials and sensitive query parameters even on parsing errors.

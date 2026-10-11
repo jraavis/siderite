@@ -76,6 +76,10 @@ Database URLs, `cache.url` and `secret_key` are `Secret<String>`.
 - There is no `Serialize` impl, so a secret cannot be written back out by accident.
 - `ConfigError` messages never include the value of a secret-looking key (`url`, `password`, `token`, `secret_key`, `api_key`, ...).
 
+## Explaining the configuration
+
+`ConfigBuilder::explain()` returns every resolved value as a `ConfigEntry` (`key`, redacted `value`, `source`), sorted by key, from the same merged sources as `build()`. A source is a compiled default, a file (with its path), an environment variable (with its name, `SIDERITE_SERVER__ADDR` or an alias such as `DATABASE_URL`) or a programmatic override. `siderite config show` prints it; `siderite config validate` loads the settings and checks the database URLs.
+
 ## Tracing and the CLI
 
 - `init_tracing(&settings.log)` installs a subscriber. `RUST_LOG` overrides

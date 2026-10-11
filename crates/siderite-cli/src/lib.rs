@@ -20,6 +20,7 @@ mod cargo_msg;
 pub mod check;
 pub mod commands;
 mod completions;
+mod config;
 pub mod connect;
 pub mod dbshell;
 mod deps;

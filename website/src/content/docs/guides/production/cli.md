@@ -268,6 +268,22 @@ are never applied. `--json` writes one `verify` envelope; compiler errors
 and Clippy findings appear there with their codes, file spans and rendered
 explanations.
 
+## Configuration
+
+```bash
+siderite config show             # every value and its source, redacted
+siderite config validate --json  # load it and check database URLs
+```
+
+Both read what `siderite_config::load` reads from the package
+directory: `siderite.toml`, `SIDERITE_*` variables and the `DATABASE_URL`
+and `ADDR` aliases. `show` prints each resolved key with the source that
+won: a default, the file, the variable's name or an override. Secrets are
+always redacted (`--redacted` only says so): secret keys show `***`, URLs
+lose their passwords. `validate` exits `1` when the settings do not load
+(`config.E004`) or a database URL is unusable (`config.E002`,
+`config.E003`).
+
 ## Docs search
 
 ```bash

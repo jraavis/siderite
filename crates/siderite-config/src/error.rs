@@ -33,7 +33,8 @@ impl From<figment::Error> for ConfigError {
             .map(format_figment_error)
             .collect::<Vec<_>>()
             .join("; ");
-        Self::Extract(message)
+        // Parse errors can quote the file; hide any credential in them.
+        Self::Extract(crate::redact::redact_text(&message))
     }
 }
 
