@@ -1,6 +1,8 @@
 //! Single-page application mounts: files, the navigation fallback and
 //! what never falls back.
 
+#![allow(clippy::unwrap_used)]
+
 use ::http::{Method, Request, header};
 use siderite_core::*;
 use siderite_testkit::{TestClient, TestResponse};
