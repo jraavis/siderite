@@ -216,7 +216,7 @@ pub const COMMANDS: &[Command] = &[
         ..cmd(
             "new",
             Group::App,
-            "new NAME [--database ENGINE] [--path DIR] [--dry-run]",
+            "new NAME [--database E] [--template T] [--path DIR] [--dry-run]",
             "Write a new API crate",
         )
     },

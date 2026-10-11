@@ -48,6 +48,8 @@ const VALUED: &[&str] = &[
     "--task",
     "--budget",
     "--include",
+    "--template",
+    "--table",
 ];
 
 /// Print the script for `shell` (`raw` starts at `completions`).

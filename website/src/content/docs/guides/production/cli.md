@@ -7,7 +7,7 @@ Install the CLI, then use it instead of typing `cargo run -- …`:
 
 ```bash
 cargo install --path crates/siderite-cli
-siderite new myapp
+siderite new myapp                 # or: siderite new myapp --template api
 cd myapp
 siderite run
 ```

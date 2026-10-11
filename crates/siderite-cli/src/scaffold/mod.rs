@@ -1,8 +1,10 @@
 //! `siderite new`: write a small API crate.
 
 use crate::error::CliError;
-use crate::generate::{Plan, ident, preview};
+use crate::generate::{Plan, ident, preview, rustfmt};
 use std::path::{Path, PathBuf};
+
+mod api;
 
 const GIT_DEP: &str = r#"git = "https://github.com/jraavis/siderite""#;
 
@@ -57,7 +59,52 @@ impl Engine {
     }
 }
 
-/// `siderite new NAME [--database ENGINE] [--path DIR] [--dry-run]`.
+/// A project template.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Template {
+    /// One route; the original layout.
+    Default,
+    /// A tested, documented API with a commented configuration.
+    Api,
+}
+
+impl Template {
+    fn parse(value: &str) -> Result<Self, CliError> {
+        match value {
+            "default" => Ok(Self::Default),
+            "api" => Ok(Self::Api),
+            other => Err(CliError::usage(format!(
+                "unknown --template `{other}` (default or api)"
+            ))),
+        }
+    }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Api => "api",
+        }
+    }
+
+    /// Bumped whenever the template's files change.
+    const fn version(self) -> u32 {
+        match self {
+            Self::Default | Self::Api => 1,
+        }
+    }
+}
+
+/// Parsed `new` arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NewOptions {
+    name: String,
+    engine: Engine,
+    path: Option<PathBuf>,
+    template: Template,
+}
+
+/// `siderite new NAME [--database ENGINE] [--template T] [--path DIR]
+/// [--dry-run]`.
 pub fn run(args: &[String]) -> Result<u8, CliError> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         print_help();
@@ -66,11 +113,12 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
     let dry_run = args.iter().any(|a| a == "--dry-run");
     let kept = args.iter().filter(|a| *a != "--dry-run").cloned();
     let args: Vec<String> = kept.collect();
-    let (name, engine, path) = parse(&args)?;
+    let options = parse(&args)?;
+    let name = &options.name;
     let dest = std::env::current_dir()
         .map_err(|err| io_err("read cwd", err))?
-        .join(&name);
-    let plan = project_plan(&dest, &name, engine, path.as_deref())?;
+        .join(name);
+    let plan = project_plan(&dest, &options)?;
     if dry_run {
         print!("{}", preview(&plan.check()?));
         return Ok(0);
@@ -82,10 +130,11 @@ pub fn run(args: &[String]) -> Result<u8, CliError> {
     Ok(0)
 }
 
-fn parse(args: &[String]) -> Result<(String, Engine, Option<PathBuf>), CliError> {
+fn parse(args: &[String]) -> Result<NewOptions, CliError> {
     let mut name = None;
     let mut engine = Engine::Sqlite;
     let mut path = None;
+    let mut template = Template::Default;
     let mut i = 0;
     // `args` starts at `new`.
     if args.first().map(String::as_str) == Some("new") {
@@ -94,30 +143,16 @@ fn parse(args: &[String]) -> Result<(String, Engine, Option<PathBuf>), CliError>
     while i < args.len() {
         let arg = &args[i];
         i += 1;
-        if arg == "--database" || arg.starts_with("--database=") {
-            let value = if let Some(v) = arg.strip_prefix("--database=") {
-                v.to_owned()
-            } else {
-                let v = args
-                    .get(i)
-                    .ok_or_else(|| CliError::usage("--database requires a value"))?;
-                i += 1;
-                v.clone()
-            };
-            engine = Engine::parse(&value)?;
+        if let Some(v) = flag_value(arg, "--database", args, &mut i)? {
+            engine = Engine::parse(&v)?;
             continue;
         }
-        if arg == "--path" || arg.starts_with("--path=") {
-            let value = if let Some(v) = arg.strip_prefix("--path=") {
-                v.to_owned()
-            } else {
-                let v = args
-                    .get(i)
-                    .ok_or_else(|| CliError::usage("--path requires a value"))?;
-                i += 1;
-                v.clone()
-            };
-            path = Some(PathBuf::from(value));
+        if let Some(v) = flag_value(arg, "--template", args, &mut i)? {
+            template = Template::parse(&v)?;
+            continue;
+        }
+        if let Some(v) = flag_value(arg, "--path", args, &mut i)? {
+            path = Some(PathBuf::from(v));
             continue;
         }
         if arg.starts_with('-') {
@@ -130,17 +165,38 @@ fn parse(args: &[String]) -> Result<(String, Engine, Option<PathBuf>), CliError>
     }
     let name = name.ok_or_else(|| CliError::usage("usage: siderite new NAME"))?;
     ident::package_name(&name)?;
-    Ok((name, engine, path))
+    Ok(NewOptions {
+        name,
+        engine,
+        path,
+        template,
+    })
+}
+
+/// The value of `flag` when `arg` is `flag VALUE` (the value is the next
+/// argument, at `i`) or `flag=VALUE`; `None` for any other argument.
+fn flag_value(
+    arg: &str,
+    flag: &str,
+    args: &[String],
+    i: &mut usize,
+) -> Result<Option<String>, CliError> {
+    let inline = arg.strip_prefix(flag).and_then(|r| r.strip_prefix('='));
+    if let Some(value) = inline {
+        return Ok(Some(value.to_owned()));
+    }
+    if arg != flag {
+        return Ok(None);
+    }
+    let missing = || CliError::usage(format!("{flag} requires a value"));
+    let value = args.get(*i).ok_or_else(missing)?;
+    *i += 1;
+    Ok(Some(value.clone()))
 }
 
 /// The files of a new project in `dest`, which must not exist or be
 /// empty.
-fn project_plan(
-    dest: &Path,
-    name: &str,
-    engine: Engine,
-    siderite_root: Option<&Path>,
-) -> Result<Plan, CliError> {
+fn project_plan(dest: &Path, options: &NewOptions) -> Result<Plan, CliError> {
     if dest.exists() {
         let empty = dest
             .read_dir()
@@ -153,23 +209,61 @@ fn project_plan(
             )));
         }
     }
-    let deps = Deps::new(engine, siderite_root)?;
+    let NewOptions {
+        name,
+        engine,
+        template,
+        ..
+    } = options;
+    let deps = Deps::new(*engine, options.path.as_deref())?;
     let ident = name.replace('-', "_");
     let url = engine.url(name);
-    let mut plan = Plan::new(dest);
-    let files = [
-        ("Cargo.toml", cargo_toml(name, &deps)),
-        ("siderite.toml", siderite_toml(name, &url)),
-        ("src/lib.rs", lib_rs(&ident)),
+    let mut files = vec![
+        ("Cargo.toml", cargo_toml(name, &deps, *template)),
         ("src/main.rs", main_rs(&ident)),
         ("migrations/.gitkeep", String::new()),
         (".gitignore", "/target\n*.db\n.env\n".to_owned()),
-        ("README.md", readme(name)),
+        (".siderite/template.toml", manifest(*template)),
     ];
+    match template {
+        Template::Default => files.extend([
+            ("siderite.toml", siderite_toml(name, &url)),
+            ("src/lib.rs", lib_rs(&ident)),
+            ("README.md", readme(name)),
+        ]),
+        Template::Api => files.extend([
+            ("siderite.toml", api::siderite_toml(name, &url)),
+            ("src/lib.rs", api::lib_rs(&ident)),
+            ("tests/api.rs", api::tests_rs(&ident)),
+            ("README.md", api::readme(name)),
+        ]),
+    }
+    let mut plan = Plan::new(dest);
     for (path, contents) in files {
+        // Generated Rust matches `cargo fmt`, so `verify` passes.
+        let contents = if path.ends_with(".rs") {
+            rustfmt(&contents)
+        } else {
+            contents
+        };
         plan.add(path, contents)?;
     }
     Ok(plan)
+}
+
+/// `.siderite/template.toml`: where the project started, for upgrades.
+fn manifest(template: Template) -> String {
+    let (name, version) = (template.name(), template.version());
+    let siderite = env!("CARGO_PKG_VERSION");
+    format!(
+        "\
+# Written by `siderite new`: the template this project started from.
+[template]
+name = \"{name}\"
+version = {version}
+siderite = \"{siderite}\"
+"
+    )
 }
 
 /// Where the new project gets its siderite crates from.
@@ -177,6 +271,7 @@ struct Deps {
     siderite: String,
     cli: String,
     backends: String,
+    testkit: String,
 }
 
 impl Deps {
@@ -186,6 +281,7 @@ impl Deps {
                 siderite: GIT_DEP.to_owned(),
                 cli: format!("{GIT_DEP}{}", engine.cli_features()),
                 backends: engine.backends_dep(GIT_DEP),
+                testkit: GIT_DEP.to_owned(),
             });
         };
         let root = root
@@ -199,16 +295,25 @@ impl Deps {
             siderite: crate_path("siderite"),
             cli: crate_path("siderite-cli") + engine.cli_features(),
             backends: engine.backends_dep(&crate_path("siderite-backends")),
+            testkit: crate_path("siderite-testkit"),
         })
     }
 }
 
-fn cargo_toml(name: &str, deps: &Deps) -> String {
+fn cargo_toml(name: &str, deps: &Deps, template: Template) -> String {
     let Deps {
         siderite,
         cli,
         backends,
+        testkit,
     } = deps;
+    let dev = match template {
+        Template::Default => String::new(),
+        Template::Api => format!(
+            "\n[dev-dependencies]\nsiderite-testkit = {{ {testkit} }}\n\
+             serde_json = \"1\"\n"
+        ),
+    };
     format!(
         "\
 [package]
@@ -221,7 +326,7 @@ siderite = {{ {siderite} }}
 siderite-cli = {{ {cli} }}
 {backends}tokio = {{ version = \"1\", features = [\"macros\", \"rt-multi-thread\"] }}
 serde = {{ version = \"1\", features = [\"derive\"] }}
-"
+{dev}"
     )
 }
 
@@ -317,6 +422,8 @@ Write a new API crate in NAME/.
 
 Options:
   --database sqlite|postgres|mysql   Default database (sqlite)
+  --template default|api             Project template (default); api adds
+                                     a tested, documented endpoint
   --path DIR                         Path to a local siderite checkout
   --dry-run                          Show the files without writing them
   --help                             Show this help
@@ -336,18 +443,23 @@ mod tests {
 
     #[test]
     fn parses_name_and_flags() {
-        let (name, engine, path) = parse(&args(&[
+        let options = parse(&args(&[
             "new",
             "demo",
             "--database",
             "postgres",
             "--path",
             "/tmp/s",
+            "--template=api",
         ]))
         .unwrap();
-        assert_eq!(name, "demo");
-        assert_eq!(engine, Engine::Postgres);
-        assert_eq!(path, Some(PathBuf::from("/tmp/s")));
+        assert_eq!(options.name, "demo");
+        assert_eq!(options.engine, Engine::Postgres);
+        assert_eq!(options.path, Some(PathBuf::from("/tmp/s")));
+        assert_eq!(options.template, Template::Api);
+        let default = parse(&args(&["new", "demo"])).unwrap();
+        assert_eq!(default.template, Template::Default);
+        assert!(parse(&args(&["new", "demo", "--template", "spa"])).is_err());
     }
 
     #[test]
@@ -374,8 +486,13 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("demo_app");
-        let sqlite = Engine::Sqlite;
-        let plan = project_plan(&dest, "demo_app", sqlite, Some(&root));
+        let options = NewOptions {
+            name: "demo_app".to_owned(),
+            engine: Engine::Sqlite,
+            path: Some(root.clone()),
+            template: Template::Default,
+        };
+        let plan = project_plan(&dest, &options);
         let plan = plan.unwrap();
         let text = preview(&plan.check().unwrap());
         assert!(text.contains("create src/main.rs"), "{text}");
@@ -383,7 +500,7 @@ mod tests {
         plan.apply().unwrap();
         // Applying again changes nothing; edited files are never replaced.
         std::fs::write(dest.join("README.md"), "mine\n").unwrap();
-        let again = project_plan(&dest, "demo_app", sqlite, Some(&root));
+        let again = project_plan(&dest, &options);
         assert!(again.is_err(), "a non-empty directory is refused");
         let cargo = std::fs::read_to_string(dir.join("demo_app/Cargo.toml")).unwrap();
         assert!(cargo.contains("name = \"demo_app\""));
