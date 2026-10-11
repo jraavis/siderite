@@ -86,6 +86,13 @@ pub(crate) struct Span {
     pub label: Option<String>,
 }
 
+impl Span {
+    /// `file:line:column` of the start.
+    pub(crate) fn position(&self) -> String {
+        format!("{}:{}:{}", self.file, self.line_start, self.column_start)
+    }
+}
+
 /// `{"code": "E0308", "explanation": ...}` to `E0308`.
 fn code<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     #[derive(Deserialize)]

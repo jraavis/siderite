@@ -92,11 +92,16 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }
-    if command == "verify" {
+    let validate = command == "ai" && raw.iter().any(|a| a == "validate");
+    if command == "verify" || validate {
         let app = target::locate("cargo", cwd, &project, true)?;
         let missing = || CliError::usage(NEEDS_APP);
         let app = app.ok_or_else(missing)?;
-        return crate::verify::run(raw, &app.dir, app.bin.as_deref());
+        let (dir, bin) = (&app.dir, app.bin.as_deref());
+        if validate {
+            return crate::ai::validate::run(raw, dir, bin);
+        }
+        return crate::verify::run(raw, dir, bin);
     }
     if let Some(pass) = &cargo {
         pass.check_bin(project.bin.as_deref())?;
@@ -128,8 +133,8 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     Ok(code.0)
 }
 
-/// `verify` outside an application.
-const NEEDS_APP: &str = "`verify` needs an application; cd into one";
+/// `verify` or `ai validate` outside an application.
+const NEEDS_APP: &str = "this command needs an application; cd into one";
 
 /// `siderite commands [--json]`.
 fn list_commands(raw: &[String]) -> Result<u8, CliError> {

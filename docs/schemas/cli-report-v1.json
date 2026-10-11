@@ -110,6 +110,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "ai validate" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/ValidateData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "verify" } } },
       "then": {
         "properties": {
@@ -277,32 +287,33 @@
         "siderite": { "type": "string", "minLength": 1 },
         "entries": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "code",
-              "source",
-              "title",
-              "since",
-              "cause",
-              "fix",
-              "verify",
-              "docs",
-              "url"
-            ],
-            "properties": {
-              "code": { "type": "string", "minLength": 1 },
-              "source": { "enum": ["siderite", "rustc", "clippy"] },
-              "title": { "type": "string" },
-              "since": { "type": ["string", "null"] },
-              "cause": { "type": "string" },
-              "fix": { "type": "string" },
-              "verify": { "type": "string" },
-              "docs": { "type": ["string", "null"] },
-              "url": { "type": ["string", "null"] }
-            }
-          }
+          "items": { "$ref": "#/$defs/ExplainEntry" }
         }
+      }
+    },
+    "ExplainEntry": {
+      "type": "object",
+      "required": [
+        "code",
+        "source",
+        "title",
+        "since",
+        "cause",
+        "fix",
+        "verify",
+        "docs",
+        "url"
+      ],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["siderite", "rustc", "clippy"] },
+        "title": { "type": "string" },
+        "since": { "type": ["string", "null"] },
+        "cause": { "type": "string" },
+        "fix": { "type": "string" },
+        "verify": { "type": "string" },
+        "docs": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] }
       }
     },
     "TaskContext": {
@@ -370,6 +381,66 @@
         "markdown": { "type": "string" }
       }
     },
+    "ValidateData": {
+      "type": "object",
+      "required": [
+        "profile",
+        "steps",
+        "findings",
+        "omitted_findings",
+        "commands",
+        "limits"
+      ],
+      "properties": {
+        "profile": { "enum": ["offline", "live"] },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status", "command", "duration_ms"],
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "enum": ["passed", "failed", "skipped"] },
+              "command": { "type": "string" },
+              "duration_ms": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "step",
+              "level",
+              "code",
+              "message",
+              "location",
+              "explanation",
+              "reproduce"
+            ],
+            "properties": {
+              "step": { "type": "string" },
+              "level": { "enum": ["error", "warning"] },
+              "code": { "type": ["string", "null"] },
+              "message": { "type": "string" },
+              "location": { "type": ["string", "null"] },
+              "explanation": {
+                "anyOf": [
+                  { "$ref": "#/$defs/ExplainEntry" },
+                  { "type": "null" }
+                ]
+              },
+              "reproduce": { "type": "string" }
+            }
+          }
+        },
+        "omitted_findings": { "type": "integer", "minimum": 0 },
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "limits": { "type": "string" }
+      }
+    },
     "VerifyData": {
       "type": "object",
       "required": [
@@ -394,7 +465,8 @@
               "exit_code",
               "output",
               "diagnostics",
-              "omitted_diagnostics"
+              "omitted_diagnostics",
+              "framework_diagnostics"
             ],
             "properties": {
               "name": {
@@ -410,7 +482,12 @@
                 "maxItems": 50,
                 "items": { "$ref": "#/$defs/CompilerDiagnostic" }
               },
-              "omitted_diagnostics": { "type": "integer", "minimum": 0 }
+              "omitted_diagnostics": { "type": "integer", "minimum": 0 },
+              "framework_diagnostics": {
+                "type": "array",
+                "maxItems": 50,
+                "items": { "$ref": "#/$defs/Diagnostic" }
+              }
             }
           }
         }

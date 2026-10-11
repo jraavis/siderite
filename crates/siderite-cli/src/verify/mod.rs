@@ -70,6 +70,8 @@ pub(crate) struct Step {
     pub diagnostics: Vec<CompilerDiagnostic>,
     /// Diagnostics left out by that bound.
     pub omitted_diagnostics: usize,
+    /// The framework check's own diagnostics (`check` step only).
+    pub framework_diagnostics: Vec<Diagnostic>,
 }
 
 /// The `data` of a `verify` envelope.
@@ -235,6 +237,7 @@ fn skipped(name: &'static str, command: String) -> Step {
         output: Some("skipped: the build failed".to_owned()),
         diagnostics: Vec::new(),
         omitted_diagnostics: 0,
+        framework_diagnostics: Vec::new(),
     }
 }
 
@@ -276,13 +279,19 @@ fn run_step(dir: &Path, plan: &Plan, shown: String) -> Result<Step, CliError> {
             (None, text(spawn_error(what, &err).to_string()))
         }
     };
-    // A failed framework check is explained by its report.
-    if code != Some(0)
-        && let Some(found) = report.as_ref().and_then(|r| r.read(true))
-    {
-        captured.text = found;
+    // The framework check reports through its envelope.
+    if let Some(found) = report.as_ref().and_then(|r| r.read(true)) {
+        captured.framework = framework(&found);
     }
     Ok(finish(pending, code, captured))
+}
+
+/// The diagnostics of a `check` envelope, bounded like compiler ones.
+fn framework(report: &str) -> Vec<Diagnostic> {
+    let parsed = serde_json::from_str::<Envelope<serde_json::Value>>(report);
+    let mut found = parsed.map(|e| e.diagnostics).unwrap_or_default();
+    found.truncate(capture::MAX_DIAGNOSTICS);
+    found
 }
 
 /// The error for a `fmt` or `lint` step whose rustup component is
@@ -325,6 +334,7 @@ fn finish(pending: Pending, code: Option<i32>, out: Captured) -> Step {
         output,
         diagnostics: out.diagnostics,
         omitted_diagnostics: out.omitted,
+        framework_diagnostics: out.framework,
     }
 }
 
@@ -362,9 +372,15 @@ pub(crate) fn render(report: &Envelope<VerifyData>) -> String {
     out
 }
 
-/// A failed step's error diagnostics as rustc renders them, then the
-/// rest of its output, indented.
+/// A failed step's error diagnostics as rustc renders them, the
+/// framework check's findings, then the rest of its output, indented.
 fn failure_text(out: &mut String, step: &Step) {
+    for d in &step.framework_diagnostics {
+        let level = d.severity().as_str();
+        let at = d.location().map(|l| format!(" ({l})")).unwrap_or_default();
+        let (code, message) = (d.code(), d.message());
+        let _ = writeln!(out, "    {level}[{code}]{at}: {message}");
+    }
     let errors = step.diagnostics.iter().filter(|d| d.level == "error");
     let rendered = errors.filter_map(|d| d.rendered.as_deref());
     let output = step.output.as_deref().into_iter();

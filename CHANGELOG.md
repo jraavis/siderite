@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite ai validate [--json] [--live]` reports the
+  `verify` run as bounded findings with locations, `explain` fixes,
+  documentation links and reproduce commands; it applies no fixes and
+  states that passing is not proof of correctness. `verify`'s `check`
+  step now carries the framework diagnostics (`framework_diagnostics`).
 - **CLI:** `siderite ai context --task TEXT [--budget BYTES]
   [--include PATH]...` selects the matching models, routes, docs sections
   and compiled examples, plus explicitly included project files (inside
