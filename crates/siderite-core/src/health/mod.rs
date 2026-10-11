@@ -1,4 +1,6 @@
-//! Opt-in process liveness: `App::routes([liveness("/livez")])`.
+//! Opt-in health routes: process liveness
+//! (`App::routes([liveness("/livez")])`) and readiness with bounded
+//! application checks ([`readiness`]).
 //!
 //! The route answers `200` with `{"status":"alive"}` and
 //! `Cache-Control: no-store` whenever the server can answer at all, in
@@ -76,5 +78,12 @@ pub fn liveness(path: &'static str) -> Route {
     Route::new(path, liveness_router())
 }
 
+mod ready;
+
+pub use ready::{CheckError, CheckFuture, CheckStatus, ReadyReport};
+pub use ready::{ReadinessChecks, readiness, readiness_router, sql_check};
+
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_ready;
