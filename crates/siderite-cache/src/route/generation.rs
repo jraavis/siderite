@@ -11,17 +11,16 @@
 //! 2. A representation key embeds its generation, so a delayed fill that
 //!    finishes after rotation lands under a key no reader will compute.
 //!
-//! Target state (roadmap R04; not yet enforced by this module, which still
-//! creates non-expiring markers through `set_if_absent`):
-//!
 //! 3. A representation's TTL is clamped to `min(response ttl,
 //!    generation_ttl)`. A representation may outlive its marker by at most
 //!    `generation_ttl`, but it is unreachable: a recreated marker carries a
 //!    fresh token (invariant 1), so no reader computes the old key.
 //! 4. Marker creation goes through atomic expiring creation
 //!    (`set_if_absent_with_ttl`); a backend without it makes the layer
-//!    bypass storage rather than emulate it.
-//! 5. Invalidation deletes the marker instead of writing a new one. A missing
+//!    bypass storage rather than emulate it. The first `Unsupported` is
+//!    remembered so later requests skip the backend entirely.
+//! 5. Markers are finite: they carry `generation_ttl` (default one hour).
+//! 6. Invalidation deletes the marker instead of writing a new one. A missing
 //!    marker yields a fresh random token (invariant 1), so deletion rotates
 //!    the generation and creates no metadata outside the admission budget.
 
@@ -29,6 +28,8 @@ use super::{Policy, cache_key, push_part};
 use crate::{Cache, CacheError};
 use http::Method;
 use siderite_core::Request;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use uuid::Uuid;
 
 type Stamp = Result<Uuid, CacheError>;
@@ -63,16 +64,33 @@ pub(super) fn representation_key(
     key
 }
 
-pub(super) async fn current<C: Cache>(cache: &C, key: &str) -> Stamp {
+/// Read the marker, creating it with `ttl` when absent.
+///
+/// The hit path is one `get`. Creation uses atomic expiring creation only;
+/// when the backend reports `Unsupported`, `supported` is cleared so callers
+/// can bypass without probing again.
+pub(super) async fn current<C: Cache>(
+    cache: &C,
+    key: &str,
+    ttl: Duration,
+    supported: &AtomicBool,
+) -> Stamp {
     if let Some(value) = cache.get(key).await? {
         return decode(&value);
     }
     let candidate = Uuid::new_v4();
-    if cache
-        .set_if_absent(key, candidate.as_bytes().to_vec())
-        .await?
-    {
-        return Ok(candidate);
+    let created = cache
+        .set_if_absent_with_ttl(key, candidate.as_bytes().to_vec(), ttl)
+        .await;
+    match created {
+        Ok(true) => return Ok(candidate),
+        Ok(false) => {}
+        Err(error) => {
+            if matches!(error, CacheError::Unsupported { .. }) {
+                supported.store(false, Ordering::Release);
+            }
+            return Err(error);
+        }
     }
     match cache.get(key).await? {
         Some(value) => decode(&value),
@@ -85,10 +103,9 @@ fn decode(value: &[u8]) -> Stamp {
     Uuid::from_slice(value).map_err(|_| CacheError::Backend(reason.into()))
 }
 
+/// Rotate by deleting the marker; a missing marker draws a fresh token.
 pub(super) async fn invalidate<C: Cache>(cache: &C, key: &str) -> Outcome {
-    cache
-        .set(key, Uuid::new_v4().as_bytes().to_vec(), None)
-        .await
+    cache.delete(key).await.map(drop)
 }
 
 pub(super) fn unsafe_method(method: &Method) -> bool {
@@ -108,6 +125,8 @@ mod tests {
 
     type TestResult = Result<(), CacheError>;
     const MARKER: &str = "route-v2-target:test";
+    const TTL: Duration = Duration::from_secs(60);
+    static SUPPORTED: AtomicBool = AtomicBool::new(true);
 
     #[tokio::test]
     async fn expired_marker_yields_a_fresh_token() -> TestResult {
@@ -115,23 +134,23 @@ mod tests {
         let ttl = Some(Duration::from_millis(5));
         let first = Uuid::new_v4();
         cache.set(MARKER, first.as_bytes().to_vec(), ttl).await?;
-        assert_eq!(current(&cache, MARKER).await?, first);
+        assert_eq!(current(&cache, MARKER, TTL, &SUPPORTED).await?, first);
         tokio::time::sleep(Duration::from_millis(30)).await;
-        let second = current(&cache, MARKER).await?;
+        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         assert_ne!(second, first);
-        assert_eq!(current(&cache, MARKER).await?, second);
+        assert_eq!(current(&cache, MARKER, TTL, &SUPPORTED).await?, second);
         Ok(())
     }
 
     #[tokio::test]
     async fn evicted_marker_yields_a_fresh_token() -> TestResult {
         let cache = MemoryCache::new(1);
-        let first = current(&cache, MARKER).await?;
+        let first = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         cache.set("other", vec![1], None).await?;
-        let second = current(&cache, MARKER).await?;
+        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         assert_ne!(second, first);
         cache.delete(MARKER).await?;
-        let third = current(&cache, MARKER).await?;
+        let third = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         assert_ne!(third, second);
         assert_ne!(third, first);
         Ok(())
@@ -140,10 +159,26 @@ mod tests {
     #[tokio::test]
     async fn invalidation_rotates_to_a_fresh_token() -> TestResult {
         let cache = MemoryCache::new(8);
-        let first = current(&cache, MARKER).await?;
+        let first = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         invalidate(&cache, MARKER).await?;
-        let second = current(&cache, MARKER).await?;
+        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
         assert_ne!(first, second);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn markers_expire_and_invalidation_deletes() -> TestResult {
+        let cache = MemoryCache::new(8);
+        let short = Duration::from_millis(20);
+        let first = current(&cache, MARKER, short, &SUPPORTED).await?;
+        assert!(cache.get(MARKER).await?.is_some());
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert_eq!(cache.get(MARKER).await?, None, "marker is finite");
+        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        assert_ne!(first, second);
+        invalidate(&cache, MARKER).await?;
+        assert_eq!(cache.get(MARKER).await?, None, "no marker is written");
+        invalidate(&cache, MARKER).await?;
         Ok(())
     }
 
@@ -159,7 +194,7 @@ mod tests {
         let req = request().map_err(|e| CacheError::Backend(e.to_string()))?;
         let target = target(&req, &policy, "http");
         for rotate in [Rotation::Invalidate, Rotation::Evict] {
-            let old = current(cache.as_ref(), &target).await?;
+            let old = current(cache.as_ref(), &target, TTL, &SUPPORTED).await?;
             let old_key = representation_key(&req, &policy, "http", old);
             // The rotation happens while the origin read is still pending.
             match rotate {
@@ -172,7 +207,7 @@ mod tests {
             }
             // The delayed fill now lands under the old generation key.
             cache.set(&old_key, b"old".to_vec(), None).await?;
-            let new = current(cache.as_ref(), &target).await?;
+            let new = current(cache.as_ref(), &target, TTL, &SUPPORTED).await?;
             assert_ne!(new, old, "rotation must not reuse the old token");
             let new_key = representation_key(&req, &policy, "http", new);
             assert_ne!(new_key, old_key);

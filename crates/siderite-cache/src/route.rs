@@ -29,6 +29,9 @@ const MISS: HeaderValue = HeaderValue::from_static("miss");
 /// Largest body stored by default (1 MiB).
 pub const DEFAULT_MAX_BODY_BYTES: u64 = 1024 * 1024;
 
+/// Default lifetime of a target's generation marker (one hour).
+pub const DEFAULT_GENERATION_TTL: Duration = Duration::from_secs(3600);
+
 /// Request headers that are part of the cache key; a response may `Vary` on
 /// these and still be stored.
 const KEYED_HEADERS: [HeaderName; 2] = [ACCEPT, ACCEPT_ENCODING];
@@ -132,6 +135,8 @@ pub struct RouteCache<C> {
     max_key: usize,
     max_headers: usize,
     max_encoded: usize,
+    generation_ttl: Duration,
+    marker_support: Arc<AtomicBool>,
 }
 
 impl<C: Cache> RouteCache<C> {
@@ -149,6 +154,8 @@ impl<C: Cache> RouteCache<C> {
             max_key: 4096,
             max_headers: 8192,
             max_encoded: 2 * 1024 * 1024,
+            generation_ttl: DEFAULT_GENERATION_TTL,
+            marker_support: Arc::new(AtomicBool::new(true)),
             bypass: Arc::new(vec![
                 AUTHORIZATION,
                 PROXY_AUTHORIZATION,
@@ -202,6 +209,29 @@ impl<C: Cache> RouteCache<C> {
         settings
     }
 
+    /// Set the lifetime of per-target generation markers.
+    ///
+    /// Markers are created with this expiry (default
+    /// [`DEFAULT_GENERATION_TTL`], one hour) and stored representations
+    /// never outlive it: a representation's TTL is clamped to
+    /// `min(response ttl, generation_ttl)`. When a marker expires, the next
+    /// request draws a fresh random generation, so earlier or in-flight
+    /// fills become unreachable and read as safe misses.
+    ///
+    /// Args:
+    ///     ttl: Marker lifetime. Zero or above the backend's portable
+    ///         limit is rejected by the backend, so every request bypasses
+    ///         the cache (`x-cache: miss`).
+    ///
+    /// Returns:
+    ///     Configured layer. A custom [`Cache`] without
+    ///     `set_if_absent_with_ttl` makes the layer bypass storage.
+    #[must_use]
+    pub fn generation_ttl(mut self, ttl: Duration) -> Self {
+        self.generation_ttl = ttl;
+        self
+    }
+
     /// Invalidate every cached representation of one related target URI.
     ///
     /// Args:
@@ -241,6 +271,8 @@ impl<C: Cache> RouteCache<C> {
             max_key: self.max_key,
             max_headers: self.max_headers,
             max_encoded: self.max_encoded,
+            generation_ttl: self.generation_ttl,
+            marker_support: Arc::clone(&self.marker_support),
         }
     }
 
@@ -281,6 +313,8 @@ struct Policy {
     max_key: usize,
     max_headers: usize,
     max_encoded: usize,
+    generation_ttl: Duration,
+    marker_support: Arc<AtomicBool>,
 }
 
 impl<C: Cache> Layer<BoxService> for RouteCache<C> {
@@ -406,6 +440,7 @@ fn storable_ttl(response: &Response, policy: &Policy) -> Option<Duration> {
         .map(Duration::from_secs)
         .or(policy.default_ttl)?;
     let remaining = ttl.checked_sub(codec::initial_age(headers)?)?;
+    let remaining = remaining.min(policy.generation_ttl);
     (remaining > Duration::ZERO).then_some(remaining)
 }
 
@@ -542,7 +577,8 @@ impl<C: Cache> Dispatch<C> {
             return with_x_cache(next.run(req).await, MISS);
         }
         if !is_cacheable_method(req.method()) {
-            let invalidate = generation::unsafe_method(req.method());
+            let invalidate = generation::unsafe_method(req.method())
+                && policy.marker_support.load(Ordering::Acquire);
             let response = next.run(req).await;
             let status = response.status();
             let succeeded = status.is_success() || status.is_redirection();
@@ -567,8 +603,13 @@ impl<C: Cache> Dispatch<C> {
         {
             return with_x_cache(next.run(req).await, MISS);
         }
+        if !policy.marker_support.load(Ordering::Acquire) {
+            // The backend cannot create expiring markers atomically.
+            return with_x_cache(next.run(req).await, MISS);
+        }
         let backend = cache.as_ref();
-        let generation = match generation::current(backend, &target).await {
+        let (ttl, supported) = (policy.generation_ttl, &policy.marker_support);
+        let generation = match generation::current(backend, &target, ttl, supported).await {
             Ok(generation) => generation,
             Err(_) => return with_x_cache(next.run(req).await, MISS),
         };

@@ -352,7 +352,19 @@ impl Cache for FaultCache {
         self.inner.set_if_absent(key, v).await
     }
 
+    async fn set_if_absent_with_ttl(
+        &self,
+        key: &str,
+        v: Vec<u8>,
+        ttl: Duration,
+    ) -> CacheResult<bool> {
+        self.inner.set_if_absent_with_ttl(key, v, ttl).await
+    }
+
     async fn delete(&self, key: &str) -> CacheResult<bool> {
+        if self.fail_writes.load(Ordering::SeqCst) {
+            return Err(Error::Backend("injected".into()));
+        }
         self.inner.delete(key).await
     }
 

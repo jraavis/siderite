@@ -152,6 +152,18 @@ nodes or restarted processes can retain stale entries during a partition.
 Use bounded TTLs and a coordinated invalidation/outbox policy where that
 consistency matters; this middleware does not offer distributed atomicity.
 
+## Generation lifetime
+
+Each target's invalidation marker (its generation) expires after
+`.generation_ttl(duration)`, one hour by default. Stored representations
+never outlive it: their TTL is `min(response lifetime, generation_ttl)`.
+A write deletes the marker, and the next request draws a fresh random
+generation, so older or still-running fills can never be served. Markers are
+created with the cache's atomic `set_if_absent_with_ttl`. A custom `Cache`
+that does not implement it (it returns `CacheError::Unsupported`) makes
+the layer bypass storage and serve every request from the origin with
+`x-cache: miss`; the layer remembers this and stops probing the backend.
+
 ## Byte budgets
 
 MemoryCache defaults to 64 MiB of retained key/value bytes, a 2 MiB value
