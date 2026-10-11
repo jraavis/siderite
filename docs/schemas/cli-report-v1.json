@@ -70,6 +70,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "snapshot" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/Snapshot" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "models" } } },
       "then": {
         "properties": {
@@ -135,6 +145,88 @@
             }
           }
         }
+      }
+    },
+    "Snapshot": {
+      "type": "object",
+      "required": [
+        "format",
+        "format_version",
+        "framework",
+        "app",
+        "features",
+        "databases",
+        "models",
+        "routes",
+        "openapi",
+        "completeness"
+      ],
+      "properties": {
+        "format": { "const": "siderite-snapshot" },
+        "format_version": { "const": 1 },
+        "framework": {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        },
+        "app": {
+          "type": "object",
+          "required": ["title", "version", "description"],
+          "properties": {
+            "title": { "type": "string" },
+            "version": { "type": "string" },
+            "description": { "type": ["string", "null"] }
+          }
+        },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "databases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["alias", "backend"],
+            "properties": {
+              "alias": { "type": "string" },
+              "backend": {
+                "enum": [
+                  "sqlite",
+                  "postgres",
+                  "mysql",
+                  "mongodb",
+                  "redis",
+                  "unknown"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModelReport" }
+        },
+        "routes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RouteReport" }
+        },
+        "openapi": { "type": ["object", "null"] },
+        "completeness": {
+          "type": "object",
+          "required": ["models", "routes", "openapi"],
+          "additionalProperties": { "$ref": "#/$defs/Section" }
+        }
+      }
+    },
+    "Section": {
+      "type": "object",
+      "required": ["complete", "total", "included", "reason"],
+      "properties": {
+        "complete": { "type": "boolean" },
+        "total": { "type": ["integer", "null"], "minimum": 0 },
+        "included": { "type": "integer", "minimum": 0 },
+        "reason": { "type": ["string", "null"] }
       }
     },
     "CheckSummary": {

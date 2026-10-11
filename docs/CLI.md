@@ -205,6 +205,23 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--output` is relative to the directory `siderite` was run in. The file is written to a temporary sibling, synced, then linked into place, so readers never see a partial document. An existing file is never replaced without `--force`, including one created concurrently; `--force` replaces it with an atomic rename.
 - A document that cannot be generated (for example duplicate operation ids) exits `1` with nothing on stdout.
 
+## Application snapshot
+
+`siderite_cli::report::snapshot::snapshot(app, models, settings, limits)` builds a bounded, versioned description of an application for tools and AI context (`ai dump-context` renders it). It reads compiled metadata only and opens no connection. The `snapshot` envelope's `data`:
+
+| Field | Content |
+|---|---|
+| `format`, `format_version` | `siderite-snapshot`, `1` (bumped only for breaking changes) |
+| `framework` | `name` and `version` of the framework compiled into the app |
+| `app` | OpenAPI `title`, `version`, `description` (redacted) |
+| `features` | `siderite-cli` features compiled into the app binary (`mysql`, `postgres`) |
+| `databases` | configured aliases with their backend kind; never URLs |
+| `models`, `routes` | the `models` and `routes` reports (documented routes only) |
+| `openapi` | the OpenAPI document with every string redacted, or `null` |
+| `completeness` | per section: `complete`, `total`, `included`, `reason` |
+
+`Limits` bound the result (defaults: 1 MiB in total, 500 models, 2,000 routes, 512 KiB of OpenAPI). Items are cut from the end of their sorted order, so output is deterministic; each cut is recorded in `completeness` with a `snapshot.W001` warning. The total budget drops the OpenAPI document first, then routes, then models. An OpenAPI document that cannot be generated is a `snapshot.E001` error with empty, incomplete routes and spec; models are still reported.
+
 ## `check`
 
 `check` runs without starting a server or opening a database. Each issue prints as `error: [models.E003] message` or `warning: [id] message`, followed by a summary line. Messages never contain database URLs.

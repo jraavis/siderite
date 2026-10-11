@@ -254,13 +254,13 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
 
 ### C. Watch mode and safe project edits
 
-- [ ] **D01 — Implement process supervision.**
+- [x] **D01 — Implement process supervision.**
   Depends: C01. Scope: build/run state machine and child ownership.
   Done: build failure leaves the last healthy process running; successful
   build triggers graceful shutdown with deadline then forced cleanup.
   Ctrl-C and repeated restart leave no children or held ports on supported OSs.
 
-- [ ] **D02 — Add debounced filesystem watching.**
+- [x] **D02 — Add debounced filesystem watching.**
   Depends: D01. Scope: `dev` and platform-tested watcher dependency.
   Done: watch selected workspace/path dependencies, manifests, lockfile,
   source, config and migrations; ignore target/output/VCS directories.

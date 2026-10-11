@@ -20,10 +20,13 @@ pub mod build;
 pub mod channel;
 pub mod json;
 mod redact;
+pub mod snapshot;
 pub mod text;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_snapshot;
 
 pub use redact::{REDACTED, redact_field, redact_text};
 
