@@ -146,6 +146,25 @@ impl Cache for RedisCache {
         }
     }
 
+    async fn increment_with_expiry(
+        &self,
+        key: &str,
+        by: i64,
+        ttl: Duration,
+    ) -> Result<i64, CacheError> {
+        // One server-side script: increment plus expiry-if-none.
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        match self.store.incr_by_expire(key, by, ttl).await {
+            Ok(value) => Ok(value),
+            Err(RedisError::Command(message)) if is_incr_value_error(&message) => {
+                Err(CacheError::NotInteger {
+                    key: key.to_owned(),
+                })
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
     async fn clear(&self) -> Result<(), CacheError> {
         self.store.delete_namespace().await?;
         Ok(())

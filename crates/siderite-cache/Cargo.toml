@@ -38,3 +38,4 @@ siderite-testkit.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
+redis.workspace = true

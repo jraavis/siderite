@@ -8,6 +8,19 @@
 
 
 ### Changed
+- **Cache:** the route-cache metadata bound is enforced. Each namespace
+  admits at most `RouteCache::max_new_targets` (default
+  `DEFAULT_MAX_NEW_TARGETS`, 10,000) new target markers per
+  `generation_ttl` window, counted with the new atomic
+  `Cache::increment_with_expiry` (Redis `INCRBY` plus `PEXPIRE` in one
+  script, `MemoryCache` under one lock; `Unsupported` by default, forwarded
+  by `Arc`). Markers are created lazily when a response is first stored, so
+  uncacheable responses never use budget; once the window budget is spent,
+  new targets bypass with `x-cache: miss`. Invalidation now also refreshes
+  one per-namespace epoch key so a fill that began before a write cannot
+  store without a marker. Custom `Cache` wrappers must forward
+  `increment_with_expiry`, or route caching stays off with one warning.
+  The hit path is unchanged. Redis eviction settings are never modified.
 - **Cache:** route-cache generation markers are now finite. They are
   created with `set_if_absent_with_ttl` and the new
   `RouteCache::generation_ttl` (default one hour,

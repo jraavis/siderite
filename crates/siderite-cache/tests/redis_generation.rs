@@ -141,6 +141,19 @@ impl Cache for Spy {
         self.inner.increment(key, by).await
     }
 
+    async fn increment_with_expiry(
+        &self,
+        key: &str,
+        by: i64,
+        ttl: Duration,
+    ) -> Result<i64, CacheError> {
+        self.keys
+            .lock()
+            .map_err(|e| CacheError::Backend(e.to_string()))?
+            .push(key.into());
+        self.inner.increment_with_expiry(key, by, ttl).await
+    }
+
     async fn clear(&self) -> Result<(), CacheError> {
         self.inner.clear().await
     }
@@ -184,17 +197,25 @@ async fn markers_carry_a_ttl_and_writes_delete() -> TestResult {
         let client = TestClient::try_new(app)?;
         client.get("/item").await?;
         let keys = spy.keys.lock().map_err(|e| e.to_string())?.clone();
-        assert_eq!(keys.len(), 2, "one marker and one representation");
+        // Budget counter, marker and representation, in call order.
+        assert_eq!(keys.len(), 3, "{keys:?}");
+        assert!(keys[0].starts_with("route-v2-budget:"), "{keys:?}");
         for key in &keys {
             let Ttl::ExpiresIn(left) = inner.store().ttl(key).await? else {
                 return Err(format!("{key} has no expiry").into());
             };
             assert!(left <= Duration::from_secs(30), "{key}: {left:?}");
         }
-        let marker = &keys[0];
+        let marker = &keys[1];
+        assert!(marker.starts_with("route-v2-target:"), "{keys:?}");
         assert!(inner.get(marker).await?.is_some());
         client.post_raw("/item", "text/plain", Vec::new()).await?;
         assert_eq!(inner.get(marker).await?, None, "write deletes marker");
+        let epoch = "route-v2-epoch:s12:ttl-contract";
+        let Ttl::ExpiresIn(left) = inner.store().ttl(epoch).await? else {
+            return Err("epoch has no expiry".into());
+        };
+        assert!(left <= Duration::from_secs(30), "{left:?}");
         Ok::<(), Box<dyn std::error::Error>>(())
     })
     .catch_unwind()

@@ -111,6 +111,39 @@ pub trait Cache: Send + Sync + 'static {
 
     /// Remove every entry this cache is responsible for.
     async fn clear(&self) -> Result<(), CacheError>;
+
+    /// Atomically add `by` to a counter and give it an expiry when it has
+    /// none.
+    ///
+    /// A missing or expired key starts at `0`. The increment and the
+    /// expiry are one indivisible step: a key that exists without a
+    /// deadline (including one created by this call) receives `ttl`, while
+    /// a key that already has a deadline keeps it. Separate `increment` and
+    /// expiry calls are not equivalent: if the key expires or is evicted
+    /// between them, `INCRBY` recreates it without a TTL, a permanent
+    /// counter. `ttl` follows the rules of
+    /// [`set_if_absent_with_ttl`](Cache::set_if_absent_with_ttl): rounded
+    /// up to whole milliseconds, zero and values above `i64::MAX / 2`
+    /// milliseconds rejected.
+    ///
+    /// Returns:
+    ///     The counter value after the increment.
+    ///
+    /// # Errors
+    /// [`CacheError::InvalidTtl`], [`CacheError::NotInteger`], and
+    /// [`CacheError::Unsupported`] from the default implementation:
+    /// backends that cannot do this atomically must keep it. RouteCache
+    /// uses it for its admission budget and, when unsupported, bypasses.
+    async fn increment_with_expiry(
+        &self,
+        _key: &str,
+        _by: i64,
+        _ttl: Duration,
+    ) -> Result<i64, CacheError> {
+        Err(CacheError::Unsupported {
+            operation: "increment_with_expiry",
+        })
+    }
 }
 
 #[async_trait]
@@ -151,6 +184,15 @@ impl<T: Cache + ?Sized> Cache for Arc<T> {
 
     async fn clear(&self) -> Result<(), CacheError> {
         (**self).clear().await
+    }
+
+    async fn increment_with_expiry(
+        &self,
+        key: &str,
+        by: i64,
+        ttl: Duration,
+    ) -> Result<i64, CacheError> {
+        (**self).increment_with_expiry(key, by, ttl).await
     }
 }
 

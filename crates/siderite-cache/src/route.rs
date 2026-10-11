@@ -32,6 +32,10 @@ pub const DEFAULT_MAX_BODY_BYTES: u64 = 1024 * 1024;
 /// Default lifetime of a target's generation marker (one hour).
 pub const DEFAULT_GENERATION_TTL: Duration = Duration::from_secs(3600);
 
+/// Default admission budget: new markers per namespace per
+/// `generation_ttl` window.
+pub const DEFAULT_MAX_NEW_TARGETS: u64 = 10_000;
+
 /// Shared flag: a failed invalidation disabled the layer.
 const DISABLED: u8 = 1;
 /// Shared flag: no expiring generation markers (unsupported backend or a
@@ -142,6 +146,7 @@ pub struct RouteCache<C> {
     max_headers: usize,
     max_encoded: usize,
     generation_ttl: Duration,
+    max_new_targets: u64,
 }
 
 impl<C: Cache> RouteCache<C> {
@@ -160,6 +165,7 @@ impl<C: Cache> RouteCache<C> {
             max_headers: 8192,
             max_encoded: 2 * 1024 * 1024,
             generation_ttl: DEFAULT_GENERATION_TTL,
+            max_new_targets: DEFAULT_MAX_NEW_TARGETS,
             bypass: Arc::new(vec![
                 AUTHORIZATION,
                 PROXY_AUTHORIZATION,
@@ -246,6 +252,27 @@ impl<C: Cache> RouteCache<C> {
         self
     }
 
+    /// Bound the metadata one namespace can create (default
+    /// [`DEFAULT_MAX_NEW_TARGETS`]).
+    ///
+    /// At most `max` new target markers are admitted per namespace in each
+    /// `generation_ttl` window, counted when a representation is first
+    /// stored for a target. Once the window's budget is spent, further new
+    /// targets bypass the cache (`x-cache: miss`) until the next window;
+    /// targets that already have a marker keep hitting. Because markers
+    /// live one `generation_ttl`, a namespace holds at most `2 * max`
+    /// markers. Zero stores nothing and makes no backend calls.
+    ///
+    /// The counter lives in the backend, so the bound holds across
+    /// processes sharing a namespace, provided the backend does not evict
+    /// the counter. A [`Cache`] without `increment_with_expiry` cannot
+    /// enforce it, so the layer stops storing (one warning).
+    #[must_use]
+    pub fn max_new_targets(mut self, max: u64) -> Self {
+        self.max_new_targets = max;
+        self
+    }
+
     /// Invalidate every cached representation of one related target URI.
     ///
     /// Args:
@@ -267,7 +294,7 @@ impl<C: Cache> RouteCache<C> {
             return Err(CacheError::Backend("cache key too large".into()));
         }
         let backend = self.cache.as_ref();
-        let result = generation::invalidate(backend, &target).await;
+        let result = generation::invalidate(backend, &target, &policy).await;
         if result.is_err() {
             disable(&self.flags);
         }
@@ -286,6 +313,7 @@ impl<C: Cache> RouteCache<C> {
             max_headers: self.max_headers,
             max_encoded: self.max_encoded,
             generation_ttl: self.generation_ttl,
+            max_new_targets: self.max_new_targets,
         }
     }
 
@@ -326,6 +354,7 @@ struct Policy {
     max_headers: usize,
     max_encoded: usize,
     generation_ttl: Duration,
+    max_new_targets: u64,
 }
 
 impl<C: Cache> Layer<BoxService> for RouteCache<C> {
@@ -565,6 +594,12 @@ async fn lookup<C: Cache>(cache: &C, key: &str, policy: &Policy) -> Hit {
     decode(&bytes, policy.max_headers, policy.max_body)
 }
 
+/// Where a fill stores: under a known marker, or after admission.
+enum Slot {
+    Known(String),
+    Absent(generation::Started, String),
+}
+
 struct Dispatch<C> {
     cache: Arc<C>,
     policy: Arc<Policy>,
@@ -596,7 +631,7 @@ impl<C: Cache> Dispatch<C> {
             let succeeded = status.is_success() || status.is_redirection();
             if invalidate
                 && succeeded
-                && generation::invalidate(cache.as_ref(), &target)
+                && generation::invalidate(cache.as_ref(), &target, &policy)
                     .await
                     .is_err()
             {
@@ -615,27 +650,41 @@ impl<C: Cache> Dispatch<C> {
         {
             return with_x_cache(next.run(req).await, MISS);
         }
-        if flags & NO_MARKERS != 0 {
-            // No expiring markers: unsupported backend or zero lifetime.
+        if flags & NO_MARKERS != 0 || policy.max_new_targets == 0 {
+            // No expiring markers: unsupported backend, zero lifetime or
+            // a zero admission budget.
             return with_x_cache(next.run(req).await, MISS);
         }
         let backend = cache.as_ref();
-        let current = generation::current(backend, &target, &policy).await;
-        let generation = match current {
-            Ok(generation) => generation,
+        let known = match generation::peek(backend, &target).await {
+            Ok(known) => known,
             Err(_) => return with_x_cache(next.run(req).await, MISS),
         };
         let scheme = context.scheme;
-        let key = make_key(&req, &policy, scheme, generation);
-        if key.len() > policy.max_key {
-            return with_x_cache(next.run(req).await, MISS);
-        }
-        let method = req.method().clone();
-        let hit = if refresh {
-            None
-        } else {
-            lookup(backend, &key, &policy).await
+        let (slot, hit) = match known {
+            Some(generation) => {
+                let key = make_key(&req, &policy, scheme, generation);
+                if key.len() > policy.max_key {
+                    return with_x_cache(next.run(req).await, MISS);
+                }
+                let hit = if refresh {
+                    None
+                } else {
+                    lookup(backend, &key, &policy).await
+                };
+                (Slot::Known(key), hit)
+            }
+            // No marker: nothing is reachable, and nothing is created
+            // until a response is actually stored.
+            None => match generation::begin(backend, &policy).await {
+                Ok(started) => {
+                    let suffix = cache_key(&req, scheme);
+                    (Slot::Absent(started, suffix), None)
+                }
+                Err(_) => return with_x_cache(next.run(req).await, MISS),
+            },
         };
+        let method = req.method().clone();
         if let Some((headers, body)) = hit {
             return restore(&method, headers, body);
         }
@@ -646,6 +695,22 @@ impl<C: Cache> Dispatch<C> {
         if header_bytes(response.headers()) > policy.max_headers {
             return with_x_cache(response, MISS);
         }
+        let key = match slot {
+            Slot::Known(key) => Some(key),
+            Slot::Absent(started, suffix) => {
+                let admitted = generation::admit(backend, &target, &policy, &started);
+                match admitted.await {
+                    Ok(Some(generation)) => {
+                        let key = generation::key_for(&policy, generation, &suffix);
+                        (key.len() <= policy.max_key).then_some(key)
+                    }
+                    _ => None,
+                }
+            }
+        };
+        let Some(key) = key else {
+            return with_x_cache(response, MISS);
+        };
         let (mut parts, body) = response.into_parts();
         let limit = usize::try_from(policy.max_body).unwrap_or(usize::MAX);
         let bytes = match body.into_bytes_limited(limit).await {
