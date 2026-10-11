@@ -80,6 +80,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "ai dump-context" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/AiContext" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "models" } } },
       "then": {
         "properties": {
@@ -216,6 +226,35 @@
           "type": "object",
           "required": ["models", "routes", "openapi"],
           "additionalProperties": { "$ref": "#/$defs/Section" }
+        }
+      }
+    },
+    "AiContext": {
+      "type": "object",
+      "required": ["snapshot", "source", "migrations"],
+      "properties": {
+        "snapshot": { "$ref": "#/$defs/Snapshot" },
+        "source": {
+          "type": "object",
+          "required": ["binary", "built_unix"],
+          "properties": {
+            "binary": { "type": ["string", "null"] },
+            "built_unix": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "migrations": {
+          "type": "object",
+          "required": ["state", "detail", "status"],
+          "properties": {
+            "state": { "enum": ["unknown", "read", "failed"] },
+            "detail": { "type": ["string", "null"] },
+            "status": {
+              "anyOf": [
+                { "$ref": "#/$defs/MigrationStatusData" },
+                { "type": "null" }
+              ]
+            }
+          }
         }
       }
     },

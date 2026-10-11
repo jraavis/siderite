@@ -4,7 +4,7 @@ use crate::args::{check_json_args, json_requested};
 use crate::doctor;
 use crate::error::CliError;
 use crate::openapi;
-use crate::project::{self, Missing, is_app_command, passthrough};
+use crate::project::{self, Output, is_app_command, passthrough};
 use crate::report::channel;
 use crate::scaffold;
 use crate::standalone;
@@ -112,6 +112,7 @@ const NEEDS_APP: &[&str] = &[
     "dbshell",
     "makemigrations",
     "openapi",
+    "ai",
 ];
 
 /// `cargo run` the application with `raw`. Output that must stay clean on
@@ -124,8 +125,17 @@ fn run_app(
     cwd: &Path,
 ) -> Result<u8, CliError> {
     if json_requested(raw) {
-        let missing = Missing::Envelope(command);
+        let missing = Output::Envelope(command);
         return project::cargo_run_captured(dir, bin, raw, missing);
+    }
+    if command == "ai" {
+        // The context is the output: keep factory prints off stdout.
+        let output = if format_json(raw) {
+            Output::Json
+        } else {
+            Output::Text
+        };
+        return project::cargo_run_captured(dir, bin, raw, output);
     }
     if command != "openapi" {
         return project::cargo_run(dir, bin, raw);
@@ -134,7 +144,13 @@ fn run_app(
     if openapi::writes_file(&raw) {
         return project::cargo_run(dir, bin, &raw);
     }
-    project::cargo_run_captured(dir, bin, &raw, Missing::Nothing)
+    project::cargo_run_captured(dir, bin, &raw, Output::Json)
+}
+
+/// Whether `--format json` (or `=json`) was asked for.
+fn format_json(raw: &[String]) -> bool {
+    let joined = raw.windows(2).any(|w| w[0] == "--format" && w[1] == "json");
+    joined || raw.iter().any(|a| a == "--format=json")
 }
 
 /// First positional token, skipping flags and the values of known flags.
@@ -189,6 +205,8 @@ Create and run an app:
   run [--addr ADDR]             Serve the app
   routes [--json]               List METHOD PATH operation_id
   check [--json]                Validate config, models, migrations and routes
+  ai dump-context [--format F] [--live]
+                                Markdown or JSON context for AI tools
   openapi export [-o PATH] [--force]
                                 Write the OpenAPI document (stdout or PATH)
   dbshell                       Open the database's native client

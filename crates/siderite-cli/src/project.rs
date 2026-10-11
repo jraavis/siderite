@@ -10,6 +10,7 @@ use std::process::{Command, Stdio};
 /// Commands that `AppCli` in the application binary understands.
 pub const APP_COMMANDS: &[&str] = &[
     "run",
+    "ai",
     "openapi",
     "routes",
     "check",
@@ -38,15 +39,16 @@ pub fn cargo_run(dir: &Path, bin: Option<&str>, args: &[String]) -> CliResult {
     exit_code(&mut command)
 }
 
-/// What [`cargo_run_captured`] prints when the application exits
-/// without writing its output.
-#[derive(Debug, Clone, Copy)]
-pub enum Missing<'a> {
-    /// A failure envelope for this command (`--json` runs).
+/// The output [`cargo_run_captured`] expects from the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Output<'a> {
+    /// A JSON report envelope of this command (`--json` runs): when it
+    /// is missing, a failure envelope is printed instead.
     Envelope(&'a str),
-    /// Nothing on stdout; the reason goes to stderr (raw documents such
-    /// as the OpenAPI export).
-    Nothing,
+    /// A raw JSON document (the OpenAPI export).
+    Json,
+    /// Text (the Markdown AI context).
+    Text,
 }
 
 /// `cargo run` whose stdout output must stay clean: the application
@@ -54,15 +56,17 @@ pub enum Missing<'a> {
 /// (anything the app factory prints) goes to stderr, and the file is then
 /// printed as the only stdout output.
 ///
-/// When the application exits without writing exactly one JSON value (a
-/// build failure, a crash, or a `siderite-cli` without the command),
-/// `missing` decides what is printed, and the exit code is `2` if the
-/// child exited `2`, else `1`.
+/// When the application exits without writing its output (for JSON
+/// outputs: exactly one JSON value) after a build failure, a crash, or
+/// with a `siderite-cli` without the command, stdout gets a failure
+/// envelope for [`Output::Envelope`] and nothing otherwise (the reason
+/// goes to stderr); the exit code is `2` if the child exited `2`, else
+/// `1`.
 pub fn cargo_run_captured(
     dir: &Path,
     bin: Option<&str>,
     args: &[String],
-    missing: Missing<'_>,
+    output: Output<'_>,
 ) -> CliResult {
     let report = ReportFile::new()?;
     let mut command = cargo_command(dir, "run", bin, args);
@@ -70,7 +74,7 @@ pub fn cargo_run_captured(
         .env(REPORT_PATH_ENV, report.path())
         .stdout(Stdio::from(std::io::stderr()));
     let code = exit_code(&mut command)?;
-    if let Some(rendered) = report.read() {
+    if let Some(rendered) = report.read(output != Output::Text) {
         channel::emit(&rendered, None)?;
         return Ok(if code <= 2 { code } else { 1 });
     }
@@ -78,12 +82,12 @@ pub fn cargo_run_captured(
         "the application exited with status {code} without writing its \
          output (see stderr; its siderite-cli may predate this command)"
     );
-    match missing {
-        Missing::Envelope(name) => {
+    match output {
+        Output::Envelope(name) => {
             let failure = channel::failure(name, NO_REPORT_CODE, &message);
             channel::emit_json(&failure, None)?;
         }
-        Missing::Nothing => eprintln!("error: {message}"),
+        Output::Json | Output::Text => eprintln!("error: {message}"),
     }
     Ok(if code == 2 { 2 } else { 1 })
 }
@@ -104,11 +108,14 @@ impl ReportFile {
         &self.0
     }
 
-    /// The output, when the child wrote exactly one JSON value.
-    fn read(&self) -> Option<String> {
+    /// The output: any non-empty text, or exactly one JSON value when
+    /// `json`.
+    fn read(&self, json: bool) -> Option<String> {
         let text = std::fs::read_to_string(&self.0).ok()?;
-        serde_json::from_str::<serde_json::Value>(&text).ok()?;
-        Some(text)
+        if json {
+            serde_json::from_str::<serde_json::Value>(&text).ok()?;
+        }
+        (!text.is_empty()).then_some(text)
     }
 }
 

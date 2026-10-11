@@ -194,6 +194,21 @@ time, each within the timeout (default 5 s). Only the requested aliases
 can fail, errors never show URLs, SQLite files are opened read-only and
 never created, and Redis/MongoDB aliases are not probed.
 
+## AI context
+
+```bash
+siderite ai dump-context            # Markdown
+siderite ai dump-context --json     # versioned JSON envelope
+siderite ai dump-context --live     # also read migration status
+```
+
+Describes the app for AI assistants from its compiled metadata: framework
+version, database aliases and backend kinds (never URLs), models and
+their fields, documented routes, and migration status (`unknown` unless
+`--live`). Output is bounded (`--max-bytes`), says what was cut, and is
+redacted. It names the binary and its build time so stale context can be
+recognised.
+
 ## JSON output
 
 `check`, `doctor`, `routes` and `showmigrations` accept `--json`, before or after the command

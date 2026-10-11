@@ -216,6 +216,13 @@ impl AppCli {
                     _ => self.dbshell(&global, env),
                 }
             }
+            "ai" => {
+                if rest.iter().any(|a| a == "--help" || a == "-h") {
+                    print_help();
+                    return Ok(0);
+                }
+                self.ai(&global, &rest, env).await
+            }
             "openapi" => {
                 if rest.iter().any(|a| a == "--help" || a == "-h") {
                     print_help();
@@ -347,6 +354,29 @@ impl AppCli {
         Ok(0)
     }
 
+    /// `ai dump-context`: the snapshot as Markdown or JSON, migration
+    /// status only with `--live`.
+    async fn ai(&self, g: &GlobalArgs, rest: &[String], e: &Env) -> CliResult {
+        let options = crate::ai::parse(rest, g.json)?;
+        let app = (self.factory)();
+        let dir = self.migrations_dir_for(g);
+        let inputs = crate::ai::Inputs {
+            app: &app,
+            models: &self.models,
+            settings: &self.settings,
+            database: self.select_database(g, e).ok(),
+            migrations_dir: &dir,
+        };
+        let report = crate::ai::context(inputs, &options).await;
+        if options.format == crate::ai::Format::Json {
+            emit(&report, e)?;
+        } else {
+            let text = crate::ai::render_markdown(&report);
+            channel::emit(&text, e.report_path.as_deref())?;
+        }
+        Ok(report.exit_code())
+    }
+
     /// `json` is the environment of a `--json` run, `None` for text.
     fn routes(&self, json: Option<&Env>) -> Result<u8, CliError> {
         let report = build::routes(&(self.factory)())?;
@@ -389,6 +419,8 @@ Commands:
   run [--addr ADDR]            Connect the databases and serve the app
   routes [--json]              List METHOD PATH operation_id
   check [--json]               Validate config, models, migrations and routes
+  ai dump-context [--format markdown|json] [--live] [--max-bytes N]
+                               Application context for AI tools
   openapi export [--output PATH] [--force]
                                Write the OpenAPI document (default stdout)
   dbshell                      Open the database's native client

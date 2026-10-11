@@ -13,6 +13,7 @@
 
 #![forbid(unsafe_code)]
 
+mod ai;
 mod app_cli;
 mod args;
 pub mod check;

@@ -169,3 +169,23 @@ fn standalone_status_agrees_with_the_text() {
     assert_eq!(out.status.code(), Some(2));
     assert_eq!(one_value(&out)["ok"], false);
 }
+
+#[test]
+fn ai_context_reaches_stdout_without_factory_noise() {
+    let root = scratch("ai");
+    let (app, path) = fixture(&root.0);
+    let markdown = "# Shop 0.1.0";
+    let args = ["ai", "dump-context"];
+    let out = siderite(&app, &path, &args, &[("FAKE_REPORT", markdown)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(stdout(&out), format!("{markdown}\n"));
+    assert!(stderr(&out).contains("noise from the app factory"));
+    // JSON output must be JSON; anything else counts as missing.
+    let json = ["ai", "dump-context", "--format", "json"];
+    let out = siderite(&app, &path, &json, &[("FAKE_REPORT", markdown)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(stdout(&out), "");
+    let fake = [("FAKE_REPORT", ""), ("FAKE_CODE", "101")];
+    let out = siderite(&app, &path, &args, &fake);
+    assert_eq!((out.status.code(), stdout(&out).as_str()), (Some(1), ""));
+}
