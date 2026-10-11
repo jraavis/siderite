@@ -416,6 +416,17 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
         formats: TEXT_JSON,
         ..cmd(
+            "docs search",
+            Group::Tool,
+            "docs search QUERY... [--json] [--limit N]",
+            "Search this version's framework docs offline",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: TEXT_JSON,
+        ..cmd(
             "commands",
             Group::Tool,
             "commands [--json]",

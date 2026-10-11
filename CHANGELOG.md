@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite docs search QUERY [--json] [--limit N]` searches
+  a documentation index packaged with the CLI (website guides, reference,
+  tutorials and the compiled examples) offline. Results carry the docs
+  version, source file and line, a link at the release tag and the Cargo
+  features a section names; a project locking another siderite version
+  gets a `docs.W001` warning.
 - **CLI:** `siderite verify [--json] [--live]` runs `fmt --check`,
   Clippy, the build, the tests and the framework checks with one
   aggregate report (per-step status, duration and redacted failure

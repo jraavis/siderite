@@ -232,6 +232,18 @@ are never applied. `--json` writes one `verify` envelope; compiler errors
 and Clippy findings appear there with their codes, file spans and rendered
 explanations.
 
+## Docs search
+
+```bash
+siderite docs search queryset filter
+siderite docs search transaction --json --limit 3
+```
+
+Searches the documentation of the installed CLI's version without a
+network connection. Results name the source file and line, link to it at
+the release tag and list the Cargo features the section mentions. If your
+project's `Cargo.lock` uses another siderite version, a warning says so.
+
 ## AI context
 
 ```bash
@@ -256,7 +268,7 @@ recognised.
 
 ## JSON output
 
-`check`, `doctor`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command
+`check`, `docs search`, `doctor`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command
 (`siderite --json routes`, `siderite check --json`). Stdout then carries
 exactly one JSON value and a newline, a versioned envelope described by
 [`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):
