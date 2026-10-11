@@ -242,7 +242,18 @@ pub const COMMANDS: &[Command] = &[
             "generate resource",
             Group::App,
             "generate resource NAME [FIELD:TYPE]... [--table T]",
-            "Write a model and its create/get routes",
+            "Write a model and its CRUD routes",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
+            "generate test",
+            Group::App,
+            "generate test route|resource NAME ... [--dry-run]",
+            "Write a request/response test (tests/NAME.rs)",
         )
     },
     Command {

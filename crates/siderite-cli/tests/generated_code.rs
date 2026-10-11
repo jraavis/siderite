@@ -22,6 +22,21 @@ mod routes {
     pub(crate) use super::resource_book as book;
 }
 
+/// The tests `generate test` writes, run against this file's `app()`.
+#[path = "generated/test_items.rs"]
+mod test_items;
+
+#[path = "generated/test_book.rs"]
+mod test_book;
+
+/// The application the generated tests build: the generated route and
+/// resource, registered as their instructions say.
+fn app() -> App {
+    App::new()
+        .routes(items::routes())
+        .routes(routes::book::routes())
+}
+
 use http::{Method, Request, header};
 use models::book;
 

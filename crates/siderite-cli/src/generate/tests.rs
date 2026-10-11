@@ -248,3 +248,62 @@ mod resource_generator {
         assert!(text.contains("siderite migrate"), "{text}");
     }
 }
+
+mod tests_for_generated_code {
+    use super::test::*;
+    use crate::fixtures::ScratchDir;
+    use crate::generate::rustfmt;
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|a| (*a).to_owned()).collect()
+    }
+
+    fn resource() -> TestOptions {
+        let spec = [
+            "resource",
+            "book",
+            "title:String",
+            "pages:i32?",
+            "views:i64",
+            "price:f64?",
+            "in_stock:bool",
+            "--table",
+            "books",
+        ];
+        parse(&words(&spec)).unwrap()
+    }
+
+    #[test]
+    fn the_outputs_are_the_compiled_golden_files() {
+        let route = parse(&words(&["route", "items"])).unwrap();
+        assert_eq!(file(&route), "tests/items.rs");
+        let golden = include_str!("../../tests/generated/test_items.rs");
+        assert_eq!(rustfmt(&render(&route, "crate")), golden);
+        let resource = resource();
+        assert_eq!(file(&resource), "tests/book.rs");
+        let golden = include_str!("../../tests/generated/test_book.rs");
+        assert_eq!(rustfmt(&render(&resource, "crate")), golden);
+    }
+
+    #[test]
+    fn kinds_names_and_steps_are_checked() {
+        for bad in [&[][..], &["handler", "x"], &["route", "Bad-Name"]] {
+            assert!(parse(&words(bad)).is_err(), "{bad:?}");
+        }
+        let text = render(&resource(), "blog_api");
+        assert!(text.contains("use blog_api::models::book::Book;"));
+        assert!(text.contains("blog_api::app()"));
+        // Only nullable fields: the `id` body is the one failure case.
+        let optional = ["resource", "note", "body:String?"];
+        let optional = render(&parse(&words(&optional)).unwrap(), "x");
+        assert_eq!(optional.matches("serde_json::json!({").count(), 2);
+        let scratch = ScratchDir::new("test-steps");
+        let steps = instructions(scratch.path(), &resource());
+        assert!(steps.contains("siderite-testkit"), "{steps}");
+        let manifest = "[dev-dependencies]\nsiderite-testkit = \"1\"\n";
+        std::fs::write(scratch.path().join("Cargo.toml"), manifest).unwrap();
+        let steps = instructions(scratch.path(), &resource());
+        assert!(!steps.contains("siderite-testkit"), "{steps}");
+        assert!(steps.contains("siderite test"), "{steps}");
+    }
+}

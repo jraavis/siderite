@@ -179,6 +179,7 @@ siderite generate route items             # src/routes/items.rs
 siderite generate route items --dry-run   # show it only
 siderite generate model book title:String pages:i32? --table books
 siderite generate resource book title:String --table books
+siderite generate test resource book title:String --table books
 ```
 
 A generated route module has one documented handler (`GET /items`,
@@ -193,6 +194,13 @@ page, always two queries), create, get, replace (`PUT`), partial update
 handlers with validated bodies, 404s for missing rows and an `id` that
 never changes; they have no authentication until you add it.
 Existing files are never overwritten.
+
+`generate test route NAME` and `generate test resource NAME ...` (the
+same arguments as the generator) write `tests/NAME.rs` with
+`siderite-testkit`: status codes, content type, the documented operation,
+a create-then-fetch round trip, and failure cases (a `405`, rejected
+bodies, a `404`). A resource test creates a throwaway in-memory SQLite
+database from the model, so your configured databases are never used.
 
 ## Dependencies
 

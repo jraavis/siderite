@@ -9,6 +9,7 @@ pub(crate) mod model;
 pub(crate) mod plan;
 pub(crate) mod resource;
 pub(crate) mod route;
+pub(crate) mod test;
 
 #[cfg(test)]
 mod tests;
