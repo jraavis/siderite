@@ -89,6 +89,30 @@ See [MIGRATIONS.md](MIGRATIONS.md) for the migration commands in detail.
 
 Flags may appear anywhere and take `--flag value` or `--flag=value`.
 
+### Choosing the application
+
+`run`, `routes`, `check`, `dbshell`, the migration commands, `build` and `test` act on one application package. The project flags below are accepted **before the command** only; everything after the command (or after `--`) is forwarded unchanged, so `siderite run -p 9` still hands `-p 9` to your binary.
+
+| Flag | Meaning |
+|---|---|
+| `--manifest-path PATH` | Use the workspace or package of this `Cargo.toml`. |
+| `--package NAME`, `-p NAME` | Use this workspace member. |
+| `--bin NAME` | Run (or, for `build` / `test`, restrict to) this binary of the package. |
+
+Selection is deterministic, using `cargo metadata --no-deps` (so `cargo` must be on `PATH`; otherwise the command fails with exit `1` and says so):
+
+1. `--package` and `--manifest-path` win. A manifest of a virtual workspace falls through to rule 3.
+2. Otherwise the package nearest to the current directory (a nested package beats the package around it).
+3. Otherwise, from a virtual workspace root or other directory outside every package, the single member that depends on `siderite` and has a binary. Several candidates is a usage error (exit `2`) that lists them and names `--package`; none keeps the usual "needs an application" error.
+
+In the chosen package, `--bin` wins, then `default-run`, then the only binary. Several binaries with neither is a usage error listing them; `build` and `test` do not need a choice. Paths are passed to cargo as separate arguments, so directories with spaces work.
+
+```bash
+siderite -p api run                      # from a virtual workspace root
+siderite --manifest-path "my app/Cargo.toml" routes
+siderite --bin serve check
+```
+
 ### Precedence
 
 **Listen address** (`run`): `--addr`, then the `ADDR` environment variable, then `CliSettings::addr`, then `127.0.0.1:8000`. Empty values count as unset.

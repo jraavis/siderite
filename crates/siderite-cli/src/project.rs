@@ -1,7 +1,8 @@
-//! Find a Cargo package and invoke `cargo run` / `cargo test`.
+//! Invoke `cargo run` / `cargo test`.
 
 use crate::error::CliError;
-use std::path::{Path, PathBuf};
+use crate::workspace::spawn_error;
+use std::path::Path;
 use std::process::Command;
 
 /// Commands that `AppCli` in the application binary understands.
@@ -23,24 +24,13 @@ pub fn is_app_command(command: &str) -> bool {
     APP_COMMANDS.contains(&command)
 }
 
-/// Walk up from `start` to a `Cargo.toml` that defines a `[package]`.
-pub fn find_app_dir(start: &Path) -> Option<PathBuf> {
-    let mut dir = start;
-    loop {
-        let manifest = dir.join("Cargo.toml");
-        if manifest.is_file()
-            && let Ok(text) = std::fs::read_to_string(&manifest)
-            && text.contains("[package]")
-        {
-            return Some(dir.to_path_buf());
-        }
-        dir = dir.parent()?;
-    }
-}
+type CliResult = Result<u8, CliError>;
 
-/// `cargo run -- args` in `package_dir`. Forwards the child's exit code.
-pub fn cargo_run(package_dir: &Path, args: &[String]) -> Result<u8, CliError> {
-    cargo(package_dir, "run", args)
+/// `cargo run [--bin BIN] -- args` in `package_dir`.
+///
+/// Forwards the child's exit code.
+pub fn cargo_run(dir: &Path, bin: Option<&str>, args: &[String]) -> CliResult {
+    cargo(dir, "run", bin, args)
 }
 
 /// Cargo subcommands `siderite` forwards verbatim in the app package.
@@ -51,9 +41,11 @@ pub const CARGO_COMMANDS: &[&str] = &["build", "test"];
 pub fn cargo_passthrough(
     package_dir: &Path,
     cargo_cmd: &str,
+    bin: Option<&str>,
     args: &[String],
 ) -> Result<u8, CliError> {
-    cargo(package_dir, cargo_cmd, &args_after(cargo_cmd, args))
+    let rest = args_after(cargo_cmd, args);
+    cargo(package_dir, cargo_cmd, bin, &rest)
 }
 
 fn args_after(cargo_cmd: &str, args: &[String]) -> Vec<String> {
@@ -64,37 +56,32 @@ fn args_after(cargo_cmd: &str, args: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn cargo(package_dir: &Path, cargo_cmd: &str, args: &[String]) -> Result<u8, CliError> {
+/// Every argument is a separate argv entry, so paths with spaces work.
+fn cargo(
+    package_dir: &Path,
+    cargo_cmd: &str,
+    bin: Option<&str>,
+    args: &[String],
+) -> Result<u8, CliError> {
     let mut command = Command::new("cargo");
     command.arg(cargo_cmd).current_dir(package_dir);
+    if let Some(bin) = bin {
+        command.arg("--bin").arg(bin);
+    }
     if cargo_cmd == "run" {
         command.arg("--").args(args);
     } else {
         command.args(args);
     }
-    let status = command.status().map_err(|err| {
-        CliError::Io(format!(
-            "cannot run cargo {cargo_cmd} (is cargo on PATH?): {err}"
-        ))
-    })?;
+    let status = command
+        .status()
+        .map_err(|err| spawn_error(&format!("cargo {cargo_cmd}"), &err))?;
     Ok(u8::try_from(status.code().unwrap_or(1)).unwrap_or(1))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn finds_a_package_and_skips_a_workspace_root() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        assert_eq!(find_app_dir(&root).as_deref(), Some(root.as_path()));
-        let workspace = root.parent().unwrap().parent().unwrap();
-        let found = find_app_dir(workspace);
-        assert!(
-            found.as_deref() != Some(workspace),
-            "workspace root has no [package]: {found:?}"
-        );
-    }
 
     #[test]
     fn passthrough_forwards_args_after_the_command() {

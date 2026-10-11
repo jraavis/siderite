@@ -27,6 +27,8 @@ pub mod routes;
 mod scaffold;
 pub mod settings;
 mod standalone;
+mod target;
+mod workspace;
 
 pub use app_cli::AppCli;
 pub use check::{CheckIssue, CheckLevel, check};
