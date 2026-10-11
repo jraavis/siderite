@@ -24,8 +24,16 @@ const CLIENTS: [(&str, &str); 3] = [
     ("mysql", "MySQL"),
 ];
 
-/// Run every check in report order.
-pub(crate) fn run_all(probe: &Probe, f: &mut Findings) {
+/// What the offline checks found that live probes build on.
+pub(crate) struct Found {
+    /// The project directory, else the working directory.
+    pub dir: PathBuf,
+    /// The loaded configuration, unless it failed to load.
+    pub settings: Option<Settings>,
+}
+
+/// Run every offline check in report order.
+pub(crate) fn run_all(probe: &Probe, f: &mut Findings) -> Found {
     let cargo = which("cargo", &probe.path);
     let project = project(probe, cargo.as_deref(), f);
     let dir = match &project {
@@ -45,6 +53,7 @@ pub(crate) fn run_all(probe: &Probe, f: &mut Findings) {
     }
     clients(probe, f);
     address(probe, settings.as_ref(), f);
+    Found { dir, settings }
 }
 
 /// The selected application package.
@@ -268,11 +277,9 @@ fn missing_feature(name: &str, kind: BackendKind, f: &mut Findings) {
 
 /// Whether the standalone binary can open `kind`.
 fn compiled(kind: BackendKind) -> bool {
-    match kind {
-        BackendKind::Postgres => cfg!(feature = "postgres"),
-        BackendKind::MySql => cfg!(feature = "mysql"),
-        _ => true,
-    }
+    let pg = kind == BackendKind::Postgres && !cfg!(feature = "postgres");
+    let my = kind == BackendKind::MySql && !cfg!(feature = "mysql");
+    !(pg || my)
 }
 
 fn clients(probe: &Probe, f: &mut Findings) {

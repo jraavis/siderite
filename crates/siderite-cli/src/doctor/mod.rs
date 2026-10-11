@@ -1,23 +1,29 @@
 //! `doctor [--json]`: offline diagnostics of the toolchain, the project,
 //! its configuration and the local environment.
 //!
-//! Nothing here connects to a database or builds the project. Native
+//! By default nothing connects to a database or builds the project;
+//! `--live` adds explicit, read-only database probes (see [`live`]). Native
 //! database clients are reported for information only (only `dbshell`
 //! needs them), and the listen-address check is advisory: the port can be
 //! taken or freed between this check and `run`.
 
 mod checks;
+mod live;
 mod tools;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_live;
 
 use crate::error::CliError;
 use crate::report::{Diagnostic, Envelope, Severity, channel, redact_text};
 use crate::target::ProjectArgs;
+use live::Live;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::time::Duration;
 
 /// Outcome of one check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +73,9 @@ pub(crate) struct Probe {
 
 /// `(detail, hint)` of a flagged check.
 type Text<'a> = (&'a str, &'a str);
+
+/// The doctor envelope.
+pub(crate) type Report = Envelope<DoctorData>;
 
 /// Checks and diagnostics collected in order.
 #[derive(Debug, Default)]
@@ -120,35 +129,110 @@ impl Findings {
     }
 }
 
-/// Run every check.
-pub(crate) fn diagnose(probe: &Probe) -> Envelope<DoctorData> {
+/// Parsed `doctor` arguments.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Options {
+    /// `--json`.
+    pub json: bool,
+    /// `--live` and its settings.
+    pub live: Option<Live>,
+}
+
+const USAGE: &str = "usage: doctor [--json] [--live [--database ALIAS]... \
+     [--timeout-ms N] [--migrations-dir DIR]]";
+
+/// Parse the arguments after the project flags.
+///
+/// Errors:
+///   A usage error for unknown flags, bad values, or live options
+///   without `--live`.
+pub(crate) fn parse(raw: &[String]) -> Result<Options, CliError> {
+    let mut options = Options::default();
+    let mut live = false;
+    let mut aliases = Vec::new();
+    let mut timeout = None;
+    let mut dir = None;
+    let mut args = raw.iter();
+    while let Some(arg) = args.next() {
+        let (flag, inline) = match arg.split_once('=') {
+            Some((flag, value)) => (flag, Some(value.to_owned())),
+            None => (arg.as_str(), None),
+        };
+        let missing = || CliError::usage(format!("{flag} requires a value"));
+        let mut value = || {
+            let given = inline.clone().or_else(|| args.next().cloned());
+            given.ok_or_else(missing)
+        };
+        match flag {
+            "doctor" => {}
+            "--json" => options.json = true,
+            "--live" => live = true,
+            "--database" => aliases.push(value()?),
+            "--timeout-ms" => timeout = Some(millis(&value()?)?),
+            "--migrations-dir" => dir = Some(PathBuf::from(value()?)),
+            _ => {
+                let msg = format!("unexpected argument `{arg}`; {USAGE}");
+                return Err(CliError::usage(msg));
+            }
+        }
+    }
+    let live_only = !aliases.is_empty() || timeout.is_some() || dir.is_some();
+    if live_only && !live {
+        let msg = "--database, --timeout-ms and --migrations-dir need --live";
+        return Err(CliError::usage(msg));
+    }
+    options.live = live.then(|| Live {
+        aliases,
+        timeout: timeout.unwrap_or(live::DEFAULT_TIMEOUT),
+        migrations_dir: dir.unwrap_or_else(|| PathBuf::from("migrations")),
+    });
+    Ok(options)
+}
+
+fn millis(text: &str) -> Result<Duration, CliError> {
+    match text.parse::<u64>() {
+        Ok(ms) if ms > 0 => Ok(Duration::from_millis(ms)),
+        _ => Err(CliError::usage("--timeout-ms needs a positive integer")),
+    }
+}
+
+/// Run every offline check, then the live probes when requested.
+pub(crate) async fn diagnose(probe: &Probe, live: Option<&Live>) -> Report {
     let mut findings = Findings::default();
-    checks::run_all(probe, &mut findings);
+    let found = checks::run_all(probe, &mut findings);
+    if let Some(live) = live {
+        match &found.settings {
+            Some(settings) => {
+                live::probe(settings, live, &found.dir, &mut findings).await;
+            }
+            None => {
+                let detail = "the configuration did not load";
+                let hint = "fix the `config` error first";
+                findings.error("live", "doctor.E007", (detail, hint));
+            }
+        }
+    }
     findings.into_envelope()
 }
 
-/// `siderite doctor [--json]` from the process environment.
+/// `siderite doctor` from the process environment.
 ///
 /// Errors:
-///   A usage error for extra arguments, or an IO error writing output.
-pub(crate) fn run(
-    rest: &[String],
+///   A usage error for bad arguments, or an IO error writing output.
+pub(crate) async fn run(
+    raw: &[String],
     cwd: PathBuf,
     project: ProjectArgs,
-    json: bool,
 ) -> Result<u8, CliError> {
-    if let Some(extra) = rest.iter().skip(1).find(|a| *a != "--json") {
-        let msg = format!("unexpected argument `{extra}` for `doctor`");
-        return Err(CliError::usage(msg));
-    }
+    let options = parse(raw)?;
     let probe = Probe {
         path: std::env::var_os("PATH").unwrap_or_default(),
         cwd,
         project,
         process_env: true,
     };
-    let report = diagnose(&probe);
-    if json {
+    let report = diagnose(&probe, options.live.as_ref()).await;
+    if options.json {
         channel::emit_json(&report, None)?;
     } else {
         print!("{}", render(&report));

@@ -164,6 +164,12 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 Tools are probed in the project directory (so `rust-toolchain.toml` applies) with a 20-second bound each, in parallel. URLs are never printed, only alias and scheme. The exit code is `1` when any check fails, else `0`; `--json` writes one envelope whose `data.checks` lists `{name, status, detail}` in the order above, with a diagnostic (code, hint) per warning or error.
 
+### `doctor --live`
+
+`siderite doctor --live [--database ALIAS]... [--timeout-ms N] [--migrations-dir DIR]` adds one `live.ALIAS` check per requested alias (every configured alias when none is named) after the offline checks. Each probe connects and reads the migration status with the same code as `showmigrations --json`, bounded by `--timeout-ms` (default 5000) per alias, at most four at a time. Only the requested aliases can fail: an unreachable server, bad credentials or a timeout is `doctor.E007` for that alias, an alias that is not configured is `doctor.E008`, and nothing else in the report changes. Errors name the alias, never the URL.
+
+Probes do not change schema or data: the history table is only read, and SQLite files are opened read-only (`mode=ro`) and never created (a missing file is an error; a relative path is resolved against the project directory). In-memory SQLite, Redis and MongoDB aliases are reported as not probed. Connecting is not entirely free of effects: PostgreSQL and MySQL pools run their session setup (for example setting the session time zone), the server logs the connection, and failed logins count toward any lockout policy; none of this persists past the connection.
+
 ## `showmigrations --json`
 
 Works in the app binary and in the standalone `siderite` binary. `data` holds the selected `alias` (`null` in the standalone binary, which has no aliases), where the URL came from (`source`: `flag`, `settings` or `environment`; the URL itself is never printed), the `migrations` as `{id, applied}` in the order of the text output, and `applied` / `pending` counts. Both outputs come from the same `Migrator::show()` rows; nothing parses printed lines.
