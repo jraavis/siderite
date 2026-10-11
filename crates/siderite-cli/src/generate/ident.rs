@@ -47,6 +47,43 @@ pub(crate) fn package_name(name: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+/// A module or field name for generated code: a lowercase letter, then
+/// lowercase letters, digits and `_`, not a keyword.
+///
+/// Errors:
+///   A usage error naming `what` and the problem.
+pub(crate) fn snake_name(what: &str, name: &str) -> Result<(), CliError> {
+    let first = name.chars().next();
+    let lower = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    let valid = first.is_some_and(|c| c.is_ascii_lowercase())
+        && name.chars().all(|c| lower(c) || c == '_')
+        && !name.ends_with('_')
+        && !name.contains("__");
+    if !valid {
+        return Err(CliError::usage(format!(
+            "{what} `{name}` must be snake_case: a lowercase letter, then \
+             lowercase letters, digits and single `_`"
+        )));
+    }
+    if is_keyword(name) {
+        return Err(CliError::usage(format!("`{name}` is a Rust keyword")));
+    }
+    Ok(())
+}
+
+/// `blog_posts` as `BlogPosts`.
+pub(crate) fn pascal(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for part in name.split('_').filter(|p| !p.is_empty()) {
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +94,12 @@ mod tests {
         for bad in ["", "Demo", "1demo", "de mo", "fn", "self", "a/b"] {
             assert!(package_name(bad).is_err(), "{bad}");
         }
+        assert!(snake_name("route", "blog_posts2").is_ok());
+        let bad = ["", "Items", "1x", "a-b", "x_", "a__b", "type", "é"];
+        for name in bad {
+            assert!(snake_name("route", name).is_err(), "{name}");
+        }
+        assert_eq!(pascal("blog_posts"), "BlogPosts");
+        assert_eq!(pascal("items"), "Items");
     }
 }

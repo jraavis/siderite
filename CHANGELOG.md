@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite generate route NAME [--path /URL] [--dry-run]`
+  writes `src/routes/NAME.rs` with a documented handler, an explicit
+  operation ID and a `routes()` function, and prints the registration
+  lines instead of editing the app. The output is compiled in the test
+  suite against the current API.
 - **CLI:** `siderite add` / `siderite remove` run `cargo add` /
   `cargo remove` for the selected app package, so Cargo owns manifest
   edits (workspace inheritance and sources are kept). `add --preset

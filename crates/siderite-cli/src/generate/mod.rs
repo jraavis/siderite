@@ -2,9 +2,11 @@
 //! and the generators): validated identifiers, a write plan that never
 //! overwrites user files, exact dry-run previews and line diffs.
 
+pub(crate) mod command;
 pub(crate) mod diff;
 pub(crate) mod ident;
 pub(crate) mod plan;
+pub(crate) mod route;
 
 #[cfg(test)]
 mod tests;

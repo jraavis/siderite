@@ -172,6 +172,18 @@ after `--grace-ms`, default 5 s, including anything it started) and waits
 for its port to be free before starting the new one. Ctrl-C cancels a
 build and stops the app. This restarts the process; it is not hot reload.
 
+## Generators
+
+```bash
+siderite generate route items             # src/routes/items.rs
+siderite generate route items --dry-run   # show it only
+```
+
+A generated route module has one documented handler (`GET /items`,
+operation ID `items_index`), its response type and a `routes()` function.
+siderite never edits your existing code; it prints the two lines that
+register the module. Existing files are never overwritten.
+
 ## Dependencies
 
 ```bash
