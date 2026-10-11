@@ -395,7 +395,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   queues, shutdown ends streams, and compression/timeout middleware behavior
   is tested through the HTTP server. Document proxy buffering requirements.
 
-- [ ] **F07 — Add scoped SPA fallback.**
+- [x] **F07 — Add scoped SPA fallback.**
   Depends: none. Scope: existing static_files extension.
   Done: opt-in GET/HEAD HTML navigation fallback; API errors, missing assets
   and other methods retain intended behavior; no path traversal/symlink escape;

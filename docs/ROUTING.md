@@ -204,6 +204,17 @@ async fn list_items(
 
 The count and the fetch are two statements: rows written between them can make `total` disagree with the items, and an unordered queryset can show a row on two pages or on none. Order by a unique key, and run both inside a transaction with a snapshot (for example `REPEATABLE READ` on PostgreSQL) when the two must agree. A page past the end has no items and the real `total`.
 
+## Static files and single-page apps
+
+`App::static_files("/assets", "public")` serves a directory under a prefix (`"/"` makes it the fallback for every unmatched path); missing files are the 404 problem document. The mount is not in the OpenAPI document.
+
+`App::spa("/app", "dist")` serves a single-page application: files as they are, and `dist/index.html` for browser navigations to any other path below the prefix, so client-side routes such as `/app/settings` load the app (`"/"` mounts it for the whole site). It stays out of the way of everything else:
+
+- Explicit routes win, including routes under the prefix (`/app/api/...`).
+- Only `GET` and `HEAD` requests whose `Accept` names `text/html` and whose last segment has no extension fall back. A missing asset (`/app/assets/gone.js`), a request for JSON and a missing `index.html` get the 404 problem document; other methods get `405` with `Allow: GET, HEAD`.
+- Paths are resolved inside the canonical directory: `..` segments (also percent-encoded), backslashes and NUL are refused, and a file reached through a symbolic link must also lie inside the directory.
+- The fallback `index.html` is sent with `Cache-Control: no-cache`, so a new deploy is picked up; files keep `ServeFile`'s conditional and range handling.
+
 ## Mounting and OpenAPI merge
 
 `App::mount(prefix, app)` (alias `nest`) serves `app` below `prefix`. For

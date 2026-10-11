@@ -8,6 +8,11 @@
 
 
 ### Added
+- **HTTP:** `App::spa(prefix, dir)` serves a single-page application:
+  files, and `index.html` for HTML navigations (GET/HEAD, `text/html`,
+  no extension) below the prefix. Explicit routes win; missing assets,
+  API requests and a missing index stay 404, other methods 405; paths
+  cannot leave the directory, through `..` or symbolic links.
 - **HTTP:** event stream lifecycle: `Sse::keep_alive(interval)` sends
   idle heartbeats, `Sse::until(future)` ends a stream cleanly, and
   `Readiness::stopping()` resolves when shutdown begins. Slow readers
