@@ -8,6 +8,13 @@
 
 
 ### Added
+- **CLI:** `ai init [--check] [--dry-run] [--force]` writes
+  `.siderite/context.md`: a generated block (commands, conventions, the
+  project's models and routes, and examples compiled in the test suite
+  for this release) between markers that record the format, framework
+  version and a hash. Reruns report up to date, stale (with a diff) or
+  hand-edited (left alone without `--force`); text outside the markers is
+  always kept, and a file without markers is never touched.
 - **CLI:** `new --dry-run` prints the exact files without writing them.
   File-writing commands share one write plan that rejects absolute and
   `..` paths, writes through symbolic links and in-plan collisions, never

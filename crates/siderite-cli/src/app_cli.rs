@@ -357,6 +357,9 @@ impl AppCli {
     /// `ai dump-context`: the snapshot as Markdown or JSON, migration
     /// status only with `--live`.
     async fn ai(&self, g: &GlobalArgs, rest: &[String], e: &Env) -> CliResult {
+        if rest.get(1).is_some_and(|sub| sub == "init") {
+            return self.ai_init(rest);
+        }
         let options = crate::ai::parse(rest, g.json)?;
         let app = (self.factory)();
         let dir = self.migrations_dir_for(g);
@@ -375,6 +378,24 @@ impl AppCli {
             channel::emit(&text, e.report_path.as_deref())?;
         }
         Ok(report.exit_code())
+    }
+
+    /// `ai init`: refresh `.siderite/context.md` in the package directory
+    /// (the working directory under `siderite`).
+    fn ai_init(&self, rest: &[String]) -> CliResult {
+        use crate::ai::init;
+        let options = init::parse(rest)?;
+        use crate::report::snapshot;
+        let limits = snapshot::Limits {
+            max_bytes: 256 << 10,
+            ..Default::default()
+        };
+        let app = (self.factory)();
+        let models = &self.models;
+        let snap = snapshot::snapshot(&app, models, &self.settings, limits);
+        let dir = std::env::current_dir()
+            .map_err(|err| CliError::Io(format!("cannot read cwd: {err}")))?;
+        init::run(&dir, &snap.data, options)
     }
 
     /// `json` is the environment of a `--json` run, `None` for text.
@@ -421,6 +442,8 @@ Commands:
   check [--json]               Validate config, models, migrations and routes
   ai dump-context [--format markdown|json] [--live] [--max-bytes N]
                                Application context for AI tools
+  ai init [--check] [--dry-run] [--force]
+                               Write or refresh .siderite/context.md
   openapi export [--output PATH] [--force]
                                Write the OpenAPI document (default stdout)
   dbshell                      Open the database's native client

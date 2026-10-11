@@ -30,6 +30,8 @@ rustix.workspace = true
 
 [dev-dependencies]
 jsonschema.workspace = true
+siderite.workspace = true
+siderite-testkit.workspace = true
 
 [features]
 default = []

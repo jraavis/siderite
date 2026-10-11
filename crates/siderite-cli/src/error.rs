@@ -51,6 +51,9 @@ pub enum CliError {
     /// Creating a project or invoking cargo failed.
     #[error("{0}")]
     Io(String),
+    /// A file would overwrite user content; nothing was written.
+    #[error("{0}")]
+    Conflict(String),
     /// A live operation did not finish within its bound.
     #[error("timed out after {after:?} {what}")]
     Timeout {
