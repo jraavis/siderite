@@ -109,7 +109,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   if individual test results are unavailable, report aggregate status instead
   of inventing a fragile terminal-output parser or requiring nightly Rust.
 
-- [ ] **X06 — Add a verified API project template.**
+- [x] **X06 — Add a verified API project template.**
   Depends: D05. Scope: `new --template api` and a template version manifest.
   Done: include one tested endpoint, configuration example and developer
   instructions; generated project passes verify. Keep the existing default

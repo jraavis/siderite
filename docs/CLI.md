@@ -189,7 +189,14 @@ The scripts are tested by running them in bash, zsh and fish.
 
 ## `new`
 
-`siderite new NAME [--database sqlite|postgres|mysql] [--path DIR] [--dry-run]` writes an API crate in `NAME/`, which must not exist or be empty. `--dry-run` prints every file it would create with its full contents (as a diff from nothing) and writes nothing.
+`siderite new NAME [--database sqlite|postgres|mysql] [--template default|api] [--path DIR] [--dry-run]` writes an API crate in `NAME/`, which must not exist or be empty. `--dry-run` prints every file it would create with its full contents (as a diff from nothing) and writes nothing.
+
+Templates:
+
+- `default`: one route, the CLI entry point, settings and an empty `migrations/` (the original layout).
+- `api`: a validated `POST /greetings` endpoint with documented request and response types, a liveness route (`/livez`), integration tests in `tests/api.rs` (success, 422 cases, liveness, OpenAPI) with `siderite-testkit`, a commented `siderite.toml` and a README with the development workflow (`dev`, `verify`, `test`, generators, migrations, presets).
+
+Every template also writes `.siderite/template.toml`, recording the template's name, its version and the siderite version that wrote it, for upgrade previews. Generated Rust is formatted with `rustfmt` when it is installed, and a test (run with the slow suite) generates each template and requires `siderite verify` to pass on it.
 
 Commands that write source files share one write plan: paths are relative with no `..`, may not pass through a symbolic link, may not collide with each other, and an existing file is never overwritten (identical contents are left alone; different contents are a conflict that stops the whole plan before anything is written). Each file is written atomically. Package names must start with a lowercase letter, use only lowercase letters, digits, `-` and `_`, and not be a Rust keyword.
 

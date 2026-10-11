@@ -44,6 +44,11 @@
   an absent field is `Unchanged`, a present one `Set(value)`, so `null`
   clears a `Change<Option<T>>` and is rejected for other types;
   validation and schema are `T`'s.
+- **CLI:** `siderite new --template api` writes a tested, documented
+  API project (a validated endpoint, liveness, integration tests, a
+  commented configuration, a development README). Every template records
+  `.siderite/template.toml` (name, version, siderite version) and each
+  passes `siderite verify` in the slow test suite.
 - **CLI:** `siderite generate resource NAME [FIELD:TYPE[?]]...` writes
   a model and a paged list (`PageParams`/`Page`, ordered by `id`, a
   fixed two-statement budget), create, get, replace (`PUT`), partial
