@@ -493,6 +493,17 @@ pub const COMMANDS: &[Command] = &[
         ("clean", false, None),
     ),
     Command {
+        mutates: &[Mutation::Database, Mutation::RunsCode],
+        live: Live::Always,
+        formats: TEXT_JSON,
+        ..cmd(
+            "seed",
+            Group::Migrations,
+            "seed --dataset NAME | seed --list [--json]",
+            "Load a seed dataset the app registers",
+        )
+    },
+    Command {
         runner: Runner::Tool,
         needs: Needs::Nothing,
         mutates: CONTAINER_FILES,

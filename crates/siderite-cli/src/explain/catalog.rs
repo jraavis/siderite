@@ -23,6 +23,7 @@ pub(crate) struct Explanation {
 
 const CHECK: &str = "guides/production/cli#check";
 const CONFIG: &str = "guides/production/cli#configuration";
+const SEED: &str = "guides/production/cli#seed-datasets";
 const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
 const JSON: &str = "guides/production/cli#json-output";
@@ -531,6 +532,19 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite routes",
         CHECK,
+    ),
+    entry(
+        "seed.E001",
+        "Seed dataset failed",
+        [
+            "The dataset's callback returned an error. Where the backend \
+             has transactions (SQLite, PostgreSQL, MySQL) nothing it wrote \
+             was kept.",
+            "Fix the dataset or the data it expects, then run it again; \
+             datasets should be safe to run twice.",
+        ],
+        "siderite seed --dataset NAME",
+        SEED,
     ),
     entry(
         "services.E001",

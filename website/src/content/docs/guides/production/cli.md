@@ -436,6 +436,32 @@ Messages never contain database URLs.
 Migration checks are skipped when no migrations directory is passed to
 `siderite_cli::check`; `AppCli` always passes its own.
 
+## Seed datasets
+
+```rust
+AppCli::new(build_app)
+    .seed("demo", "A user with two posts", |s| async move {
+        // s.db is the selected database, inside one transaction
+        demo_data(&s.db).await?;
+        Ok(())
+    })
+```
+
+```bash
+siderite seed --list
+siderite seed --dataset demo                # the `default` database
+siderite --database analytics seed --dataset demo
+```
+
+A dataset runs only when you name it: never on startup, after
+migrations or by default. The report says which dataset went into which
+database alias, with the URL's password removed. The whole dataset runs in
+one transaction (SQLite, PostgreSQL and MySQL), so a failure
+(`seed.E001`) leaves nothing behind. Seeding never deletes or resets
+data, never reads SQL files, and is not a migration: nothing is recorded
+and there is nothing to roll back. Write datasets so a second run is
+harmless, for example by looking rows up before inserting them.
+
 ## `dbshell`
 
 `dbshell` starts `sqlite3`, `psql`, or `mysql` on the selected database and

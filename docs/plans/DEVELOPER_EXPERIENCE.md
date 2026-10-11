@@ -128,7 +128,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   default. Down preserves data; data deletion requires a separate explicit
   command. Add Redis/MySQL recipes only after independent fixture tests.
 
-- [ ] **X09 — Add explicit seed datasets.**
+- [x] **X09 — Add explicit seed datasets.**
   Depends: C01, D07. Scope: app-registered `seed --dataset NAME` callbacks.
   Done: selected database alias and dataset are visible; deterministic fixtures
   support documented idempotence and transaction behavior where available.

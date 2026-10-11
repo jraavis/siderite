@@ -6,11 +6,13 @@ use crate::dbshell::ShellCommand;
 use crate::error::CliError;
 use crate::openapi;
 use crate::report::{UrlSource, build, channel, text};
+use crate::seed::{self, Dataset, SeedError, Seeding};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
 use crate::status::{STATUS_TIMEOUT, Selection, status};
 use siderite_core::App;
 use siderite_orm::router::DatabaseRouter;
 use siderite_orm::{BackendKind, Databases, Db, ModelMeta};
+use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -25,6 +27,7 @@ use std::sync::Arc;
 /// | `check [--json]` | runs [`check`](crate::check()); exits `1` on errors |
 /// | `openapi export [-o PATH] [--force]` | writes the OpenAPI document |
 /// | `dbshell` | starts `sqlite3`, `psql` or `mysql` on the database |
+/// | `seed --dataset NAME`, `--list` | loads an [`AppCli::seed`] dataset |
 /// | `makemigrations`, `migrate`, `rollback`, `showmigrations`, `squashmigrations` | delegate to [`siderite_migrations::cli::run`] |
 ///
 /// Global flags: `--database ALIAS` (default `default`), `--database-url URL`,
@@ -58,10 +61,12 @@ pub struct AppCli {
     migrations_dir: PathBuf,
     configure_db: Box<ConfigureDb>,
     router: Option<Arc<ApplyRouter>>,
+    datasets: Vec<Dataset>,
 }
 
 type CliResult = Result<u8, CliError>;
 type Selected = Result<Selection, CliError>;
+type SeedTarget = Result<seed::Target, CliError>;
 
 /// Hook applied to each connected database handle.
 type ConfigureDb = dyn Fn(&str, Db) -> Db + Send + Sync;
@@ -102,6 +107,7 @@ impl AppCli {
             migrations_dir: PathBuf::from("migrations"),
             configure_db: Box::new(|_, db| db),
             router: None,
+            datasets: Vec::new(),
         }
     }
 
@@ -135,6 +141,19 @@ impl AppCli {
     #[must_use]
     pub fn settings(mut self, settings: CliSettings) -> Self {
         self.settings = settings;
+        self
+    }
+
+    /// Register the seed dataset `name`, loaded only by
+    /// `seed --dataset NAME` into the selected database (in one
+    /// transaction where the backend has them). See [`crate::seed`].
+    #[must_use]
+    pub fn seed<F, Fut>(mut self, name: &str, summary: &str, run: F) -> Self
+    where
+        F: Fn(Seeding) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), SeedError>> + Send + 'static,
+    {
+        self.datasets.push(Dataset::new(name, summary, run));
         self
     }
 
@@ -216,6 +235,7 @@ impl AppCli {
                     _ => self.dbshell(&global, env),
                 }
             }
+            "seed" => self.seeds(&global, &rest, env).await,
             "ai" => {
                 if rest.iter().any(|a| a == "--help" || a == "-h") {
                     print_help();
@@ -352,6 +372,42 @@ impl AppCli {
         println!("Starting server at http://{addr}");
         app.run(&addr).await?;
         Ok(0)
+    }
+
+    /// `seed --list` or `seed --dataset NAME`.
+    async fn seeds(&self, g: &GlobalArgs, r: &[String], e: &Env) -> CliResult {
+        let report = match seed::parse(r)? {
+            seed::Request::List => seed::list(&self.datasets),
+            seed::Request::Load(name) => {
+                let dataset = seed::find(&self.datasets, &name)?;
+                let target = self.seed_target(g, e).await?;
+                seed::load(&self.datasets, dataset, target).await
+            }
+        };
+        if g.json {
+            emit(&report, e)?;
+        } else {
+            print!("{}", seed::render(&report));
+        }
+        Ok(report.exit_code())
+    }
+
+    /// The database the global flags select, connected and configured.
+    async fn seed_target(&self, g: &GlobalArgs, e: &Env) -> SeedTarget {
+        let Selection { url, alias, source } = self.select_database(g, e)?;
+        let alias = alias.unwrap_or_else(|| DEFAULT_DATABASE.to_owned());
+        let connected = connect_url(&url).await;
+        let db = connected.map_err(|source| CliError::Connect {
+            alias: alias.clone(),
+            source,
+        })?;
+        let db = (self.configure_db)(&alias, db);
+        Ok(seed::Target {
+            db,
+            alias,
+            source,
+            url,
+        })
     }
 
     /// `ai dump-context`: the snapshot as Markdown or JSON, migration
