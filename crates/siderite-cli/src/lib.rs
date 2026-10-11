@@ -46,6 +46,7 @@ pub mod settings;
 mod standalone;
 mod status;
 mod target;
+mod upgrade;
 mod verify;
 mod workspace;
 

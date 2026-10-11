@@ -1,9 +1,10 @@
 //! The packaged documentation index and keyword search over it.
 //!
 //! `index.json` is generated from the maintained public documentation
-//! (the website's start, guides, reference and tutorial pages) and from
-//! the compiled examples, and is checked against those sources by a test,
-//! so it always matches this release. Search is local: keyword scoring
+//! (the website's start, guides, reference and tutorial pages), from
+//! the compiled examples and from the changelog's release sections, and
+//! is checked against those sources by a test, so it always matches this
+//! release. Search is local: keyword scoring
 //! with a fixed tie-break, so the same query gives the same results.
 
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,8 @@ pub(crate) enum Kind {
     Guide,
     /// An example program, compiled in the framework's own build.
     Example,
+    /// One release's section of the changelog.
+    Changelog,
 }
 
 /// One searchable section.

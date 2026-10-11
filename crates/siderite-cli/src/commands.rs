@@ -382,6 +382,17 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         runner: Runner::Tool,
+        needs: Needs::Package,
+        formats: TEXT_JSON,
+        ..cmd(
+            "upgrade",
+            Group::Tool,
+            "upgrade --to VERSION --dry-run [--json]",
+            "Preview a framework upgrade (writes nothing)",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
         mutates: &[Mutation::BuildArtifacts, Mutation::RunsCode],
         formats: TEXT_JSON,
         ..cmd(

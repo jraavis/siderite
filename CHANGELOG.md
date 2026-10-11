@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite upgrade --to VERSION --dry-run` previews a framework
+  upgrade without writing files: per-dependency changes for registry, git,
+  path and workspace-inherited sources, semver compatibility, the
+  target's release notes when this CLI has them (unknown otherwise), and
+  the verification commands. `docs search` now also covers the changelog.
 - **CLI:** `siderite generate ci` writes a GitHub Actions workflow running
   `siderite verify` with the report kept as an artifact, plus an explicit
   live job with database service containers (no secrets). The toolchain
