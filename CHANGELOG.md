@@ -8,6 +8,12 @@
 
 
 ### Added
+- **HTTP:** `PageParams<MAX = 100, DEFAULT = 20>` (a `Query` type
+  with validated, documented bounds) and `Page<T>` (a response body with
+  `total` and `total_pages`, built from the ORM's `Page` by
+  `params.fetch(queryset)`, `map` and `try_map`). Page schemas are
+  inlined, so item types never collide; `QuerySet::paginate` is
+  unchanged.
 - **Validation:** `Change<T>` (in the prelude) for partial updates:
   an absent field is `Unchanged`, a present one `Set(value)`, so `null`
   clears a `Change<Option<T>>` and is rejected for other types;

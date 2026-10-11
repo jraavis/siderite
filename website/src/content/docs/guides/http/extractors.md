@@ -67,6 +67,25 @@ present but invalid still fails the request with `T`'s error:
 `State<T>`, `Provided<T>` and `Resource<T>` never become `None`: a missing
 value is a server misconfiguration and stays an error.
 
+## Pagination
+
+`Query<PageParams>` (`use siderite::{Page, PageParams};`; they are not in the prelude, so an application's own `Page` type does not clash) reads `?page=N&per_page=M`: a 1-based page (default 1) and a page size from 1 to 100 (default 20). Choose other bounds with `PageParams<MAX, DEFAULT>`, for example `Query<PageParams<500, 50>>`; `1 <= DEFAULT <= MAX` is checked at compile time. Zero, negative, non-numeric or too large values are answered with 422 before the handler runs, other query keys are left to other extractors, and the OpenAPI parameters state the minimum, maximum and defaults.
+
+`Page<T>` is the response body: `items`, `total`, `page`, `per_page` and `total_pages`. `params.fetch(queryset)` runs `QuerySet::paginate` (unchanged: one `COUNT`, then one fetch with `OFFSET`/`LIMIT`) and returns a `Page<M>`; `page.map(f)` and `page.try_map(f)` convert the items (for example to response types), and `Page::from(orm_page)` adapts an ORM page. Its schema is inlined, not named, so pages of different item types never collide in `components.schemas`.
+
+```rust
+#[get("/items")]
+async fn list_items(
+    State(dbs): State<Databases>,
+    Query(params): Query<PageParams>,
+) -> ApiResult<Json<Page<ItemOut>>> {
+    let rows = dbs.objects::<Item>()?.order_by([Item::id.asc()]);
+    Ok(Json(params.fetch(rows).await?.map(ItemOut::from)))
+}
+```
+
+The count and the fetch are two statements: rows written between them can make `total` disagree with the items, and an unordered queryset can show a row on two pages or on none. Order by a unique key, and run both inside a transaction with a snapshot (for example `REPEATABLE READ` on PostgreSQL) when the two must agree. A page past the end has no items and the real `total`.
+
 ## Custom extractors
 
 Implement `FromRequestParts` (or `FromRequest`) and optionally `describe` so

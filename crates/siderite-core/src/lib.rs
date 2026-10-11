@@ -18,6 +18,7 @@ pub mod handler;
 pub mod header;
 pub mod lifespan;
 pub mod middleware;
+pub mod pagination;
 pub mod response;
 pub mod responses;
 pub mod routing;
@@ -48,6 +49,7 @@ pub use middleware::{
     Cors, HttpsRedirect, Next, RateLimit, RateLimitError, RequestId, RequestIdLayer,
     RequestLogging, Timeout, TrustedHosts, TrustedProxies, from_fn,
 };
+pub use pagination::{Page, PageParams};
 pub use response::{
     Html, IntoResponse, Json, JsonDump, NoContent, PlainText, Response, WithStatus,
 };

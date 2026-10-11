@@ -360,7 +360,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
 
 ### E. Focused framework additions
 
-- [ ] **F01 — Define and implement HTTP page representation.**
+- [x] **F01 — Define and implement HTTP page representation.**
   Depends: none. Scope: reuse ORM Page through an adapter or compatible traits.
   Done: Serialize/Schema work for generic item types without schema-name
   collisions; validate page/size and enforce a configurable maximum. Preserve
