@@ -147,6 +147,19 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 - `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
 
+## `dev`
+
+`siderite dev [--grace-ms N] [-- ARGS]` builds the app and runs its binary with `run ARGS`, supervised. It restarts processes; it is not in-process hot reload.
+
+- Each build is `cargo build --message-format=json-diagnostic-rendered-ansi`: compiler diagnostics print as usual and the binary to run comes from cargo's artifact messages (`--bin`, then `default-run`, then the only binary).
+- A failed build leaves the last healthy app running. A successful build stops the running app first and waits until it has exited (so its port is free), then starts the new one.
+- Stopping sends SIGTERM to the app's process group, waits `--grace-ms` (default 5000), then sends SIGKILL; anything the app started in its group is killed too, and `dev` waits (up to 2 s) until no live member is left.
+- Requests to rebuild that arrive during a build are coalesced into one more build. Typing `r` and Enter requests a rebuild.
+- Ctrl-C cancels a running build (cargo and the compilers it started are killed with their process group) and stops the app.
+- The app's stdin is not attached; `siderite dev` reads it for the `r` command.
+
+Process groups, graceful stop and group cleanup apply on Linux and macOS (tested on Linux). On Windows the app is stopped by force and runs from a copy of the binary, so the next build can replace the original; this path is untested.
+
 ## `doctor`
 
 `siderite doctor [--json]` runs in the standalone binary, so it works even when the app does not compile. It never connects to a database, builds the project or changes anything.

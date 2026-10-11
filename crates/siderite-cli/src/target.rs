@@ -120,6 +120,8 @@ pub(crate) struct Selected {
     pub package: String,
     /// Directory to run cargo in.
     pub dir: PathBuf,
+    /// The package's `default-run` binary, if set.
+    pub default_run: Option<String>,
     /// `--bin` to pass to cargo, only when it must be named.
     pub bin: Option<String>,
 }
@@ -147,6 +149,7 @@ pub(crate) fn locate(
                 return Ok(Some(Selected {
                     package,
                     dir,
+                    default_run: None,
                     bin: None,
                 }));
             }
@@ -177,6 +180,7 @@ pub(crate) fn locate(
     Ok(Some(Selected {
         package: pkg.name.clone(),
         dir: pkg.dir().to_path_buf(),
+        default_run: pkg.default_run.clone(),
         bin,
     }))
 }

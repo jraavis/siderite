@@ -8,6 +8,13 @@
 
 
 ### Added
+- **CLI:** `siderite dev [--grace-ms N] [-- ARGS]` supervises the app: it
+  builds with structured cargo output, runs the built binary, keeps the
+  last healthy process on a failed build, and replaces it on success after
+  a graceful stop (SIGTERM to the process group, SIGKILL after the grace
+  period, waiting until the group is gone). Rebuild requests during a
+  build coalesce; `r` + Enter rebuilds; Ctrl-C cancels the build and stops
+  the app without leaving processes behind.
 - **CLI:** `fmt`, `lint` and `clean` passthroughs: `cargo fmt`, `cargo
   clippy` and `cargo clean` in the app package with arguments forwarded
   unchanged and the exit status preserved. `lint` is Clippy, distinct from
