@@ -44,6 +44,10 @@ impl Package {
 pub(crate) struct Workspace {
     /// Members sorted by name, then manifest path.
     pub packages: Vec<Package>,
+    /// The workspace root directory, when reported.
+    pub root: Option<PathBuf>,
+    /// The target directory, when reported.
+    pub target_dir: Option<PathBuf>,
 }
 
 /// Message for a `cargo` that cannot be started.
@@ -100,7 +104,13 @@ pub(crate) fn parse(json: &str) -> Result<Workspace, CliError> {
         packages.push(package(item).ok_or_else(|| bad("bad package"))?);
     }
     packages.sort_by_key(|p| (p.name.clone(), p.manifest_path.clone()));
-    Ok(Workspace { packages })
+    let field = |key: &str| root.get(key).and_then(Value::as_str);
+    let dir = |key: &str| field(key).map(PathBuf::from);
+    Ok(Workspace {
+        packages,
+        root: dir("workspace_root"),
+        target_dir: dir("target_directory"),
+    })
 }
 
 fn package(item: &Value) -> Option<Package> {

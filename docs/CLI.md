@@ -149,16 +149,19 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 ## `dev`
 
-`siderite dev [--grace-ms N] [-- ARGS]` builds the app and runs its binary with `run ARGS`, supervised. It restarts processes; it is not in-process hot reload.
+`siderite dev [--grace-ms N] [-- ARGS]` builds the app and runs its binary with `run ARGS`, supervised, and rebuilds when its inputs change. It restarts processes; it is not in-process hot reload.
 
+- Inputs are the files the binary was compiled from, read from cargo's dep-info file next to the executable (every local source file, path dependencies and `include_str!` files included), plus `Cargo.toml`, `Cargo.lock` and `siderite.toml` of the package and workspace root, and the `migrations/` directory. Until the first successful build, the package's `src/` and `build.rs` stand in. The target directory and `.git`, `.hg`, `.svn` and `target` directories inside the workspace are never inputs, so databases, logs and uploads the app writes do not restart it.
+- Parent directories are watched non-recursively (saves by rename are seen). A burst of changes is debounced (150 ms quiet, at most 1 s) into one rebuild; changes during a build coalesce into one more. A watcher overflow or error counts as a change rather than being dropped. If the platform watcher cannot start, `dev` keeps running and `r` + Enter still rebuilds.
+- Editing a migration restarts the app but never applies it; run `siderite migrate` yourself.
 - Each build is `cargo build --message-format=json-diagnostic-rendered-ansi`: compiler diagnostics print as usual and the binary to run comes from cargo's artifact messages (`--bin`, then `default-run`, then the only binary).
 - A failed build leaves the last healthy app running. A successful build stops the running app first and waits until it has exited (so its port is free), then starts the new one.
 - Stopping sends SIGTERM to the app's process group, waits `--grace-ms` (default 5000), then sends SIGKILL; anything the app started in its group is killed too, and `dev` waits (up to 2 s) until no live member is left.
-- Requests to rebuild that arrive during a build are coalesced into one more build. Typing `r` and Enter requests a rebuild.
+- Typing `r` and Enter requests a rebuild as well.
 - Ctrl-C cancels a running build (cargo and the compilers it started are killed with their process group) and stops the app.
 - The app's stdin is not attached; `siderite dev` reads it for the `r` command.
 
-Process groups, graceful stop and group cleanup apply on Linux and macOS (tested on Linux). On Windows the app is stopped by force and runs from a copy of the binary, so the next build can replace the original; this path is untested.
+Watching uses the `notify` crate (inotify, FSEvents, ReadDirectoryChangesW). Measured idle cost on Linux: no CPU time over 10 s, about 14 MB resident, 6 threads. Process groups, graceful stop and group cleanup apply on Linux and macOS (tested on Linux). On Windows the app is stopped by force and runs from a copy of the binary, so the next build can replace the original; this path is untested.
 
 ## `doctor`
 

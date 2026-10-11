@@ -182,8 +182,8 @@ siderite {} — FastAPI-style Rust web framework
 
 Create and run an app:
   new NAME                      Write a new API crate
-  dev [-- ARGS]                 Build and run the app; r+Enter rebuilds,
-                                Ctrl-C stops it
+  dev [-- ARGS]                 Rebuild and restart the app on changes
+                                (r+Enter rebuilds, Ctrl-C stops it)
   doctor [--json] [--live]      Check the toolchain, project and config
                                 (--live: read-only database probes)
   run [--addr ADDR]             Serve the app

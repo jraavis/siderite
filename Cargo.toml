@@ -59,6 +59,7 @@ http-body = "1"
 http-body-util = "0.1"
 hyper = "1"
 hyper-util = { version = "0.1", features = ["server-auto", "service", "tokio"] }
+notify = { version = "8.2", default-features = false, features = ["macos_fsevent"] }
 regex = "1"
 rustix = { version = "1.1", default-features = false, features = ["std", "process"] }
 rust_decimal = { version = "1", default-features = false, features = ["std", "serde-str"] }
