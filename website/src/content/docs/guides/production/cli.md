@@ -286,6 +286,12 @@ examples for your siderite version, and any files you name with
 what it left out and what it could not know. Included files must be in
 the app package; git-ignored and secret-looking files are skipped.
 
+Before handing work back, `siderite ai validate` runs the same steps as
+`siderite verify` and lists each failure with its file and line, the fix
+`siderite explain` gives for its code, a documentation link and the
+command that reproduces it. It changes nothing, and a clean report only
+means these checks passed: application logic still needs its own tests.
+
 ## JSON output
 
 `check`, `docs search`, `doctor`, `explain`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command

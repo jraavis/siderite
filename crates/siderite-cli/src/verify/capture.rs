@@ -2,7 +2,7 @@
 //! diagnostics; everything else is plain text for the output tail.
 
 use crate::cargo_msg::{self, CargoMessage, CompilerDiagnostic};
-use crate::report::redact_text;
+use crate::report::{Diagnostic, redact_text};
 use std::collections::HashSet;
 
 /// How many compiler diagnostics a step keeps.
@@ -18,6 +18,8 @@ pub(crate) struct Captured {
     pub omitted: usize,
     /// stderr, then the stdout lines that are not cargo messages.
     pub text: String,
+    /// The framework check's diagnostics.
+    pub framework: Vec<Diagnostic>,
 }
 
 /// Split `stdout` (JSON messages when `json`) and `stderr`.
@@ -54,6 +56,7 @@ pub(crate) fn capture(stdout: &str, stderr: &str, json: bool) -> Captured {
         diagnostics,
         omitted,
         text,
+        ..Captured::default()
     }
 }
 

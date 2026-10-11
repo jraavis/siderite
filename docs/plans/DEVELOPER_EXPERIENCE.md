@@ -164,7 +164,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   inclusion is explicit, honors ignore rules and stays within project roots.
   Do not send project contents to an external model by default.
 
-- [ ] **X14 — Add a bounded AI validation report.**
+- [x] **X14 — Add a bounded AI validation report.**
   Depends: X05, X13. Scope: `ai validate` over the existing verify pipeline.
   Done: reports compile/lint/test/check failures with source spans and relevant
   documentation; produces reproducible commands without automatically applying

@@ -377,6 +377,18 @@ pub const COMMANDS: &[Command] = &[
         )
     },
     Command {
+        runner: Runner::Tool,
+        mutates: &[Mutation::BuildArtifacts, Mutation::RunsCode],
+        live: Live::OptIn,
+        formats: TEXT_JSON,
+        ..cmd(
+            "ai validate",
+            Group::Ai,
+            "ai validate [--json] [--live]",
+            "verify, as findings with fixes and docs",
+        )
+    },
+    Command {
         mutates: &[Mutation::ProjectFiles],
         ..cmd(
             "ai init",

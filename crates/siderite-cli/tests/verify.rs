@@ -14,7 +14,7 @@ use std::path::Path;
 /// by `$FAIL_SUB`, printing a credential-bearing URL as it does.
 const CARGO: &str = r#"echo "$*" >> "$LOG"
 if [ -n "$SIDERITE_REPORT_PATH" ]; then
-  printf '%s\n' '{"ok":true}' > "$SIDERITE_REPORT_PATH"
+  printf '%s\n' "${REPORT:-{\"ok\":true\}}" > "$SIDERITE_REPORT_PATH"
 fi
 if [ "$1" = "$FAIL_SUB" ]; then
   echo "connecting to postgres://app:hunter2@db/app" >&2
@@ -186,4 +186,60 @@ fn text_output_and_usage_errors() {
     assert!(text.contains("1 of 5 steps failed"), "{text}");
     let out = siderite(&app, &path, &["verify", "--bogus"], &fake);
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+}
+
+#[test]
+fn framework_findings_are_structured() {
+    let root = scratch("verify-check");
+    let (app, path) = setup(&root.0, true);
+    let log = root.0.join("calls.txt").display().to_string();
+    let report = json!({
+        "schema_version": 1,
+        "command": "check",
+        "ok": false,
+        "data": null,
+        "diagnostics": [{
+            "code": "models.E003",
+            "severity": "error",
+            "message": "model `Loose` has no primary key",
+            "location": "Loose",
+        }],
+    })
+    .to_string();
+    let fake = [
+        ("LOG", log.as_str()),
+        ("FAIL_SUB", "run"),
+        ("REPORT", report.as_str()),
+    ];
+    let out = siderite(&app, &path, &["verify", "--json"], &fake);
+    let value = one_value(&out);
+    let check = &value["data"]["steps"][4];
+    assert_eq!(check["status"], "failed");
+    let found = &check["framework_diagnostics"][0];
+    assert_eq!(found["code"], "models.E003");
+    assert_eq!(found["location"], "Loose");
+    let text = siderite(&app, &path, &["verify"], &fake);
+    let text = common::stdout(&text);
+    assert!(
+        text.contains("    error[models.E003] (Loose): model"),
+        "{text}"
+    );
+}
+
+#[test]
+fn ai_validate_reports_findings_from_the_same_run() {
+    let root = scratch("verify-validate");
+    let args = ["ai", "validate", "--json"];
+    let (report, code, calls) = run(&root.0, &args, "build");
+    assert_eq!(code, 1, "{report}");
+    assert_eq!(report["command"], "ai validate");
+    assert_eq!(calls.len(), 3, "the verify steps, nothing else");
+    let finding = &report["data"]["findings"][0];
+    assert_eq!(finding["code"], "E0308");
+    assert_eq!(finding["location"], "src/main.rs:3:5");
+    assert_eq!(finding["step"], "build");
+    let url = finding["explanation"]["url"].as_str().unwrap();
+    assert!(url.ends_with("/E0308.html"), "{url}");
+    let commands = report["data"]["commands"].as_array().unwrap();
+    assert_eq!(commands.last().unwrap(), "siderite verify");
 }

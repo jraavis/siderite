@@ -11,6 +11,7 @@ mod files;
 pub(crate) mod init;
 mod markdown;
 pub(crate) mod task;
+pub(crate) mod validate;
 
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,8 @@ mod tests;
 mod tests_init;
 #[cfg(test)]
 mod tests_task;
+#[cfg(test)]
+mod tests_validate;
 
 use crate::error::CliError;
 use crate::report::snapshot::{Limits, Snapshot, snapshot};

@@ -1410,14 +1410,14 @@
       "path": "website/src/content/docs/guides/production/cli.md",
       "line": 260,
       "features": [],
-      "text": "```bash\nsiderite ai dump-context            # Markdown\nsiderite ai dump-context --json     # versioned JSON envelope\nsiderite ai dump-context --live     # also read migration status\n```\n\n`siderite ai init` writes `.siderite/context.md` for AI assistants:\ncommands, conventions, this project's models and routes, and examples\ncompiled against your siderite version. Rerun it after changes (`--check`\ntells CI when it is stale). Only the block between its markers is\ngenerated; your notes around it are kept, and a hand-edited block is\nleft alone unless you pass `--force`.\n\n`ai dump-context` describes the app from its compiled metadata: framework\nversion, database aliases and backend kinds (never URLs), models and\ntheir fields, documented routes, and migration status (`unknown` unless\n`--live`). Output is bounded (`--max-bytes`), says what was cut, and is\nredacted. It names the binary and its build time so stale context can be\nrecognised.\n\nFor one task, `siderite ai context --task \"add a tag filter to posts\"`\npicks the matching models and routes, the relevant documentation and\nexamples for your siderite version, and any files you name with\n`--include`, within a byte budget (`--budget`, default 32768). It says\nwhat it left out and what it could not know. Included files must be in\nthe app package; git-ignored and secret-looking files are skipped."
+      "text": "```bash\nsiderite ai dump-context            # Markdown\nsiderite ai dump-context --json     # versioned JSON envelope\nsiderite ai dump-context --live     # also read migration status\n```\n\n`siderite ai init` writes `.siderite/context.md` for AI assistants:\ncommands, conventions, this project's models and routes, and examples\ncompiled against your siderite version. Rerun it after changes (`--check`\ntells CI when it is stale). Only the block between its markers is\ngenerated; your notes around it are kept, and a hand-edited block is\nleft alone unless you pass `--force`.\n\n`ai dump-context` describes the app from its compiled metadata: framework\nversion, database aliases and backend kinds (never URLs), models and\ntheir fields, documented routes, and migration status (`unknown` unless\n`--live`). Output is bounded (`--max-bytes`), says what was cut, and is\nredacted. It names the binary and its build time so stale context can be\nrecognised.\n\nFor one task, `siderite ai context --task \"add a tag filter to posts\"`\npicks the matching models and routes, the relevant documentation and\nexamples for your siderite version, and any files you name with\n`--include`, within a byte budget (`--budget`, default 32768). It says\nwhat it left out and what it could not know. Included files must be in\nthe app package; git-ignored and secret-looking files are skipped.\n\nBefore handing work back, `siderite ai validate` runs the same steps as\n`siderite verify` and lists each failure with its file and line, the fix\n`siderite explain` gives for its code, a documentation link and the\ncommand that reproduces it. It changes nothing, and a clean report only\nmeans these checks passed: application logic still needs its own tests."
     },
     {
       "id": "guides/production/cli#json-output",
       "kind": "guide",
       "title": "CLI > JSON output",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 289,
+      "line": 295,
       "features": [],
       "text": "`check`, `docs search`, `doctor`, `explain`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command\n(`siderite --json routes`, `siderite check --json`). Stdout then carries\nexactly one JSON value and a newline, a versioned envelope described by\n[`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):\n\n```json\n{\"schema_version\":1,\"command\":\"routes\",\"ok\":true,\"data\":{\"routes\":[]},\"diagnostics\":[]}\n```\n\n- Exit codes keep their meaning: `0` success, `1` failure (`check` found an\n  error, `ok: false`), `2` usage error.\n- Every failure is an envelope too, with `data: null`, `ok: false` and one\n  diagnostic: `cli.E001` usage error, `cli.E002` the command failed,\n  `cli.E003` the application exited without a report (build failure,\n  crash, or a `siderite-cli` that predates `--json`).\n- Through `siderite`, cargo's build output and anything the app factory\n  prints go to stderr: the app writes its report to a private file\n  (`SIDERITE_REPORT_PATH`), never to the shared stdout.\n- `--json` with any other command, with `--help`, or without a command is\n  a usage error. `routes` lists documented routes only (hidden endpoints\n  are omitted).\n- `showmigrations --json` reports the selected alias, where its URL came\n  from (never the URL), and each migration's `id` and `applied` flag in\n  the text order. It is a read-only live query bounded to 30 seconds; a\n  missing database or unreadable history is a failure, never an empty\n  list."
     },
@@ -1426,7 +1426,7 @@
       "kind": "guide",
       "title": "CLI > OpenAPI export",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 318,
+      "line": 324,
       "features": [],
       "text": "```bash\nsiderite openapi export > openapi.json\nsiderite openapi export --output openapi.json --force\n```\n\nThe document is the one `/openapi.json` serves (`App::openapi()`),\npretty-printed and deterministic, and export works with the HTTP docs\ndisabled. Only the app factory runs, so keep it free of side effects. A\nrelative `--output` is resolved against your current directory; the file\nis written atomically and an existing file is replaced only with `--force`."
     },
@@ -1435,7 +1435,7 @@
       "kind": "guide",
       "title": "CLI > `check`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 331,
+      "line": 337,
       "features": [],
       "text": "`check` runs without starting a server or opening a database. Each issue\nprints as `error: [models.E003] message` or `warning: [id] message`.\nMessages never contain database URLs.\n\n| Id | Level | Meaning |\n|---|---|---|\n| `config.E001` | error | models are registered but no `default` database is configured |\n| `config.E002` | error | a database URL has no scheme or does not parse |\n| `config.E003` | error | a database URL uses an unsupported scheme |\n| `models.E001` | error | two models use the same table |\n| `models.E002` | error | a model name is registered more than once |\n| `models.E003` | error | a model has no primary key |\n| `models.E004` | error | a foreign key points to a model that is not registered |\n| `models.E005` | error | a many-to-many relation (or its through model) targets an unregistered model |\n| `models.E006` | error | two fields map to the same column |\n| `models.E007` | error | a model has more than one primary-key field |\n| `migrations.E001` | error | the migration files cannot be loaded |\n| `migrations.E002` | error | the migration dependency graph is invalid |\n| `migrations.E003` | error | the migrations do not replay cleanly |\n| `migrations.W001` | warning | model changes are not recorded in any migration; run `makemigrations` |\n| `openapi.E001` | error | the OpenAPI document cannot be generated |\n| `routes.E001` | error | the app cannot be built into a router |\n| `backend.E001` | error | the `default` database is Redis, which cannot hold models |\n| `backend.E002` | error | a model needs joins the `default` backend does not support |\n| `backend.E003` | error | the schema cannot be created on the `default` backend |\n| `backend.W001` | warning | the backend has no schema migrations; `migrate` will refuse to run |\n\nMigration checks are skipped when no migrations directory is passed to\n`siderite_cli::check`; `AppCli` always passes its own."
     },
@@ -1444,7 +1444,7 @@
       "kind": "guide",
       "title": "CLI > `dbshell`",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 363,
+      "line": 369,
       "features": [],
       "text": "`dbshell` starts `sqlite3`, `psql`, or `mysql` on the selected database and\nreturns the client’s exit code. Passwords never appear on the command line\nor in output: `psql` receives `PGPASSWORD` and `mysql` receives `MYSQL_PWD`\nin its environment. A userinfo password and a PostgreSQL `?password=` query\nparameter both move into `PGPASSWORD` and are stripped from the URL passed\nto `psql`. A URL that carries `sslpassword` is refused. For MySQL only\nhost, port, user, and database are forwarded. An in-memory SQLite URL, an\nunknown scheme, or a client that is not on `PATH` is an error. MongoDB and\nRedis are not supported."
     },
@@ -1453,7 +1453,7 @@
       "kind": "guide",
       "title": "CLI > See also",
       "path": "website/src/content/docs/guides/production/cli.md",
-      "line": 375,
+      "line": 381,
       "features": [],
       "text": "- [Migrations](/siderite/guides/data/migrations/)\n- [Configuration](/siderite/guides/production/config/)\n- [Signals](/siderite/guides/data/signals/)"
     },
