@@ -178,6 +178,7 @@ build and stops the app. This restarts the process; it is not hot reload.
 siderite generate route items             # src/routes/items.rs
 siderite generate route items --dry-run   # show it only
 siderite generate model book title:String pages:i32? --table books
+siderite generate resource book title:String --table books
 ```
 
 A generated route module has one documented handler (`GET /items`,
@@ -186,6 +187,9 @@ siderite never edits your existing code; it prints the two lines that
 register the module. A generated model has an `id` primary key and
 fields of type `i32`, `i64`, `f64`, `bool` or `String` (`?` for nullable);
 register its `META` with `AppCli::models`, then run `makemigrations`.
+`generate resource` adds `POST /books` and `GET /books/{id}` handlers
+with validated request bodies and 404s for missing rows; they have no
+authentication until you add it.
 Existing files are never overwritten.
 
 ## Dependencies

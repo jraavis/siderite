@@ -296,7 +296,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   metadata works with makemigrations. Reject unsupported types; add UUID/date
   mappings only with verified ORM, Schema and dependency support.
 
-- [ ] **D08 — Generate create/get resource handlers.**
+- [x] **D08 — Generate create/get resource handlers.**
   Depends: D06, D07. Scope: request DTOs and two routes.
   Done: validation, not-found/error mapping and parameter binding pass real
   SQLite fixture tests; no automatic migration execution or auth promise.

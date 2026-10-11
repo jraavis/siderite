@@ -42,6 +42,17 @@ pub(crate) struct FieldSpec {
     pub nullable: bool,
 }
 
+impl FieldSpec {
+    /// The Rust type of the field.
+    pub(crate) fn rust_type(&self) -> String {
+        if self.nullable {
+            format!("Option<{}>", self.ty)
+        } else {
+            self.ty.to_owned()
+        }
+    }
+}
+
 /// Parsed `generate model` arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelOptions {
@@ -139,11 +150,8 @@ pub(crate) fn render(options: &ModelOptions) -> String {
     let ty = pascal(name);
     let mut fields = String::new();
     for f in &options.fields {
-        let (rust, note) = if f.nullable {
-            (format!("Option<{}>", f.ty), "; `None` is `NULL`")
-        } else {
-            (f.ty.to_owned(), "")
-        };
+        let rust = f.rust_type();
+        let note = if f.nullable { "; `None` is `NULL`" } else { "" };
         fields.push_str(&format!(
             "    /// The `{}` column{note}.\n    pub {}: {rust},\n",
             f.name, f.name

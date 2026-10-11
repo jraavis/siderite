@@ -206,3 +206,44 @@ mod model_generator {
         assert!(text.contains("siderite makemigrations"), "{text}");
     }
 }
+
+mod resource_generator {
+    use crate::fixtures::ScratchDir;
+    use crate::generate::model::{self, parse};
+    use crate::generate::resource::{file, instructions, render};
+
+    fn options() -> model::ModelOptions {
+        let spec = [
+            "book",
+            "title:String",
+            "pages:i32?",
+            "views:i64",
+            "price:f64?",
+            "in_stock:bool",
+            "--table",
+            "books",
+        ];
+        let words = spec.iter().map(|a| (*a).to_owned());
+        parse(&words.collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn the_output_is_the_compiled_golden_file() {
+        let options = options();
+        assert_eq!(file(&options), "src/routes/book.rs");
+        let golden = include_str!("../../tests/generated/resource_book.rs");
+        assert_eq!(render(&options), golden);
+        // The model half is exactly what `generate model` writes.
+        let model = include_str!("../../tests/generated/model_book.rs");
+        assert_eq!(model::render(&options), model);
+    }
+
+    #[test]
+    fn instructions_cover_model_and_routes() {
+        let scratch = ScratchDir::new("resource-steps");
+        let text = instructions(scratch.path(), &options());
+        assert!(text.contains("`models::book::Book::META`"), "{text}");
+        assert!(text.contains(".routes(routes::book::routes())"), "{text}");
+        assert!(text.contains("siderite migrate"), "{text}");
+    }
+}
