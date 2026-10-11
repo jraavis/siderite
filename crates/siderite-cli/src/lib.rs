@@ -39,6 +39,7 @@ mod project;
 pub mod report;
 pub mod routes;
 mod scaffold;
+mod services;
 pub mod settings;
 mod standalone;
 mod status;

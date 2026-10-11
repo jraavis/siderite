@@ -126,6 +126,18 @@ pub(crate) struct Selected {
     pub bin: Option<String>,
 }
 
+type PackageDir = Result<PathBuf, CliError>;
+
+/// The package directory for `args` from `cwd`, or `cwd` outside a
+/// Cargo package.
+///
+/// Errors:
+///   The errors of [`locate`] when the project flags select nothing.
+pub(crate) fn package_dir(cwd: &Path, args: &ProjectArgs) -> PackageDir {
+    let found = locate("cargo", cwd, args, false)?;
+    Ok(found.map_or_else(|| cwd.to_path_buf(), |s| s.dir))
+}
+
 /// Find the app for `cwd`; `Ok(None)` when there is none and nothing was
 /// asked for explicitly (the caller then reports its usual message).
 ///

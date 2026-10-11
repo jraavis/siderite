@@ -62,6 +62,8 @@ pub enum Mutation {
     RunsCode,
     /// Installs Rust toolchains or components (only when asked).
     Toolchain,
+    /// Containers and volumes of the local container runtime.
+    Containers,
 }
 
 /// Whether a command connects to live services.
@@ -158,6 +160,8 @@ type Text = &'static str;
 const TEXT: &[Format] = &[Format::Text];
 const TEXT_JSON: &[Format] = &[Format::Text, Format::Json];
 const NONE: &[Mutation] = &[];
+const CONTAINERS: Mutation = Mutation::Containers;
+const CONTAINER_FILES: &[Mutation] = &[CONTAINERS, Mutation::ProjectFiles];
 
 const fn cmd(
     name: &'static str,
@@ -488,6 +492,67 @@ pub const COMMANDS: &[Command] = &[
         "cargo clean (only when you run it)",
         ("clean", false, None),
     ),
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        mutates: CONTAINER_FILES,
+        live: Live::Always,
+        formats: TEXT_JSON,
+        ..cmd(
+            "services up",
+            Group::App,
+            "services up [postgres] [--port N] [--image I] [--json]",
+            "Start local PostgreSQL in a container",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        mutates: &[CONTAINERS],
+        live: Live::Always,
+        formats: TEXT_JSON,
+        ..cmd(
+            "services down",
+            Group::App,
+            "services down [postgres] [--json]",
+            "Stop local services, keeping their data",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        live: Live::Always,
+        formats: TEXT_JSON,
+        ..cmd(
+            "services status",
+            Group::App,
+            "services status [--json]",
+            "Show local services",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        ..cmd(
+            "services env",
+            Group::App,
+            "services env",
+            "Print DATABASE_URL of local services",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        mutates: CONTAINER_FILES,
+        live: Live::Always,
+        formats: TEXT_JSON,
+        ..cmd(
+            "services destroy",
+            Group::App,
+            "services destroy postgres --yes [--json]",
+            "Delete a local service and its data",
+        )
+    },
     Command {
         runner: Runner::Tool,
         needs: Needs::Nothing,

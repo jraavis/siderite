@@ -149,7 +149,7 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 ## Command contract
 
-Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, usage, summary, where it runs (`tool`: the `siderite` binary; `app`: your binary through `cargo run`; `app_or_standalone`: your binary, or JSON migration files without a package; `cargo`: a Cargo subcommand with arguments forwarded unchanged), what it needs (`nothing`, `package`, `app`), what it may change (`project_files`, `output_file`, `database`, `build_artifacts`, `runs_code`; empty means read-only), whether it touches live services (`never`, `opt_in`, `always`) and its output formats (`text`, `json`, `markdown`, `document`). Dispatch, both help texts and `--json` validation read this table.
+Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, usage, summary, where it runs (`tool`: the `siderite` binary; `app`: your binary through `cargo run`; `app_or_standalone`: your binary, or JSON migration files without a package; `cargo`: a Cargo subcommand with arguments forwarded unchanged), what it needs (`nothing`, `package`, `app`), what it may change (`project_files`, `output_file`, `database`, `build_artifacts`, `runs_code`, `toolchain`, `containers`; empty means read-only), whether it touches live services (`never`, `opt_in`, `always`) and its output formats (`text`, `json`, `markdown`, `document`). Dispatch, both help texts and `--json` validation read this table.
 
 `siderite commands` prints it as a table; `siderite commands --json` writes a `commands` envelope (`data.version` 1, `data.siderite`, `data.commands`) for AI clients and scripts, described by the report schema.
 
@@ -215,6 +215,14 @@ Commands that write source files share one write plan: paths are relative with n
 - The app's stdin is not attached; `siderite dev` reads it for the `r` command.
 
 Watching uses the `notify` crate (inotify, FSEvents, ReadDirectoryChangesW). Measured idle cost on Linux: no CPU time over 10 s, about 14 MB resident, 6 threads. Process groups, graceful stop and group cleanup apply on Linux and macOS (tested on Linux). On Windows the app is stopped by force and runs from a copy of the binary, so the next build can replace the original; this path is untested.
+
+## `services`
+
+`siderite services up [postgres] [--port N] [--image IMAGE] [--timeout SECS] [--json]` runs a PostgreSQL development database for the selected package (or the current directory) in a container, then waits until it accepts connections over TCP (`pg_isready` inside the container; default 60 s, `services.E003` on timeout). The container runtime is an explicit prerequisite: `SIDERITE_CONTAINER_RUNTIME` (a program name or path), else `docker`, else `podman` on `PATH`; with none, `services.E001`. A runtime command that fails, or a container that stops while starting, is `services.E002` with the end of the runtime's redacted error output.
+
+Resources are project scoped: the container `siderite-<dir>-<id>-postgres` and the volume `siderite-<dir>-<id>-postgres-data`, where `<id>` is random, both labelled `dev.siderite.service=postgres` and `dev.siderite.project=<path>`. The port is published on `127.0.0.1` only (a free port, or `--port`). The user is `siderite`, the database is named after the directory and the password is 32 random hexadecimal characters; they are passed to the runtime through its environment, never on a command line. The id, port, image and credentials are kept in `.siderite/local/postgres.json`; the directory holds a `.gitignore` of `*` and is owner-only on Unix. The default image is `postgres:17-alpine`; `--image` changes it for later runs too (a volume initialized by another major version will not start).
+
+`services down` stops and removes the container and keeps the volume and the recorded state, so the next `up` resumes with the same data and credentials. `services status` reports the container (`running`, `stopped`, `absent`) and whether the data volume exists. Deleting data is a separate command that must name the service and confirm: `services destroy postgres --yes` removes the container, the volume and the recorded state. `services env` prints `DATABASE_URL=postgres://...` including the password, for `export` or a `.env` file; every other output shows the URL without it. `--json` writes a `services up|down|status|destroy` envelope whose `data` is `{runtime, services}`; each service has `name`, `status`, `container`, `volume`, `data_volume`, `image`, `address` and `url`. Only PostgreSQL is offered; other recipes come after their own fixture tests.
 
 ## `setup`
 

@@ -232,6 +232,24 @@ siderite completions zsh > "${fpath[1]}/_siderite"
 Generated from the same command list as the help, so they never drift.
 Your shell profile is never edited.
 
+## Local services
+
+```bash
+siderite services up            # PostgreSQL in a container, ready to use
+export "$(siderite services env)"   # DATABASE_URL for this shell
+siderite services down          # stop it; the data stays
+siderite services destroy postgres --yes   # delete container and data
+```
+
+Optional, and only with a container runtime you installed: Docker or
+Podman on `PATH`, or the program named by `SIDERITE_CONTAINER_RUNTIME`.
+Each project gets its own container and data volume, named after the
+package directory and a random id. The port is published on `127.0.0.1`
+only, and the password is generated; both are kept in `.siderite/local/`,
+which git ignores. `up` waits until the database accepts connections
+(`--timeout`, default 60 s). Reports never show the password;
+`services env` prints it, because that is what it is for.
+
 ## Doctor
 
 ```bash

@@ -19,7 +19,7 @@ use siderite_config::DEFAULT_CONFIG_FILE as FILE;
 use siderite_config::{ConfigBuilder, ConfigEntry, DEFAULT_ENV_PREFIX};
 use siderite_config::{Settings, SourceKind};
 use std::fmt::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[cfg(test)]
 mod tests;
@@ -193,13 +193,6 @@ fn line(entry: &ConfigEntry) -> String {
     format!("{} = {}  ({origin})", entry.key, entry.value)
 }
 
-/// The package directory for `project` from `cwd`, or `cwd` outside a
-/// Cargo package.
-fn directory(cwd: &Path, project: &ProjectArgs) -> Result<PathBuf, CliError> {
-    let found = target::locate("cargo", cwd, project, false)?;
-    Ok(found.map_or_else(|| cwd.to_path_buf(), |s| s.dir))
-}
-
 /// `siderite config` from `cwd`.
 ///
 /// Errors:
@@ -207,7 +200,7 @@ fn directory(cwd: &Path, project: &ProjectArgs) -> Result<PathBuf, CliError> {
 ///   writing the report.
 pub(crate) fn run(raw: &[String], cwd: &Path, args: &ProjectArgs) -> Exit {
     let options = parse(raw)?;
-    let dir = directory(cwd, args)?;
+    let dir = target::package_dir(cwd, args)?;
     let report = report(options, &dir, true);
     if options.json {
         channel::emit_json(&report, None)?;

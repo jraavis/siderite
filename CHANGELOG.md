@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite services up|down|status|env|destroy` runs a
+  PostgreSQL development database in Docker or Podman: one container and
+  data volume per project, published on 127.0.0.1 only, with generated
+  credentials kept in the git-ignored `.siderite/local/`. `up` waits until
+  the database accepts connections; `down` keeps the data, and only
+  `destroy postgres --yes` deletes it.
 - **CLI:** `siderite config show [--redacted] [--json]` prints every
   configuration value with the source that set it (default, file,
   environment variable or override), always redacted;

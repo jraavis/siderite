@@ -104,6 +104,27 @@
       }
     },
     {
+      "if": {
+        "properties": {
+          "command": {
+            "enum": [
+              "services up",
+              "services down",
+              "services status",
+              "services destroy"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/ServicesData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "explain" } } },
       "then": {
         "properties": {
@@ -318,6 +339,39 @@
                   "detail": { "type": ["string", "null"] }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "ServicesData": {
+      "type": "object",
+      "required": ["runtime", "services"],
+      "properties": {
+        "runtime": { "type": ["string", "null"] },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "status",
+              "container",
+              "volume",
+              "data_volume",
+              "image",
+              "address",
+              "url"
+            ],
+            "properties": {
+              "name": { "const": "postgres" },
+              "status": { "enum": ["running", "stopped", "absent"] },
+              "container": { "type": "string", "minLength": 1 },
+              "volume": { "type": "string", "minLength": 1 },
+              "data_volume": { "type": "boolean" },
+              "image": { "type": "string", "minLength": 1 },
+              "address": { "type": "string", "pattern": "^127\\.0\\.0\\.1:" },
+              "url": { "type": "string" }
             }
           }
         }
@@ -726,7 +780,8 @@
                     "database",
                     "build_artifacts",
                     "runs_code",
-                    "toolchain"
+                    "toolchain",
+                    "containers"
                   ]
                 }
               },
