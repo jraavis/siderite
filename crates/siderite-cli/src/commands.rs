@@ -60,6 +60,8 @@ pub enum Mutation {
     BuildArtifacts,
     /// Runs the application or its tests, which may do anything.
     RunsCode,
+    /// Installs Rust toolchains or components (only when asked).
+    Toolchain,
 }
 
 /// Whether a command connects to live services.
@@ -226,6 +228,18 @@ pub const COMMANDS: &[Command] = &[
             Group::App,
             "dev [--grace-ms N] [-- ARGS]",
             "Rebuild and restart the app on changes",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        mutates: &[Mutation::Toolchain],
+        formats: TEXT_JSON,
+        ..cmd(
+            "setup",
+            Group::App,
+            "setup [--json] [--install]",
+            "Check build prerequisites; say how to fix",
         )
     },
     Command {

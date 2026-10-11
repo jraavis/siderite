@@ -172,6 +172,19 @@ after `--grace-ms`, default 5 s, including anything it started) and waits
 for its port to be free before starting the new one. Ctrl-C cancels a
 build and stops the app. This restarts the process; it is not hot reload.
 
+## Setup
+
+```bash
+siderite setup             # report only
+siderite setup --install   # also run the rustup steps it suggests
+```
+
+Checks rustup, `rustc` (against siderite's minimum Rust version),
+`cargo`, `rustfmt`, `clippy` and a C linker, and prints the exact command
+to fix each gap for your operating system. `--install` runs only rustup
+commands (toolchain and components) and never edits shell profiles or
+installs system packages.
+
 ## Doctor
 
 ```bash

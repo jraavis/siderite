@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite setup [--json] [--install]` checks rustup, `rustc`
+  against siderite's `rust-version`, `cargo`, `rustfmt`, `clippy` and a C
+  linker, with the exact fix per operating system. `--install` runs only
+  the needed `rustup` commands; shell profiles and system packages are
+  never changed.
 - **CLI:** a command contract (`siderite_cli::commands`): each command
   declares where it runs, what it needs, what it may change, live access
   and output formats. Help texts and dispatch are derived from it, and

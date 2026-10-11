@@ -77,6 +77,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "dev" {
         return crate::dev::run(raw, cwd, &project).await;
     }
+    if command == "setup" {
+        return doctor::setup::run(raw, cwd);
+    }
     if command == "doctor" {
         return doctor::run(raw, cwd.to_path_buf(), project).await;
     }

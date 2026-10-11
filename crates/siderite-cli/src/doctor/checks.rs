@@ -101,13 +101,17 @@ fn rust_version(cargo: &str, dir: &Path, package: &str) -> Option<String> {
 }
 
 /// Where and how the toolchain is probed.
-struct Tools<'a> {
-    dir: &'a Path,
-    path: &'a OsStr,
-    cargo: Option<&'a Path>,
+pub(crate) struct Tools<'a> {
+    /// Directory the tools run in (toolchain files apply).
+    pub dir: &'a Path,
+    /// `PATH` to search.
+    pub path: &'a OsStr,
+    /// The `cargo` program, if found.
+    pub cargo: Option<&'a Path>,
 }
 
-fn toolchain(tools: &Tools<'_>, msrv: Option<&str>, f: &mut Findings) {
+/// `rustc`, `cargo`, `rustfmt` and `clippy`, probed side by side.
+pub(crate) fn toolchain(tools: &Tools<'_>, msrv: Option<&str>, f: Out) {
     let rustc = which("rustc", tools.path);
     let cargo = tools.cargo;
     let jobs: [Job<'_>; 4] = [
