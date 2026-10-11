@@ -4,6 +4,9 @@
 //! It writes the same model file as `generate model` (an identical file
 //! is left unchanged) and `src/routes/NAME.rs`:
 //!
+//! - `GET /TABLE?page=N&per_page=M`: one page of rows ordered by `id`
+//!   (at most 100 per page, 20 by default), always two queries: a count
+//!   and one fetch.
 //! - `POST /TABLE`: create; 201 with the stored row.
 //! - `GET /TABLE/{id}`: fetch; 404 when there is no such row.
 //! - `PUT /TABLE/{id}`: replace every field (the creation body); 200.
@@ -159,8 +162,21 @@ impl From<{ty}> for {ty}Out {{
         } = self;
         let shallow = names(self.fields, "        ");
         let (create, get) = (ids("create", name), ids("get", name));
+        let list = ids("list", name);
         format!(
             "
+/// List `{ty}` rows by `id`, one page at a time: a count and one fetch,
+/// whatever the page size. Rows written between the two can make
+/// `total` disagree with the items.
+#[get(\"/{table}\", {list})]
+pub async fn list_{name}(
+    State(dbs): State<Databases>,
+    Query(params): Query<PageParams>,
+) -> ApiResult<Json<Page<{ty}Out>>> {{
+    let rows = dbs.objects::<{ty}>()?.order_by([{ty}::id.asc()]);
+    Ok(Json(params.fetch(rows).await?.map({ty}Out::from)))
+}}
+
 /// Create a `{ty}`; the response holds the stored row.
 #[post(\"/{table}\", status = 201, {create})]
 pub async fn create_{name}(
@@ -261,12 +277,12 @@ pub(crate) fn render(options: &ModelOptions) -> String {
     let Parts {
         name, table, ty, ..
     } = &parts;
-    let handlers = ["create", "get", "replace", "update", "delete"]
+    let handlers = ["list", "create", "get", "replace", "update", "delete"]
         .map(|op| format!("{op}_{name}"))
         .join(", ");
     format!(
         "\
-//! `/{table}`: create, fetch, replace, update and delete `{ty}` rows.
+//! `/{table}`: list, create, fetch, replace, update and delete `{ty}` rows.
 //!
 //! Example handlers without authentication: add your own checks before
 //! exposing them.
@@ -274,6 +290,7 @@ pub(crate) fn render(options: &ModelOptions) -> String {
 use crate::models::{name}::{ty};
 use siderite::orm::Databases;
 use siderite::prelude::*;
+use siderite::{{Page, PageParams}};
 
 {types}{create_get}{update_delete}
 /// The routes of this module, for `App::routes`.

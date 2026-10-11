@@ -3385,6 +3385,7 @@ dependencies = [
  "siderite-testkit",
  "thiserror",
  "tokio",
+ "tracing",
  "url",
 ]
 

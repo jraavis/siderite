@@ -19,7 +19,9 @@
   clears a `Change<Option<T>>` and is rejected for other types;
   validation and schema are `T`'s.
 - **CLI:** `siderite generate resource NAME [FIELD:TYPE[?]]...` writes
-  a model and create, get, replace (`PUT`), partial update (`PATCH`, with
+  a model and a paged list (`PageParams`/`Page`, ordered by `id`, a
+  fixed two-statement budget), create, get, replace (`PUT`), partial
+  update (`PATCH`, with
   `Change<T>`) and delete handlers: validated bodies that reject unknown
   fields (so the `id` never changes), 404 for missing rows and
   `State<Databases>` access; tested against SQLite. Unauthenticated

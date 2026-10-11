@@ -115,6 +115,7 @@ async fn the_generated_resource_creates_fetches_and_validates() {
         .routes(routes::book::routes());
     let text = serde_json::to_string(&app.openapi().unwrap()).unwrap();
     let names = [
+        "list_book",
         "create_book",
         "get_book",
         "replace_book",
@@ -239,4 +240,98 @@ async fn updates_keep_the_key_and_follow_absent_versus_null() {
     assert_eq!(client.delete(&url).await.unwrap().status, 404);
     let rows = book::Book::objects(test.db()).count().await.unwrap();
     assert_eq!(rows, 0);
+}
+
+thread_local! {
+    /// `orm.query` spans opened on this thread.
+    static QUERIES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Counts `orm.query` spans (one per statement the ORM runs) per thread.
+/// It is the process-wide subscriber, so callsite caching cannot hide
+/// spans from it; a current-thread test sees only its own statements.
+struct CountQueries;
+
+impl tracing::Subscriber for CountQueries {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, span: &tracing::span::Attributes<'_>) -> tracing::Id {
+        if span.metadata().name() == "orm.query" {
+            QUERIES.with(|q| q.set(q.get() + 1));
+        }
+        tracing::Id::from_u64(1)
+    }
+
+    fn record(&self, _: &tracing::Id, _: &tracing::span::Record<'_>) {}
+
+    fn record_follows_from(&self, _: &tracing::Id, _: &tracing::Id) {}
+
+    fn event(&self, _: &tracing::Event<'_>) {}
+
+    fn enter(&self, _: &tracing::Id) {}
+
+    fn exit(&self, _: &tracing::Id) {}
+}
+
+/// Statements run on this thread since the last call.
+fn take_queries() -> usize {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(CountQueries);
+    });
+    QUERIES.with(|q| q.replace(0))
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lists_are_paged_ordered_and_take_two_queries() {
+    take_queries();
+    let test = migrated().await;
+    for n in 0..23 {
+        let mut row = book::Book {
+            id: 0,
+            title: format!("book {n}"),
+            pages: None,
+            views: n,
+            price: None,
+            in_stock: true,
+        };
+        row.save(test.db()).await.unwrap();
+    }
+    let app = App::new()
+        .database("default", test.db().clone())
+        .routes(routes::book::routes());
+    let client = TestClient::new(app);
+    for (url, len) in [
+        ("/books", 20),
+        ("/books?page=2&per_page=5", 5),
+        ("/books?page=1&per_page=100", 23),
+        ("/books?page=9", 0),
+    ] {
+        take_queries();
+        let page = client.get(url).await.unwrap();
+        assert_eq!(page.status, 200, "{url}");
+        assert_eq!(take_queries(), 2, "{url}: a count and one fetch");
+        let page: serde_json::Value = page.json().unwrap();
+        assert_eq!(page["items"].as_array().unwrap().len(), len, "{url}");
+        assert_eq!(page["total"], 23);
+    }
+    let second = client.get("/books?page=2&per_page=5").await.unwrap();
+    let second: serde_json::Value = second.json().unwrap();
+    let ids: Vec<i64> = second["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_i64().unwrap())
+        .collect();
+    let mut sorted = ids.clone();
+    sorted.sort_unstable();
+    assert_eq!(ids, sorted, "ordered by id");
+    assert_eq!(second["items"][0]["title"], "book 5");
+    assert_eq!(second["total_pages"], 5);
+    for bad in ["per_page=101", "per_page=0", "page=0", "page=x"] {
+        let response = client.get(&format!("/books?{bad}")).await.unwrap();
+        assert_eq!(response.status, 422, "{bad}");
+    }
 }

@@ -1,4 +1,4 @@
-//! `/books`: create, fetch, replace, update and delete `Book` rows.
+//! `/books`: list, create, fetch, replace, update and delete `Book` rows.
 //!
 //! Example handlers without authentication: add your own checks before
 //! exposing them.
@@ -6,6 +6,7 @@
 use crate::models::book::Book;
 use siderite::orm::Databases;
 use siderite::prelude::*;
+use siderite::{Page, PageParams};
 
 /// Body of `POST /books` and `PUT /books/{id}`; invalid input is
 /// answered with 422.
@@ -85,6 +86,18 @@ impl From<Book> for BookOut {
             in_stock,
         }
     }
+}
+
+/// List `Book` rows by `id`, one page at a time: a count and one fetch,
+/// whatever the page size. Rows written between the two can make
+/// `total` disagree with the items.
+#[get("/books", tag = "book", operation_id = "list_book")]
+pub async fn list_book(
+    State(dbs): State<Databases>,
+    Query(params): Query<PageParams>,
+) -> ApiResult<Json<Page<BookOut>>> {
+    let rows = dbs.objects::<Book>()?.order_by([Book::id.asc()]);
+    Ok(Json(params.fetch(rows).await?.map(BookOut::from)))
 }
 
 /// Create a `Book`; the response holds the stored row.
@@ -192,6 +205,7 @@ pub async fn delete_book(
 /// The routes of this module, for `App::routes`.
 pub fn routes() -> Vec<Route> {
     routes![
+        list_book,
         create_book,
         get_book,
         replace_book,
