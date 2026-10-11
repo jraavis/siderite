@@ -2,7 +2,7 @@
 //! selected package through the write plan (never overwriting), with
 //! `--dry-run` showing the exact files first.
 
-use super::{Plan, model, preview, resource, route, rustfmt, summary};
+use super::{Plan, model, preview, resource, route, rustfmt, summary, test};
 use crate::error::CliError;
 use crate::target::{self, ProjectArgs};
 use std::path::Path;
@@ -10,7 +10,8 @@ use std::path::Path;
 const USAGE: &str = "usage: generate route NAME [--path /URL] \
      [--dry-run]\n       \
      generate model NAME [FIELD:TYPE[?]]... [--table TABLE] [--dry-run]\n  \
-          generate resource NAME [FIELD:TYPE[?]]... [--table TABLE]";
+          generate resource NAME [FIELD:TYPE[?]]... [--table TABLE]\n  \
+          generate test route|resource NAME ...";
 
 const NEEDS_PACKAGE: &str = "generate needs a Cargo package; cd into one";
 
@@ -39,7 +40,12 @@ pub(crate) fn run(raw: &[String], cwd: &Path, project: &ProjectArgs) -> Code {
     let (kind, words) = words.split_first().ok_or_else(usage)?;
     let found = target::locate("cargo", cwd, project, false)?;
     let found = found.ok_or_else(|| CliError::usage(NEEDS_PACKAGE))?;
-    let output = generate(kind, words, &found.dir)?;
+    let krate = found.package.replace('-', "_");
+    let output = if kind == "test" {
+        tests(words, &found.dir, &krate)?
+    } else {
+        generate(kind, words, &found.dir)?
+    };
     let mut plan = Plan::new(&found.dir);
     for (file, text) in output.files {
         let text = if file.ends_with(".rs") {
@@ -88,4 +94,13 @@ fn generate(kind: &str, words: &[String], dir: &Path) -> Generated {
         }
         _ => Err(CliError::usage(USAGE)),
     }
+}
+
+/// `generate test`: one test file for the library crate `krate`.
+fn tests(words: &[String], dir: &Path, krate: &str) -> Generated {
+    let options = test::parse(words)?;
+    Ok(Output {
+        files: vec![(test::file(&options), test::render(&options, krate))],
+        next: test::instructions(dir, &options),
+    })
 }

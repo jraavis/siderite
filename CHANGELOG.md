@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite generate test route|resource NAME ...` writes an
+  integration test through `siderite-testkit`: status, content type,
+  documentation, a create-then-fetch round trip and failure cases
+  (`405`, `422`, `404`). Resource tests use a throwaway in-memory SQLite
+  database built from the model.
 - **CLI:** seed datasets: `AppCli::seed(name, summary, callback)`
   registers one, `siderite seed --dataset NAME` loads it into the selected
   database in one transaction (a failure, `seed.E001`, keeps nothing), and

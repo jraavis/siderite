@@ -135,7 +135,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   No production/default reset, automatic execution or arbitrary SQL ingestion.
   Seeding does not masquerade as a reversible migration.
 
-- [ ] **X10 — Generate a request/response test.**
+- [x] **X10 — Generate a request/response test.**
   Depends: D06, X06. Scope: `generate test` using existing testkit APIs.
   Done: generated test compiles, calls the route, checks status/body and
   demonstrates a failure case. Database fixtures remain opt-in and disposable.
