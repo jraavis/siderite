@@ -9,7 +9,10 @@
     "schema_version": { "const": 1 },
     "command": { "type": "string", "minLength": 1 },
     "ok": { "type": "boolean" },
-    "data": { "type": "object" },
+    "data": {
+      "description": "The command's report; null when the command failed before producing one (ok is then false).",
+      "type": ["object", "null"]
+    },
     "diagnostics": {
       "type": "array",
       "items": { "$ref": "#/$defs/Diagnostic" }
@@ -17,16 +20,41 @@
   },
   "allOf": [
     {
+      "if": {
+        "properties": { "data": { "type": "null" } },
+        "required": ["data"]
+      },
+      "then": { "properties": { "ok": { "const": false } } }
+    },
+    {
       "if": { "properties": { "command": { "const": "check" } } },
-      "then": { "properties": { "data": { "$ref": "#/$defs/CheckSummary" } } }
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/CheckSummary" }, { "type": "null" }]
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "command": { "const": "routes" } } },
-      "then": { "properties": { "data": { "$ref": "#/$defs/RoutesData" } } }
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/RoutesData" }, { "type": "null" }]
+          }
+        }
+      }
     },
     {
       "if": { "properties": { "command": { "const": "models" } } },
-      "then": { "properties": { "data": { "$ref": "#/$defs/ModelsData" } } }
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/ModelsData" }, { "type": "null" }]
+          }
+        }
+      }
     }
   ],
   "$defs": {

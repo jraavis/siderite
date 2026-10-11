@@ -1,10 +1,10 @@
 //! [`AppCli`]: the command line of an application binary.
 
-use crate::args::{GlobalArgs, split_global};
+use crate::args::{GlobalArgs, check_json_args, json_requested, split_global};
 use crate::connect::{backend_kind, connect_url, scratch_db};
 use crate::dbshell::ShellCommand;
 use crate::error::CliError;
-use crate::report::{build, text};
+use crate::report::{build, channel, text};
 use crate::settings::{CliSettings, DEFAULT_DATABASE};
 use siderite_core::App;
 use siderite_orm::router::DatabaseRouter;
@@ -19,14 +19,18 @@ use std::sync::Arc;
 /// | Command | Does |
 /// |---|---|
 /// | `run [--addr ADDR]` | connects the configured databases and serves the app |
-/// | `routes` | prints `METHOD PATH operation_id` for every route |
-/// | `check` | runs [`check`](crate::check()); exits `1` if any error is found |
+/// | `routes [--json]` | prints `METHOD PATH operation_id` for every route |
+/// | `check [--json]` | runs [`check`](crate::check()); exits `1` on errors |
 /// | `dbshell` | starts `sqlite3`, `psql` or `mysql` on the database |
 /// | `makemigrations`, `migrate`, `rollback`, `showmigrations`, `squashmigrations` | delegate to [`siderite_migrations::cli::run`] |
 ///
-/// Global flags: `--database ALIAS` (default `default`), `--database-url URL`
-/// and `--migrations-dir DIR`. The listen address is, in order, `--addr`, the
-/// `ADDR` environment variable, the configured address, `127.0.0.1:8000`.
+/// Global flags: `--database ALIAS` (default `default`), `--database-url URL`,
+/// `--migrations-dir DIR` and `--json`. With `--json`, `check` and `routes`
+/// write one [`Envelope`](crate::report::Envelope) to stdout (or to the file
+/// named by [`REPORT_PATH_ENV`](crate::report::channel::REPORT_PATH_ENV)),
+/// and any failure, usage errors included, is written as an envelope too.
+/// The listen address is, in order, `--addr`, the `ADDR` environment
+/// variable, the configured address, `127.0.0.1:8000`.
 /// The database of `migrate`, `rollback`, `showmigrations` and `dbshell` is
 /// `--database-url`, then the configured URL of the alias, then (for
 /// `default`) the `DATABASE_URL` environment variable.
@@ -53,6 +57,8 @@ pub struct AppCli {
     router: Option<Arc<ApplyRouter>>,
 }
 
+type CliResult = Result<u8, CliError>;
+
 /// Hook applied to each connected database handle.
 type ConfigureDb = dyn Fn(&str, Db) -> Db + Send + Sync;
 
@@ -64,6 +70,7 @@ type ApplyRouter = dyn Fn(Databases) -> Databases + Send + Sync;
 pub(crate) struct Env {
     pub(crate) addr: Option<String>,
     pub(crate) database_url: Option<String>,
+    pub(crate) report_path: Option<PathBuf>,
 }
 
 impl Env {
@@ -71,6 +78,9 @@ impl Env {
         Self {
             addr: std::env::var("ADDR").ok(),
             database_url: std::env::var("DATABASE_URL").ok(),
+            report_path: std::env::var_os(channel::REPORT_PATH_ENV)
+                .filter(|p| !p.is_empty())
+                .map(PathBuf::from),
         }
     }
 }
@@ -149,9 +159,33 @@ impl AppCli {
         }
     }
 
+    /// Run `args`; in JSON mode a failure is also written as an envelope.
     pub(crate) async fn execute(&self, args: &[String], env: &Env) -> Result<u8, CliError> {
+        let outcome = self.dispatch(args, env).await;
+        if let Err(err) = &outcome
+            && json_requested(args)
+        {
+            let command = split_global(args)
+                .ok()
+                .and_then(|(_, rest)| rest.into_iter().next())
+                .or_else(|| args.iter().find(|a| !a.starts_with('-')).cloned())
+                .unwrap_or_else(|| "siderite".to_owned());
+            // The original error decides the exit code, not this write.
+            let envelope = channel::error_envelope(&command, err);
+            if let Err(write) = emit(&envelope, env) {
+                eprintln!("error: {write}");
+            }
+        }
+        outcome
+    }
+
+    async fn dispatch(&self, args: &[String], env: &Env) -> CliResult {
         let (global, rest) = split_global(args)?;
-        let Some(command) = rest.first().map(String::as_str) else {
+        let command = rest.first().map(String::as_str);
+        if global.json {
+            check_json_args(args, command)?;
+        }
+        let Some(command) = command else {
             print_help();
             return Ok(if global.help { 0 } else { 2 });
         };
@@ -170,10 +204,11 @@ impl AppCli {
                         "unexpected argument `{extra}` for `{command}`"
                     )));
                 }
+                let json = global.json.then_some(env);
                 match command {
                     "run" => self.serve(&global, env).await,
-                    "routes" => self.routes(),
-                    "check" => Ok(self.check()),
+                    "routes" => self.routes(json),
+                    "check" => self.check(json),
                     _ => self.dbshell(&global, env),
                 }
             }
@@ -270,21 +305,28 @@ impl AppCli {
         Ok(0)
     }
 
-    fn routes(&self) -> Result<u8, CliError> {
+    /// `json` is the environment of a `--json` run, `None` for text.
+    fn routes(&self, json: Option<&Env>) -> Result<u8, CliError> {
         let report = build::routes(&(self.factory)())?;
-        print!("{}", text::render_routes(&report.data.routes));
+        match json {
+            Some(env) => emit(&report, env)?,
+            None => print!("{}", text::render_routes(&report.data.routes)),
+        }
         Ok(report.exit_code())
     }
 
-    fn check(&self) -> u8 {
+    fn check(&self, json: Option<&Env>) -> Result<u8, CliError> {
         let report = build::check_report(
             &*self.factory,
             &self.models,
             &self.settings,
             Some(&self.migrations_dir),
         );
-        print!("{}", text::render_check(&report));
-        report.exit_code()
+        match json {
+            Some(env) => emit(&report, env)?,
+            None => print!("{}", text::render_check(&report)),
+        }
+        Ok(report.exit_code())
     }
 
     fn dbshell(&self, global: &GlobalArgs, env: &Env) -> Result<u8, CliError> {
@@ -293,13 +335,18 @@ impl AppCli {
     }
 }
 
+/// Write a `--json` report through the report channel of `env`.
+fn emit<T: serde::Serialize>(report: &T, env: &Env) -> Result<(), CliError> {
+    channel::emit_json(report, env.report_path.as_deref())
+}
+
 fn print_help() {
     println!(
         "\
 Commands:
   run [--addr ADDR]            Connect the databases and serve the app
-  routes                       List METHOD PATH operation_id
-  check                        Validate config, models, migrations and routes
+  routes [--json]              List METHOD PATH operation_id
+  check [--json]               Validate config, models, migrations and routes
   dbshell                      Open the database's native client
   makemigrations [--name SLUG] [--empty] [--dry-run]
   migrate [TARGET] [--dry-run]
@@ -313,6 +360,7 @@ Options:
   --database ALIAS        Database alias for migrate/rollback/showmigrations/dbshell
   --database-url URL      Database URL, overriding the settings
   --migrations-dir DIR    Migration JSON directory
+  --json                  One JSON report on stdout (check, routes)
   --help                  Show this help
 "
     );
