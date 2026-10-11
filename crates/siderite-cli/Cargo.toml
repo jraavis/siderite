@@ -33,6 +33,7 @@ http.workspace = true
 jsonschema.workspace = true
 siderite.workspace = true
 siderite-testkit.workspace = true
+tracing.workspace = true
 
 [features]
 default = []

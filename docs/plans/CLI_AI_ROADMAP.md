@@ -301,7 +301,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: validation, not-found/error mapping and parameter binding pass real
   SQLite fixture tests; no automatic migration execution or auth promise.
 
-- [ ] **D09 — Generate bounded list handlers.**
+- [x] **D09 — Generate bounded list handlers.**
   Depends: D08, F01. Scope: pagination and stable ordering.
   Done: enforced size limit, correct schema and fixed query budget; no per-row
   ORM queries. Document count/items consistency during concurrent writes.
