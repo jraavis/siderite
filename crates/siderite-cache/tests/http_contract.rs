@@ -372,6 +372,10 @@ impl Cache for FaultCache {
         self.inner.increment(key, by).await
     }
 
+    async fn increment_with_expiry(&self, key: &str, by: i64, ttl: Duration) -> Result<i64, Error> {
+        self.inner.increment_with_expiry(key, by, ttl).await
+    }
+
     async fn clear(&self) -> CacheResult<()> {
         self.inner.clear().await
     }

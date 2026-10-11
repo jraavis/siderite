@@ -182,6 +182,10 @@ impl Cache for Recorder {
         self.inner.increment(key, by).await
     }
 
+    async fn increment_with_expiry(&self, key: &str, by: i64, ttl: Duration) -> CacheResult<i64> {
+        self.inner.increment_with_expiry(key, by, ttl).await
+    }
+
     async fn clear(&self) -> CacheResult<()> {
         self.inner.clear().await
     }
@@ -271,9 +275,10 @@ async fn legacy_adapters_bypass_without_probing() -> TestResult {
         ("1".into(), Some("miss"))
     );
     assert_eq!(origin.hits.load(Ordering::SeqCst), 3);
-    // Only the first request probed the backend (one get for the marker);
-    // nothing non-expiring was ever written and no round trip repeats.
-    assert_eq!(legacy.calls.load(Ordering::SeqCst), 1);
+    // Only the first request probed the backend (marker, epoch and
+    // re-check reads before the unsupported increment); nothing
+    // non-expiring was ever written and no round trip repeats.
+    assert_eq!(legacy.calls.load(Ordering::SeqCst), 3);
     assert_eq!(legacy.inner.get("anything").await?, None);
     Ok(())
 }

@@ -3269,6 +3269,7 @@ dependencies = [
  "http",
  "httpdate",
  "lru",
+ "redis",
  "serde",
  "serde_json",
  "siderite-backends",

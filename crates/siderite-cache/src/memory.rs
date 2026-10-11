@@ -211,6 +211,41 @@ fn parse_incr_int(bytes: &[u8]) -> Option<i64> {
     text.parse().ok()
 }
 
+impl MemoryCache {
+    /// Increment under one lock; `expiry` applies only to a key that has
+    /// no deadline (new, or live without one).
+    fn incr_locked(&self, key: &str, by: i64, expiry: Option<Duration>) -> CacheResult<i64> {
+        let mut cache = self.lock();
+        let now = Instant::now();
+        if cache.peek(key).is_some_and(|entry| entry.is_expired(now)) {
+            cache.pop(key);
+        }
+        let invalid = || CacheError::NotInteger {
+            key: key.to_owned(),
+        };
+        let (next, deadline) = match cache.get(key) {
+            Some(entry) => {
+                let current = parse_incr_int(&entry.value).ok_or_else(invalid)?;
+                let next = current.checked_add(by).ok_or_else(invalid)?;
+                (next, entry.expires_at)
+            }
+            None => (by, None),
+        };
+        let deadline = match (deadline, expiry) {
+            (None, Some(ttl)) => Some(now.checked_add(ttl).ok_or(CacheError::InvalidTtl)?),
+            (existing, _) => existing,
+        };
+        cache.put(
+            key.to_owned(),
+            Entry {
+                value: next.to_string().into_bytes(),
+                expires_at: deadline,
+            },
+        )?;
+        Ok(next)
+    }
+}
+
 #[async_trait]
 impl Cache for MemoryCache {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, CacheError> {
@@ -298,36 +333,17 @@ impl Cache for MemoryCache {
     }
 
     async fn increment(&self, key: &str, by: i64) -> Result<i64, CacheError> {
-        let mut cache = self.lock();
-        let now = Instant::now();
-        if cache.peek(key).is_some_and(|entry| entry.is_expired(now)) {
-            cache.pop(key);
-        }
-        let deadline;
-        let next;
-        if let Some(entry) = cache.get(key) {
-            let invalid = || CacheError::NotInteger {
-                key: key.to_owned(),
-            };
-            let current = parse_incr_int(&entry.value).ok_or_else(invalid)?;
-            next = current
-                .checked_add(by)
-                .ok_or_else(|| CacheError::NotInteger {
-                    key: key.to_owned(),
-                })?;
-            deadline = entry.expires_at;
-        } else {
-            next = by;
-            deadline = None;
-        }
-        cache.put(
-            key.to_owned(),
-            Entry {
-                value: next.to_string().into_bytes(),
-                expires_at: deadline,
-            },
-        )?;
-        Ok(next)
+        self.incr_locked(key, by, None)
+    }
+
+    async fn increment_with_expiry(
+        &self,
+        key: &str,
+        by: i64,
+        ttl: Duration,
+    ) -> Result<i64, CacheError> {
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        self.incr_locked(key, by, Some(ttl))
     }
 
     async fn clear(&self) -> Result<(), CacheError> {
@@ -356,6 +372,37 @@ mod tests {
         cache.clear().await.unwrap();
         assert_eq!(cache.get("a").await.unwrap(), None);
         assert_eq!(cache.get("b").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn increment_with_expiry_sets_a_deadline_once() {
+        let cache = MemoryCache::new(8);
+        let ttl = Duration::from_millis(60);
+        assert_eq!(cache.increment_with_expiry("c", 1, ttl).await.unwrap(), 1);
+        thread::sleep(Duration::from_millis(40));
+        // A later increment keeps the original deadline.
+        let long = Duration::from_secs(60);
+        assert_eq!(cache.increment_with_expiry("c", 2, long).await.unwrap(), 3);
+        thread::sleep(Duration::from_millis(40));
+        assert_eq!(cache.get("c").await.unwrap(), None);
+        // After expiry the counter restarts at zero with a fresh deadline.
+        assert_eq!(cache.increment_with_expiry("c", 1, long).await.unwrap(), 1);
+        // A key without a deadline receives one.
+        cache.set("p", b"5".to_vec(), None).await.unwrap();
+        assert_eq!(cache.increment_with_expiry("p", 1, ttl).await.unwrap(), 6);
+        thread::sleep(Duration::from_millis(80));
+        assert_eq!(cache.get("p").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn increment_with_expiry_validates_ttl_and_value() {
+        let cache = MemoryCache::new(8);
+        let zero = cache.increment_with_expiry("c", 1, Duration::ZERO).await;
+        assert!(matches!(zero, Err(CacheError::InvalidTtl)));
+        assert_eq!(cache.get("c").await.unwrap(), None);
+        cache.set("s", b"x".to_vec(), None).await.unwrap();
+        let bad = cache.increment_with_expiry("s", 1, Duration::from_secs(1));
+        assert!(matches!(bad.await, Err(CacheError::NotInteger { .. })));
     }
 
     #[tokio::test]

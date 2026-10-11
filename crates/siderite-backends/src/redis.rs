@@ -339,6 +339,34 @@ impl RedisStore {
             .await
     }
 
+    /// `INCRBY` plus an expiry for a key that has none, as one atomic
+    /// server-side script.
+    ///
+    /// A missing key starts at `0`. The key receives `ttl` only when it has
+    /// no expiry afterwards (it was created by this call, or was persistent);
+    /// an existing deadline is kept. The two steps cannot be separated by an
+    /// expiry or eviction, so the key is never left without a TTL.
+    ///
+    /// # Errors
+    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above
+    /// `i64::MAX / 2` milliseconds, before any command is sent. Otherwise
+    /// connection or command errors (the value is not an integer, or it
+    /// would overflow).
+    pub async fn incr_by_expire(
+        &self,
+        key: &str,
+        by: i64,
+        ttl: Duration,
+    ) -> Result<i64, RedisError> {
+        const SCRIPT: &str = "local n = redis.call('INCRBY', KEYS[1], ARGV[1]) \
+            if redis.call('PTTL', KEYS[1]) < 0 then \
+            redis.call('PEXPIRE', KEYS[1], ARGV[2]) end return n";
+        let ms = required_ttl(ttl)?;
+        let mut cmd = redis::cmd("EVAL");
+        cmd.arg(SCRIPT).arg(1).arg(self.key(key)).arg(by).arg(ms);
+        self.query(&cmd).await
+    }
+
     /// `HGET`. `Ok(None)` when the key or field is absent.
     ///
     /// # Errors

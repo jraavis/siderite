@@ -138,8 +138,9 @@ invalidation. Cache key scheme uses `.trusted_proxies(...)`, the same exact
 peer policy as redirect and rate limiting; untrusted forwarded headers are
 ignored. The proxy must replace headers. Malformed trusted context fails.
 
-The cache requires atomic `Cache::set_if_absent_with_ttl`; MemoryCache and
-RedisCache implement it. Custom backends without it bypass route storage;
+The cache requires atomic `Cache::set_if_absent_with_ttl` and
+`Cache::increment_with_expiry`; MemoryCache and RedisCache implement both.
+Custom backends without them bypass route storage;
 see [Generation lifetime](#generation-lifetime).
 Backend read/store errors serve the origin. Failed write invalidation
 disables the affected layer, preserving the already completed write.
@@ -169,6 +170,28 @@ capped: raise `generation_ttl` for longer-lived entries. When upgrading
 with a persistent Redis, markers written by earlier versions have no
 expiry and are kept until a write to that target deletes them (or until
 the namespace changes).
+
+## Metadata bound
+
+Unique targets (for example per-request query strings) cannot grow the
+backend without limit. Each namespace admits at most `.max_new_targets(n)`
+new target markers per `generation_ttl` window (10,000 by default). A
+marker is created, and counted, only when a response is actually stored, so
+uncacheable responders never use the budget. When the window's budget is
+spent, new targets are served from the origin with `x-cache: miss`; targets
+that already have a marker keep hitting. A namespace therefore holds at most
+`2 x max_new_targets` markers, two window counters and one invalidation
+epoch key; ten thousand admitted targets measured about 8 MB of Redis
+`used_memory`. `max_new_targets(0)` stores nothing.
+
+The counter lives in the backend, so the bound holds across processes that
+share a namespace, but only while the backend does not evict it. Use Redis
+`noeviction` or a dedicated database for cache metadata; the layer never
+changes the server's eviction policy. Keep node clocks synchronised, since
+the window index comes from wall-clock time. A custom `Cache` must forward
+`increment_with_expiry` (a wrapper that does not makes the layer stop
+storing, with one warning). The cache hit path is unchanged and does no
+budget accounting.
 
 ## Byte budgets
 

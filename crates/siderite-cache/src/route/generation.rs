@@ -30,9 +30,11 @@ use crate::{Cache, CacheError};
 use http::Method;
 use siderite_core::Request;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-type Stamp = Result<Uuid, CacheError>;
+type CacheResult<T> = Result<T, CacheError>;
+type Stamp = CacheResult<Uuid>;
 type Outcome = Result<(), CacheError>;
 
 pub(super) fn target(req: &Request, policy: &Policy, scheme: &str) -> String {
@@ -57,43 +59,131 @@ pub(super) fn representation_key(
     scheme: &str,
     generation: Uuid,
 ) -> String {
+    key_for(policy, generation, &cache_key(req, scheme))
+}
+
+/// Representation key from a precomputed [`cache_key`] suffix.
+pub(super) fn key_for(policy: &Policy, generation: Uuid, suffix: &str) -> String {
     let mut key = String::from("route-v2-response:");
     push_part(&mut key, policy.namespace.as_bytes());
     push_part(&mut key, generation.as_bytes());
-    push_part(&mut key, cache_key(req, scheme).as_bytes());
+    push_part(&mut key, suffix.as_bytes());
     key
 }
 
-/// Read the marker, creating it with `ttl` when absent.
+/// What a request knew about its target before the origin ran.
+pub(super) struct Started {
+    /// Invalidation epoch observed while the marker was absent.
+    epoch: Option<Vec<u8>>,
+    at: Instant,
+}
+
+/// Read the marker without creating it: the hit path is one `get`.
 ///
-/// The hit path is one `get`. Creation uses atomic expiring creation only.
-/// The first `Unsupported` from the backend sets the shared `NO_MARKERS`
-/// flag (logging one warning) so later requests bypass without probing
-/// again. The flag never resets for the life of the layer: restart the
-/// application after switching to a capable backend.
-pub(super) async fn current<C>(cache: &C, key: &str, policy: &Policy) -> Stamp
+/// `Ok(None)` means no marker exists, so no representation of the target
+/// is reachable. Markers are created later, only when a response is
+/// actually stored (see [`admit`]).
+pub(super) async fn peek<C>(cache: &C, key: &str) -> CacheResult<Option<Uuid>>
 where
     C: Cache,
 {
-    if let Some(value) = cache.get(key).await? {
-        return decode(&value);
+    match cache.get(key).await? {
+        Some(value) => decode(&value).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// Snapshot the invalidation epoch for a request that found no marker.
+///
+/// A write that completes while such a request is still in the origin
+/// finds no marker to delete, so the epoch is how the late fill notices
+/// it. This costs one `get` and happens only when the marker is absent.
+pub(super) async fn begin<C: Cache>(cache: &C, policy: &Policy) -> CacheResult<Started> {
+    let epoch = cache.get(&epoch_key(policy)).await?;
+    Ok(Started {
+        epoch,
+        at: Instant::now(),
+    })
+}
+
+fn epoch_key(policy: &Policy) -> String {
+    let mut key = String::from("route-v2-epoch:");
+    push_part(&mut key, policy.namespace.as_bytes());
+    key
+}
+
+/// Window index `floor(now / ttl)`; the budget counter key embeds it.
+pub(super) fn window(now: Duration, ttl: Duration) -> u64 {
+    let ms = ttl.as_millis().max(1);
+    u64::try_from(now.as_millis() / ms).unwrap_or(u64::MAX)
+}
+
+fn budget_key(policy: &Policy) -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH);
+    let window = window(now.unwrap_or_default(), policy.generation_ttl);
+    let mut key = String::from("route-v2-budget:");
+    push_part(&mut key, policy.namespace.as_bytes());
+    key.push_str(&window.to_string());
+    key
+}
+
+/// Admit a storable response: find or create the marker and return its
+/// token, or `None` when the response must bypass (budget exhausted, the
+/// request outlived a generation, or a write intervened).
+///
+/// A new marker is counted against the namespace's per-window budget with
+/// one atomic increment-with-expiry. The invalidation epoch is read only
+/// after the marker exists: a write that lands later deletes that marker,
+/// and one that landed earlier changed the epoch, so a fill that began
+/// before a write can never become reachable.
+///
+/// # Errors
+/// Backend failures. `Unsupported` from the increment also sets the shared
+/// `NO_MARKERS` flag (one warning), so the layer stops storing.
+pub(super) async fn admit<C: Cache>(
+    cache: &C,
+    target: &str,
+    policy: &Policy,
+    started: &Started,
+) -> CacheResult<Option<Uuid>> {
+    if started.at.elapsed() >= policy.generation_ttl {
+        return Ok(None);
+    }
+    let token = match peek(cache, target).await? {
+        Some(existing) => existing,
+        None => match create(cache, target, policy).await? {
+            Some(created) => created,
+            None => return Ok(None),
+        },
+    };
+    let epoch = cache.get(&epoch_key(policy)).await?;
+    Ok((epoch == started.epoch).then_some(token))
+}
+
+async fn create<C: Cache>(cache: &C, target: &str, policy: &Policy) -> CacheResult<Option<Uuid>> {
+    let (ttl, budget) = (policy.generation_ttl, policy.max_new_targets);
+    let used = cache
+        .increment_with_expiry(&budget_key(policy), 1, ttl)
+        .await;
+    let used = used.inspect_err(|error| note_error(error, &policy.flags))?;
+    if u64::try_from(used).map_or(true, |used| used > budget) {
+        return Ok(None);
     }
     let candidate = Uuid::new_v4();
-    let (ttl, seed) = (policy.generation_ttl, candidate.as_bytes().to_vec());
-    let created = cache.set_if_absent_with_ttl(key, seed, ttl).await;
-    match created {
-        Ok(true) => return Ok(candidate),
-        Ok(false) => {}
-        Err(error) => {
-            if matches!(error, CacheError::Unsupported { .. }) {
-                note_unsupported(&policy.flags);
-            }
-            return Err(error);
-        }
+    let seed = candidate.as_bytes().to_vec();
+    let created = cache.set_if_absent_with_ttl(target, seed, ttl).await;
+    match created.inspect_err(|error| note_error(error, &policy.flags))? {
+        true => Ok(Some(candidate)),
+        false => match cache.get(target).await? {
+            Some(value) => decode(&value).map(Some),
+            None => Err(CacheError::Backend("generation was evicted".into())),
+        },
     }
-    match cache.get(key).await? {
-        Some(value) => decode(&value),
-        None => Err(CacheError::Backend("generation was evicted".into())),
+}
+
+fn note_error(error: &CacheError, flags: &AtomicU8) {
+    if matches!(error, CacheError::Unsupported { .. }) {
+        note_unsupported(flags);
     }
 }
 
@@ -102,8 +192,8 @@ fn note_unsupported(flags: &AtomicU8) {
     let before = flags.fetch_or(NO_MARKERS, Ordering::AcqRel);
     if before & NO_MARKERS == 0 {
         tracing::warn!(
-            "cache backend lacks atomic expiring insertion; \
-             route caching disabled for this layer"
+            "cache backend lacks atomic expiring insertion or \
+             increment-with-expiry; route caching disabled for this layer"
         );
     }
 }
@@ -114,7 +204,15 @@ fn decode(value: &[u8]) -> Stamp {
 }
 
 /// Rotate by deleting the marker; a missing marker draws a fresh token.
-pub(super) async fn invalidate<C: Cache>(cache: &C, key: &str) -> Outcome {
+///
+/// The namespace epoch is replaced first (one bounded key, refreshed with
+/// the marker lifetime) so fills that began without a marker are refused.
+pub(super) async fn invalidate<C: Cache>(cache: &C, key: &str, policy: &Policy) -> Outcome {
+    if !policy.generation_ttl.is_zero() {
+        let token = Uuid::new_v4().as_bytes().to_vec();
+        let ttl = Some(policy.generation_ttl);
+        cache.set(&epoch_key(policy), token, ttl).await?;
+    }
     cache.delete(key).await.map(drop)
 }
 
@@ -141,6 +239,13 @@ mod tests {
         RouteCache::new(MemoryCache::new(1))
             .generation_ttl(ttl)
             .policy()
+    }
+
+    /// Find or create the marker like a storing request would.
+    async fn current<C: Cache>(cache: &C, key: &str, p: &Policy) -> Stamp {
+        let started = begin(cache, p).await?;
+        let admitted = admit(cache, key, p, &started).await?;
+        admitted.ok_or_else(|| CacheError::Backend("bypassed".into()))
     }
 
     #[tokio::test]
@@ -175,7 +280,7 @@ mod tests {
     async fn invalidation_rotates_to_a_fresh_token() -> TestResult {
         let cache = MemoryCache::new(8);
         let first = current(&cache, MARKER, &policy(TTL)).await?;
-        invalidate(&cache, MARKER).await?;
+        invalidate(&cache, MARKER, &policy(TTL)).await?;
         let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(first, second);
         Ok(())
@@ -191,9 +296,9 @@ mod tests {
         assert_eq!(cache.get(MARKER).await?, None, "marker is finite");
         let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(first, second);
-        invalidate(&cache, MARKER).await?;
+        invalidate(&cache, MARKER, &policy(TTL)).await?;
         assert_eq!(cache.get(MARKER).await?, None, "no marker is written");
-        invalidate(&cache, MARKER).await?;
+        invalidate(&cache, MARKER, &policy(TTL)).await?;
         Ok(())
     }
 
@@ -214,7 +319,7 @@ mod tests {
             // The rotation happens while the origin read is still pending.
             match rotate {
                 Rotation::Invalidate => {
-                    invalidate(cache.as_ref(), &target).await?;
+                    invalidate(cache.as_ref(), &target, &policy).await?;
                 }
                 Rotation::Evict => {
                     cache.delete(&target).await?;

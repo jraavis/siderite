@@ -101,6 +101,44 @@ async fn increment_matches_redis_incrby() {
 
 #[tokio::test]
 #[ignore = "requires explicit REDIS_URL and an isolated live namespace"]
+async fn increment_with_expiry_is_atomic_and_expires() {
+    with_cache(|cache| async move {
+        let ttl = Duration::from_millis(300);
+        let mut tasks = Vec::new();
+        for _ in 0..32 {
+            let cache = cache.clone();
+            tasks.push(tokio::spawn(async move {
+                cache.increment_with_expiry("c", 1, ttl).await.unwrap()
+            }));
+        }
+        let mut seen = Vec::new();
+        for task in tasks {
+            seen.push(task.await.unwrap());
+        }
+        seen.sort_unstable();
+        assert_eq!(seen, (1..=32).collect::<Vec<i64>>());
+        // The deadline is set once and later increments keep it.
+        let long = Duration::from_secs(60);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        cache.increment_with_expiry("c", 1, long).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert_eq!(cache.get("c").await.unwrap(), None);
+        // A persistent key receives an expiry.
+        cache.increment("p", 1).await.unwrap();
+        cache.increment_with_expiry("p", 1, ttl).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(450)).await;
+        assert_eq!(cache.get("p").await.unwrap(), None);
+        let zero = cache.increment_with_expiry("z", 1, Duration::ZERO).await;
+        assert!(matches!(zero.unwrap_err(), CacheError::InvalidTtl));
+        cache.set("s", b"x".to_vec(), None).await.unwrap();
+        let bad = cache.increment_with_expiry("s", 1, long).await;
+        assert!(matches!(bad.unwrap_err(), CacheError::NotInteger { .. }));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires explicit REDIS_URL and an isolated live namespace"]
 async fn json_and_binary_roundtrip() {
     with_cache(|cache| async move {
         let widget = Widget {
