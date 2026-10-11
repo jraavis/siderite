@@ -255,6 +255,27 @@ impl RedisStore {
         self.set_raw(key, value, None, true).await
     }
 
+    /// `SET key value NX PX ms` as one command. `Ok(true)` when this call
+    /// created the key; an existing key keeps its value and expiry.
+    ///
+    /// Creation and expiry are one atomic server step: no observer sees the
+    /// key without its TTL, and dropping the returned future either sends the
+    /// whole command or none of it. `ttl` is truncated to whole milliseconds.
+    ///
+    /// # Errors
+    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above [`i64::MAX`]
+    /// milliseconds, before any command is sent. Otherwise connection or
+    /// command errors.
+    pub async fn set_nx_px(
+        &self,
+        key: &str,
+        value: &str,
+        ttl: Duration,
+    ) -> Result<bool, RedisError> {
+        let px = required_ttl(ttl)?;
+        self.set_raw(key, value, Some(px), true).await
+    }
+
     /// `DEL` for one logical key. The number is `1` when the key was removed and `0` otherwise.
     ///
     /// # Errors

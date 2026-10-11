@@ -1,5 +1,6 @@
 //! [`RedisCache`]: a [`Cache`] over [`siderite_backends::redis::RedisStore`].
 
+use crate::cache::ttl_millis;
 use crate::{Cache, CacheError};
 use async_trait::async_trait;
 use siderite_backends::redis::{RedisError, RedisStore};
@@ -114,6 +115,19 @@ impl Cache for RedisCache {
 
     async fn set_if_absent(&self, key: &str, value: Vec<u8>) -> Result<bool, CacheError> {
         Ok(self.store.set_nx(key, &encode_bytes(value)).await?)
+    }
+
+    async fn set_if_absent_with_ttl(
+        &self,
+        key: &str,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> Result<bool, CacheError> {
+        // One `SET key value NX PX ms`: creation and expiry are a single
+        // server-side step, so a dropped future leaves no key or an
+        // expiring one, never a non-expiring marker.
+        let ttl = Duration::from_millis(ttl_millis(ttl)?);
+        Ok(self.store.set_nx_px(key, &encode_bytes(value), ttl).await?)
     }
 
     async fn delete(&self, key: &str) -> Result<bool, CacheError> {
