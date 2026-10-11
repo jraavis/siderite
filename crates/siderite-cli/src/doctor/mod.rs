@@ -9,12 +9,15 @@
 
 mod checks;
 mod live;
+pub(crate) mod setup;
 pub(crate) mod tools;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_live;
+#[cfg(test)]
+mod tests_setup;
 
 use crate::error::CliError;
 use crate::report::{Diagnostic, Envelope, Severity, channel, redact_text};
@@ -122,10 +125,20 @@ impl Findings {
     }
 
     fn into_envelope(self) -> Envelope<DoctorData> {
+        self.into_report("doctor")
+    }
+
+    /// The findings as the envelope of `command`.
+    pub(crate) fn into_report(self, command: &str) -> Envelope<DoctorData> {
         let data = DoctorData {
             checks: self.checks,
         };
-        Envelope::new("doctor", data, self.diagnostics)
+        Envelope::new(command, data, self.diagnostics)
+    }
+
+    /// Whether a diagnostic with `code` was recorded.
+    pub(crate) fn has(&self, code: &str) -> bool {
+        self.diagnostics.iter().any(|d| d.code() == code)
     }
 }
 
@@ -232,12 +245,18 @@ pub(crate) async fn run(
         process_env: true,
     };
     let report = diagnose(&probe, options.live.as_ref()).await;
-    if options.json {
-        channel::emit_json(&report, None)?;
-    } else {
-        print!("{}", render(&report));
-    }
+    print(&report, options.json)?;
     Ok(report.exit_code())
+}
+
+/// Print `report` as JSON or text.
+pub(crate) fn print(report: &Report, json: bool) -> Result<(), CliError> {
+    if json {
+        channel::emit_json(report, None)
+    } else {
+        print!("{}", render(report));
+        Ok(())
+    }
 }
 
 /// The text form: one aligned line per check, hints under flagged ones,
@@ -266,8 +285,12 @@ pub(crate) fn render(report: &Envelope<DoctorData>) -> String {
         let diags = report.diagnostics.iter();
         diags.filter(|d| d.severity() == s).count()
     };
+    let mut name = report.command.clone();
+    if let Some(first) = name.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
     out.push_str(&format!(
-        "Doctor found {} error(s) and {} warning(s).\n",
+        "{name} found {} error(s) and {} warning(s).\n",
         count(Severity::Error),
         count(Severity::Warning)
     ));

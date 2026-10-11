@@ -175,6 +175,12 @@ Commands that write source files share one write plan: paths are relative with n
 
 Watching uses the `notify` crate (inotify, FSEvents, ReadDirectoryChangesW). Measured idle cost on Linux: no CPU time over 10 s, about 14 MB resident, 6 threads. Process groups, graceful stop and group cleanup apply on Linux and macOS (tested on Linux). On Windows the app is stopped by force and runs from a copy of the binary, so the next build can replace the original; this path is untested.
 
+## `setup`
+
+`siderite setup [--json] [--install]` checks the build prerequisites and prints the exact next step for this operating system: rustup, `rustc` (at least siderite's `rust-version`), `cargo`, `rustfmt`, `clippy` and a C linker (`cc`, `gcc` or `clang`; on Windows the MSVC linker is reported for information, since rustc finds it through Visual Studio). It never prompts, so a terminal and a script get the same report; `--json` writes a `setup` envelope with the `doctor` data shape. A missing `rustc`, `cargo` or linker exits `1` (`doctor.E001`, `doctor.E002`, `setup.E001`).
+
+Nothing is installed unless you pass `--install`, which runs only `rustup`: `rustup toolchain install stable` for a missing or too old `rustc` (plus `rustup default stable` when there is no toolchain at all) and `rustup component add rustfmt` / `clippy` for missing components. Each command is printed before it runs. Shell profiles and system packages are never changed; without rustup, `setup` prints the rustup installer command instead of running it.
+
 ## `doctor`
 
 `siderite doctor [--json]` runs in the standalone binary, so it works even when the app does not compile. It never connects to a database, builds the project or changes anything.

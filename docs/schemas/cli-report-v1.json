@@ -60,6 +60,16 @@
       }
     },
     {
+      "if": { "properties": { "command": { "const": "setup" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "anyOf": [{ "$ref": "#/$defs/DoctorData" }, { "type": "null" }]
+          }
+        }
+      }
+    },
+    {
       "if": { "properties": { "command": { "const": "doctor" } } },
       "then": {
         "properties": {
@@ -322,7 +332,8 @@
                     "output_file",
                     "database",
                     "build_artifacts",
-                    "runs_code"
+                    "runs_code",
+                    "toolchain"
                   ]
                 }
               },
