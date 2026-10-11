@@ -4,9 +4,7 @@
   "max_file_lines": 1000,
   "hard_width": 100,
   "soft_width": 79,
-  "oversize_files": {
-    "crates/siderite-migrations/tests/roundtrip.rs": 1435
-  },
+  "oversize_files": {},
   "lines_over_100": {
     "crates/siderite": 2,
     "crates/siderite-backends": 58,
