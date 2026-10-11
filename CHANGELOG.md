@@ -28,10 +28,16 @@
   a marker are guarded by 64 striped epoch keys per namespace: a missing
   or changed epoch refuses the fill (a write refuses only first fills in
   its stripe), and the epoch is created by the first request that needs it.
+  The epoch key format (`route-v2-epoch:<namespace>` plus a stripe
+  number) is new in this release, so no compatibility handling exists.
+  The admission script calls `redis.replicate_commands()` when present
+  (Redis 3.2 to 6 without effects replication).
   Documented bound: at most `2 x max_new_targets` markers and
   `3 x max_new_targets x variants` representations per namespace.
-  Generation tokens are now a per-layer random seed plus a counter (unique,
-  not secret), so a write draws no random bytes. Third-party `Cache`
+  Generation tokens are now a per-layer random seed (64 fully random
+  bits) plus a counter (unique, not secret), so a write draws no random
+  bytes. Build the layer after forking in prefork servers, since forked
+  copies share the seed and counter. Third-party `Cache`
   adapters need no change: both new methods have defaults built from
   `get`, `set`, `delete`, `set_if_absent_with_ttl` and
   `increment_with_expiry`. An adapter lacking either of the last two

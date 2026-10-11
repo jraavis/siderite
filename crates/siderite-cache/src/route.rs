@@ -41,6 +41,8 @@ const DISABLED: u8 = 1;
 /// Shared flag: no expiring generation markers (unsupported backend or a
 /// zero `generation_ttl`), so the layer neither stores nor invalidates.
 const NO_MARKERS: u8 = 2;
+/// Shared flag: a marker admission failure was already logged.
+const ADMIT_WARNED: u8 = 4;
 
 /// Request headers that are part of the cache key; a response may `Vary` on
 /// these and still be stored.
