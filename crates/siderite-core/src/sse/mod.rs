@@ -12,17 +12,26 @@
 //! - An `Err` from the event stream ends the response body abruptly; the
 //!   error itself is never sent (clients see the connection end and may
 //!   reconnect). Send an event first if the client should know why.
+//! - Events are pulled only as fast as the connection takes them, so a
+//!   slow reader never makes the stream buffer events (feed it from a
+//!   bounded channel, never an unbounded one). A client that disconnects
+//!   drops the stream, and with it the work behind it.
+//! - [`Sse::keep_alive`] sends a comment after an idle interval, so
+//!   proxies and clients do not close a quiet connection;
+//!   [`Sse::until`] ends the stream when a future resolves, such as
+//!   `Readiness::stopping()`, so graceful shutdown need not time out.
 
 use crate::response::{IntoResponse, Response, SUCCESS};
 use crate::responses::StreamingResponse;
-use bytes::Bytes;
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use http::HeaderValue;
 use http::header::CACHE_CONTROL;
+use lifecycle::{Lifecycle, Until};
 use serde::Serialize;
 use siderite_openapi::{Operation, SchemaObject, SchemaRegistry};
 use std::error::Error as StdError;
 use std::fmt::Write;
+use std::future::Future;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -160,6 +169,8 @@ fn lines(text: &str) -> Vec<&str> {
 /// A `text/event-stream` response from a stream of events.
 pub struct Sse<S> {
     stream: S,
+    keep_alive: Option<Duration>,
+    until: Option<Until>,
 }
 
 impl<S, E> Sse<S>
@@ -169,7 +180,29 @@ where
 {
     /// Stream `events`; an `Err` ends the response (see the module docs).
     pub fn new(events: S) -> Self {
-        Self { stream: events }
+        Self {
+            stream: events,
+            keep_alive: None,
+            until: None,
+        }
+    }
+
+    /// Send a comment (`:`) whenever no event was sent for `interval`.
+    #[must_use]
+    pub fn keep_alive(mut self, interval: Duration) -> Self {
+        self.keep_alive = Some(interval);
+        self
+    }
+
+    /// End the stream cleanly when `signal` resolves, for example
+    /// `readiness.stopping()` so streams close as shutdown begins.
+    #[must_use]
+    pub fn until<F>(mut self, signal: F) -> Self
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.until = Some(Box::pin(signal));
+        self
     }
 }
 
@@ -179,9 +212,7 @@ where
     E: Into<Box<dyn StdError + Send + Sync>> + Send + 'static,
 {
     fn into_response(self) -> Response {
-        let bytes = self
-            .stream
-            .map(|item| item.map(|event| Bytes::from(event.encode())));
+        let bytes = Lifecycle::new(self.stream, self.keep_alive, self.until);
         let stream = StreamingResponse::new(bytes).content_type(EVENT_STREAM);
         let mut response = stream.into_response();
         let no_store = HeaderValue::from_static("no-store");
@@ -195,6 +226,8 @@ where
         op.add_response(SUCCESS, "Server-sent events", content);
     }
 }
+
+mod lifecycle;
 
 #[cfg(test)]
 mod tests;

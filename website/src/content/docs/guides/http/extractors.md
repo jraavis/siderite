@@ -82,6 +82,18 @@ let keepalive = Event::comment("still here");
 - `.event(name)` and `.id(id)` reject a CR or LF (and a NUL in an id, which clients ignore) with `SseError`, so a value can never split or forge an event.
 - Responses carry `Cache-Control: no-store`, so caches never store or replay a stream, and the OpenAPI response is documented as `text/event-stream`.
 - An `Err` from the stream ends the body abruptly and is never sent to the client, which sees the connection close and may reconnect (sending `Last-Event-ID`). Send an event first if the client should know why.
+- Lifecycle: events are pulled only as fast as the connection takes them, so a slow reader never makes the server buffer events (feed the stream from a bounded channel, never an unbounded one); a client that disconnects drops the stream and the work behind it. `.keep_alive(interval)` sends a comment after `interval` without events, so idle connections are not closed. `.until(readiness.stopping())` ends the stream cleanly when shutdown begins (`Readiness::stopping()` resolves at Draining), so a graceful shutdown does not wait for the timeout and force-close it:
+
+  ```rust
+  async fn feed(readiness: Readiness) -> Sse<Events> {
+      Sse::new(events())
+          .keep_alive(Duration::from_secs(15))
+          .until(async move { readiness.stopping().await })
+  }
+  ```
+
+- Middleware: `Timeout` covers producing the response, not its body, so it does not cut streams; `Compression` leaves `text/event-stream` uncompressed, so events are not held back by the encoder. Both are tested through the server.
+- Proxies must pass events through unbuffered: with nginx set `proxy_buffering off;` for the route (or add the `X-Accel-Buffering: no` header) and do not compress `text/event-stream`; set read timeouts above the keep-alive interval. Browsers allow about six HTTP/1.1 connections per host, so serve event streams over HTTP/2 when a page opens several.
 
 ## Pagination
 
