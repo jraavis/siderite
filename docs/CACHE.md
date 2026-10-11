@@ -167,6 +167,19 @@ in flight is a safe miss: the fill lands under the old token's key, and the
 next request creates a marker with a new random token. The hit path is
 unchanged: one marker `get` and one representation `get`.
 
+Operational notes:
+
+- `max-age`, `s-maxage` and `default_ttl` above `generation_ttl` (default
+  one hour) are effectively capped to it; raise `generation_ttl` for
+  longer-lived entries.
+- A `generation_ttl` of zero disables route caching: no backend calls, no
+  storage, no invalidation (`x-cache: miss`).
+- The first `Unsupported` from `set_if_absent_with_ttl` logs one warning and
+  disables storage for the life of the layer; the flag never resets.
+- Upgrading with a persistent Redis: markers written by earlier versions
+  have no expiry. They are kept until a write to that target deletes them,
+  or until the namespace changes.
+
 `set_if_absent_with_ttl` semantics: a zero TTL is rejected with
 `CacheError::InvalidTtl`; TTLs round up to whole milliseconds (a 1 ns TTL
 lives 1 ms, 1.5 ms lives 2 ms) so entries never expire earlier than asked;

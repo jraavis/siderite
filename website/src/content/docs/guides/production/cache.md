@@ -138,13 +138,9 @@ invalidation. Cache key scheme uses `.trusted_proxies(...)`, the same exact
 peer policy as redirect and rate limiting; untrusted forwarded headers are
 ignored. The proxy must replace headers. Malformed trusted context fails.
 
-The cache requires atomic `Cache::set_if_absent`; MemoryCache and RedisCache
-implement it. Custom backends without it bypass route storage. Today,
-generation markers have no TTL, and backend capacity/eviction governs their
-lifetime. The target design gives markers a finite `generation_ttl`,
-bounds new markers per window, and makes invalidation delete the marker
-instead of writing one; see `docs/CACHE.md` (generation contract) for the
-planned limits and caveats.
+The cache requires atomic `Cache::set_if_absent_with_ttl`; MemoryCache and
+RedisCache implement it. Custom backends without it bypass route storage;
+see [Generation lifetime](#generation-lifetime).
 Backend read/store errors serve the origin. Failed write invalidation
 disables the affected layer, preserving the already completed write.
 Database commits and cache invalidation are separate operations: other
@@ -162,7 +158,17 @@ generation, so older or still-running fills can never be served. Markers are
 created with the cache's atomic `set_if_absent_with_ttl`. A custom `Cache`
 that does not implement it (it returns `CacheError::Unsupported`) makes
 the layer bypass storage and serve every request from the origin with
-`x-cache: miss`; the layer remembers this and stops probing the backend.
+`x-cache: miss`; the layer logs one warning, remembers this and stops
+probing the backend for the life of the layer (restart after switching to a
+capable backend). A `generation_ttl` of zero disables route caching without
+touching the backend.
+
+Because representations are clamped to `generation_ttl`, a `max-age`,
+`s-maxage` or `default_ttl` above it (one hour by default) is effectively
+capped: raise `generation_ttl` for longer-lived entries. When upgrading
+with a persistent Redis, markers written by earlier versions have no
+expiry and are kept until a write to that target deletes them (or until
+the namespace changes).
 
 ## Byte budgets
 

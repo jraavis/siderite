@@ -18,18 +18,18 @@
 //! 4. Marker creation goes through atomic expiring creation
 //!    (`set_if_absent_with_ttl`); a backend without it makes the layer
 //!    bypass storage rather than emulate it. The first `Unsupported` is
-//!    remembered so later requests skip the backend entirely.
+//!    remembered (with one warning, never reset) so later requests skip
+//!    the backend entirely.
 //! 5. Markers are finite: they carry `generation_ttl` (default one hour).
 //! 6. Invalidation deletes the marker instead of writing a new one. A missing
 //!    marker yields a fresh random token (invariant 1), so deletion rotates
 //!    the generation and creates no metadata outside the admission budget.
 
-use super::{Policy, cache_key, push_part};
+use super::{NO_MARKERS, Policy, cache_key, push_part};
 use crate::{Cache, CacheError};
 use http::Method;
 use siderite_core::Request;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU8, Ordering};
 use uuid::Uuid;
 
 type Stamp = Result<Uuid, CacheError>;
@@ -66,28 +66,27 @@ pub(super) fn representation_key(
 
 /// Read the marker, creating it with `ttl` when absent.
 ///
-/// The hit path is one `get`. Creation uses atomic expiring creation only;
-/// when the backend reports `Unsupported`, `supported` is cleared so callers
-/// can bypass without probing again.
-pub(super) async fn current<C: Cache>(
-    cache: &C,
-    key: &str,
-    ttl: Duration,
-    supported: &AtomicBool,
-) -> Stamp {
+/// The hit path is one `get`. Creation uses atomic expiring creation only.
+/// The first `Unsupported` from the backend sets the shared `NO_MARKERS`
+/// flag (logging one warning) so later requests bypass without probing
+/// again. The flag never resets for the life of the layer: restart the
+/// application after switching to a capable backend.
+pub(super) async fn current<C>(cache: &C, key: &str, policy: &Policy) -> Stamp
+where
+    C: Cache,
+{
     if let Some(value) = cache.get(key).await? {
         return decode(&value);
     }
     let candidate = Uuid::new_v4();
-    let created = cache
-        .set_if_absent_with_ttl(key, candidate.as_bytes().to_vec(), ttl)
-        .await;
+    let (ttl, seed) = (policy.generation_ttl, candidate.as_bytes().to_vec());
+    let created = cache.set_if_absent_with_ttl(key, seed, ttl).await;
     match created {
         Ok(true) => return Ok(candidate),
         Ok(false) => {}
         Err(error) => {
             if matches!(error, CacheError::Unsupported { .. }) {
-                supported.store(false, Ordering::Release);
+                note_unsupported(&policy.flags);
             }
             return Err(error);
         }
@@ -95,6 +94,17 @@ pub(super) async fn current<C: Cache>(
     match cache.get(key).await? {
         Some(value) => decode(&value),
         None => Err(CacheError::Backend("generation was evicted".into())),
+    }
+}
+
+/// Set `NO_MARKERS`, warning once, on the transition only.
+fn note_unsupported(flags: &AtomicU8) {
+    let before = flags.fetch_or(NO_MARKERS, Ordering::AcqRel);
+    if before & NO_MARKERS == 0 {
+        tracing::warn!(
+            "cache backend lacks atomic expiring insertion; \
+             route caching disabled for this layer"
+        );
     }
 }
 
@@ -126,7 +136,12 @@ mod tests {
     type TestResult = Result<(), CacheError>;
     const MARKER: &str = "route-v2-target:test";
     const TTL: Duration = Duration::from_secs(60);
-    static SUPPORTED: AtomicBool = AtomicBool::new(true);
+
+    fn policy(ttl: Duration) -> Policy {
+        RouteCache::new(MemoryCache::new(1))
+            .generation_ttl(ttl)
+            .policy()
+    }
 
     #[tokio::test]
     async fn expired_marker_yields_a_fresh_token() -> TestResult {
@@ -134,23 +149,23 @@ mod tests {
         let ttl = Some(Duration::from_millis(5));
         let first = Uuid::new_v4();
         cache.set(MARKER, first.as_bytes().to_vec(), ttl).await?;
-        assert_eq!(current(&cache, MARKER, TTL, &SUPPORTED).await?, first);
+        assert_eq!(current(&cache, MARKER, &policy(TTL)).await?, first);
         tokio::time::sleep(Duration::from_millis(30)).await;
-        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(second, first);
-        assert_eq!(current(&cache, MARKER, TTL, &SUPPORTED).await?, second);
+        assert_eq!(current(&cache, MARKER, &policy(TTL)).await?, second);
         Ok(())
     }
 
     #[tokio::test]
     async fn evicted_marker_yields_a_fresh_token() -> TestResult {
         let cache = MemoryCache::new(1);
-        let first = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let first = current(&cache, MARKER, &policy(TTL)).await?;
         cache.set("other", vec![1], None).await?;
-        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(second, first);
         cache.delete(MARKER).await?;
-        let third = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let third = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(third, second);
         assert_ne!(third, first);
         Ok(())
@@ -159,9 +174,9 @@ mod tests {
     #[tokio::test]
     async fn invalidation_rotates_to_a_fresh_token() -> TestResult {
         let cache = MemoryCache::new(8);
-        let first = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let first = current(&cache, MARKER, &policy(TTL)).await?;
         invalidate(&cache, MARKER).await?;
-        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(first, second);
         Ok(())
     }
@@ -170,11 +185,11 @@ mod tests {
     async fn markers_expire_and_invalidation_deletes() -> TestResult {
         let cache = MemoryCache::new(8);
         let short = Duration::from_millis(20);
-        let first = current(&cache, MARKER, short, &SUPPORTED).await?;
+        let first = current(&cache, MARKER, &policy(short)).await?;
         assert!(cache.get(MARKER).await?.is_some());
         tokio::time::sleep(Duration::from_millis(60)).await;
         assert_eq!(cache.get(MARKER).await?, None, "marker is finite");
-        let second = current(&cache, MARKER, TTL, &SUPPORTED).await?;
+        let second = current(&cache, MARKER, &policy(TTL)).await?;
         assert_ne!(first, second);
         invalidate(&cache, MARKER).await?;
         assert_eq!(cache.get(MARKER).await?, None, "no marker is written");
@@ -194,7 +209,7 @@ mod tests {
         let req = request().map_err(|e| CacheError::Backend(e.to_string()))?;
         let target = target(&req, &policy, "http");
         for rotate in [Rotation::Invalidate, Rotation::Evict] {
-            let old = current(cache.as_ref(), &target, TTL, &SUPPORTED).await?;
+            let old = current(cache.as_ref(), &target, &policy).await?;
             let old_key = representation_key(&req, &policy, "http", old);
             // The rotation happens while the origin read is still pending.
             match rotate {
@@ -207,7 +222,7 @@ mod tests {
             }
             // The delayed fill now lands under the old generation key.
             cache.set(&old_key, b"old".to_vec(), None).await?;
-            let new = current(cache.as_ref(), &target, TTL, &SUPPORTED).await?;
+            let new = current(cache.as_ref(), &target, &policy).await?;
             assert_ne!(new, old, "rotation must not reuse the old token");
             let new_key = representation_key(&req, &policy, "http", new);
             assert_ne!(new_key, old_key);
