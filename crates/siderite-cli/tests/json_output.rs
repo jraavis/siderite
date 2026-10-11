@@ -1,92 +1,16 @@
-//! `siderite --json` end to end, with a stand-in `cargo` on `PATH`.
-//!
-//! The stand-in plays the application: it prints noise on stdout (as an
-//! app factory might), writes `$FAKE_REPORT` to the report file named by
-//! `SIDERITE_REPORT_PATH` and exits with `$FAKE_CODE`. The tests check
-//! that stdout carries exactly the report, or one failure envelope, and
-//! that exit codes keep their meaning.
+//! `siderite --json` end to end, with a stand-in `cargo` on `PATH` that
+//! plays the application (see `common`). The tests check that stdout
+//! carries exactly the report, or one failure envelope, and that exit
+//! codes keep their meaning.
 
 #![cfg(unix)]
 #![allow(clippy::unwrap_used)]
 
-use serde_json::Value;
+mod common;
+
+use common::{fixture, one_value, scratch, siderite, stderr, stdout};
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-
-const FAKE_CARGO: &str = r#"#!/bin/sh
-echo "noise from the app factory"
-echo "cargo args: $*" >&2
-if [ -n "$SIDERITE_REPORT_PATH" ] && [ -n "$FAKE_REPORT" ]; then
-  printf '%s\n' "$FAKE_REPORT" > "$SIDERITE_REPORT_PATH"
-fi
-exit "${FAKE_CODE:-0}"
-"#;
-
-/// A temp directory removed on drop.
-struct Scratch(PathBuf);
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn scratch(name: &str) -> Scratch {
-    let id = std::process::id();
-    let dir = std::env::temp_dir().join(format!("siderite json {id}-{name}"));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    Scratch(dir)
-}
-
-/// A plain app package and a `bin/cargo` stand-in under `root`.
-fn fixture(root: &Path) -> (PathBuf, String) {
-    let app = root.join("app");
-    fs::create_dir_all(app.join("src")).unwrap();
-    let manifest = "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\
-                    edition = \"2024\"\n\n[dependencies]\n\
-                    siderite = \"0.1\"\n";
-    fs::write(app.join("Cargo.toml"), manifest).unwrap();
-    fs::write(app.join("src/main.rs"), "fn main() {}\n").unwrap();
-    let bin = root.join("bin");
-    fs::create_dir_all(&bin).unwrap();
-    let cargo = bin.join("cargo");
-    fs::write(&cargo, FAKE_CARGO).unwrap();
-    fs::set_permissions(&cargo, fs::Permissions::from_mode(0o755)).unwrap();
-    let path = std::env::var("PATH").unwrap_or_default();
-    (app, format!("{}:{path}", bin.display()))
-}
-
-type Fake<'a> = &'a [(&'a str, &'a str)];
-
-fn siderite(cwd: &Path, path: &str, args: &[&str], fake: Fake) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_siderite"));
-    command.args(args).current_dir(cwd).env("PATH", path);
-    command.env_remove("SIDERITE_REPORT_PATH");
-    command.env_remove("DATABASE_URL");
-    for (key, value) in fake {
-        command.env(key, value);
-    }
-    command.output().unwrap()
-}
-
-fn stdout(out: &Output) -> String {
-    String::from_utf8_lossy(&out.stdout).into_owned()
-}
-
-fn stderr(out: &Output) -> String {
-    String::from_utf8_lossy(&out.stderr).into_owned()
-}
-
-/// Stdout must be exactly one JSON value and a newline.
-fn one_value(out: &Output) -> Value {
-    let text = stdout(out);
-    assert!(text.ends_with('\n'), "{text:?}");
-    assert_eq!(text.matches('\n').count(), 1, "{text:?}");
-    serde_json::from_str(&text).unwrap()
-}
+use std::path::Path;
 
 const REPORT: &str = concat!(
     r#"{"schema_version":1,"command":"routes","ok":true,"#,

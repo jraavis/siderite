@@ -28,6 +28,7 @@ pub fn is_app_command(command: &str) -> bool {
 }
 
 type CliResult = Result<u8, CliError>;
+type Done = Result<(), CliError>;
 
 /// `cargo run [--bin BIN] -- args` in `package_dir`.
 ///
@@ -117,20 +118,109 @@ impl Drop for ReportFile {
     }
 }
 
-/// Cargo subcommands `siderite` forwards verbatim in the app package.
-pub const CARGO_COMMANDS: &[&str] = &["build", "test"];
+/// A `siderite` command that runs a Cargo subcommand in the app package,
+/// forwarding every argument after the command unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Passthrough {
+    /// The `siderite` command.
+    pub command: &'static str,
+    /// The Cargo subcommand it runs.
+    pub cargo: &'static str,
+    /// Whether `--bin` applies.
+    pub takes_bin: bool,
+    /// The rustup component providing the subcommand, if any.
+    pub component: Option<&'static str>,
+}
 
-/// `cargo <cargo_cmd>` in `package_dir` with the args after `cargo_cmd`
-/// (no extra `--` unless the user passed some).
+/// The Cargo passthroughs. `lint` is Clippy (Rust lints), unrelated to
+/// the framework's `check`; `clean` only ever runs when invoked.
+pub const PASSTHROUGHS: &[Passthrough] = &[
+    Passthrough {
+        command: "build",
+        cargo: "build",
+        takes_bin: true,
+        component: None,
+    },
+    Passthrough {
+        command: "test",
+        cargo: "test",
+        takes_bin: true,
+        component: None,
+    },
+    Passthrough {
+        command: "fmt",
+        cargo: "fmt",
+        takes_bin: false,
+        component: Some("rustfmt"),
+    },
+    Passthrough {
+        command: "lint",
+        cargo: "clippy",
+        takes_bin: true,
+        component: Some("clippy"),
+    },
+    Passthrough {
+        command: "clean",
+        cargo: "clean",
+        takes_bin: false,
+        component: None,
+    },
+];
+
+impl Passthrough {
+    /// Reject `--bin` for subcommands without binaries.
+    ///
+    /// Errors:
+    ///   A usage error when `bin` is set and `--bin` does not apply.
+    pub fn check_bin(&self, bin: Option<&str>) -> Result<(), CliError> {
+        if bin.is_some() && !self.takes_bin {
+            let name = self.command;
+            let msg = format!("--bin does not apply to `{name}`");
+            return Err(CliError::usage(msg));
+        }
+        Ok(())
+    }
+}
+
+/// The passthrough for `command`, if it is one.
+pub fn passthrough(command: &str) -> Option<&'static Passthrough> {
+    PASSTHROUGHS.iter().find(|p| p.command == command)
+}
+
+/// `cargo <sub>` in `package_dir` with the args after the `siderite`
+/// command (no extra `--` unless the user passed some).
+///
+/// Errors:
+///   A usage error for `--bin` on a subcommand without binaries, or an IO
+///   error naming the rustup component when the subcommand is missing.
 pub fn cargo_passthrough(
     package_dir: &Path,
-    cargo_cmd: &str,
+    pass: &Passthrough,
     bin: Option<&str>,
     args: &[String],
 ) -> Result<u8, CliError> {
-    let rest = args_after(cargo_cmd, args);
-    let mut command = cargo_command(package_dir, cargo_cmd, bin, &rest);
+    pass.check_bin(bin)?;
+    if let Some(component) = pass.component {
+        require_subcommand(pass, component)?;
+    }
+    let rest = args_after(pass.command, args);
+    let mut command = cargo_command(package_dir, pass.cargo, bin, &rest);
     exit_code(&mut command)
+}
+
+/// `cargo <sub>` is an external `cargo-<sub>` program; say how to get it
+/// instead of letting cargo report an unknown command.
+fn require_subcommand(pass: &Passthrough, component: &str) -> Done {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let program = format!("cargo-{}", pass.cargo);
+    if crate::doctor::tools::which(&program, &path).is_some() {
+        return Ok(());
+    }
+    Err(CliError::Io(format!(
+        "`siderite {}` runs `cargo {}`, which needs {component}; install it \
+         with `rustup component add {component}`",
+        pass.command, pass.cargo
+    )))
 }
 
 fn args_after(cargo_cmd: &str, args: &[String]) -> Vec<String> {
