@@ -616,8 +616,11 @@ Execution requires a pool handle so migration DDL cannot consume a caller's
 transaction or connection scope. Inspection still accepts scoped handles.
 Twenty-six migration unit tests and three recovery integration tests passed.
 G14 remains partial: generated DDL commit/progress and history boundaries,
-constrained privileges, disconnects, and documented reconciliation procedures
-still require further verification.
+lock bounds, cancellation, lock-holder disconnects and limited-privilege
+roles are now live-tested on PostgreSQL and MySQL (`tests/lock_live.rs`);
+lock-loss after success is reported as `LockReleaseUncertain`. Network
+partitions, pool exhaustion and non-superuser catalog restrictions remain
+unverified.
 
 ## Benchmark worker and adoption gates: 2026-10-03
 

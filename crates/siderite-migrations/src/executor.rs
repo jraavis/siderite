@@ -305,7 +305,9 @@ impl<'a> Migrator<'a> {
                 match (result, unlocked) {
                     (Ok(v), Ok(())) => Ok(v),
                     (Err(e), _) => Err(e),
-                    (Ok(_), Err(e)) => Err(e),
+                    // Work finished but ownership is unconfirmed; say so
+                    // instead of surfacing a bare driver error.
+                    (Ok(report), Err(e)) => Err(uncertain(report, e)),
                 }
             })
             .await
@@ -908,4 +910,11 @@ fn reverse_sql(
         rev.apply_to_state(&mut current)?;
     }
     Ok(sql)
+}
+
+fn uncertain(report: Report, source: MigrationError) -> MigrationError {
+    MigrationError::LockReleaseUncertain {
+        applied: report.applied,
+        source: Box::new(source),
+    }
 }

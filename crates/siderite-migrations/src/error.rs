@@ -35,6 +35,20 @@ pub enum MigrationError {
     /// The advisory migration lock could not be acquired before its deadline.
     #[error("timed out waiting for the migration lock")]
     LockTimeout,
+    /// The run finished, but releasing the migration lock could not be
+    /// confirmed (for example the lock session was lost), so lock ownership
+    /// is uncertain. The listed migrations did run; inspect before retrying.
+    #[error(
+        "migrations {applied:?} completed, but releasing the migration lock \
+        failed so lock ownership is uncertain: {source}"
+    )]
+    LockReleaseUncertain {
+        /// Ids written to (or removed from) the history table.
+        applied: Vec<String>,
+        /// Why the release could not be confirmed.
+        #[source]
+        source: Box<MigrationError>,
+    },
     /// A migration lists a dependency that is not on disk.
     #[error("unknown dependency `{dependency}` of migration `{id}`")]
     MissingDependency {

@@ -222,6 +222,29 @@ returns `MigrationError::LockTimeout`; retry after the holder finishes.
 This limit does not bound pool acquisition, SQLite BEGIN or migration
 execution. Session release is checked, including MySQL lock ownership.
 
+Observed lock behaviour (live PostgreSQL and MySQL, `tests/lock_live.rs`):
+
+- A waiter gives up with `LockTimeout` within its bound while another
+  session holds the lock, writes nothing and leaves the holder's ownership
+  intact. The message does not name the holder.
+- Aborting a waiting migrate future leaves no lock or pending request; the
+  lock is free once the holder releases it.
+- Dropping a migrator mid-run closes its session. The server only notices
+  once the statement in flight finishes, so the lock is freed after that
+  statement ends, not instantly. A long-running step delays other migrators.
+- If the holder's session is killed (`pg_terminate_backend`, MySQL `KILL`)
+  during a step, the server frees the lock at once, the run fails with a
+  driver error, nothing is recorded, and the next migrator proceeds.
+- If the session is lost after the work finished but before release, the
+  run returns `MigrationError::LockReleaseUncertain` naming the migrations
+  that did run. They are recorded; re-running is a no-op. Check
+  `inspectmigrations` before assuming either outcome.
+- A role without CREATE, or without write access to the history/progress
+  tables, fails with the server's permission-denied error and the lock is
+  released. PostgreSQL rolls an atomic migration back; MySQL DDL commits
+  implicitly, so a table may exist without a history row (inspect and
+  reconcile). Pool acquisition is not covered by the lock bound.
+
 Owned process-kill checks verify the boundary between executing DDL and
 recording progress. A child process migrates through a test-only backend
 wrapper that aborts at an exact point; the migrator carries no crash hooks.
