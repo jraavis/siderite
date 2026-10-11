@@ -254,7 +254,8 @@ async fn cmd_migrate(db: &Db, dir: &Path, parsed: &Parsed) -> Result<ExitCode, M
     let timeout = std::time::Duration::from_millis(parsed.lock_timeout_ms);
     let migrator = Migrator::new(db, &graph).with_lock_timeout(timeout)?;
     let target = parsed.positional.first().map(String::as_str);
-    let report = migrator.migrate(target, parsed.dry_run).await?;
+    let report = migrator.migrate(target, parsed.dry_run).await;
+    let report = name_lock_holder(&migrator, report).await?;
     print_report("Applying", &report);
     Ok(ExitCode::SUCCESS)
 }
@@ -266,9 +267,28 @@ async fn cmd_rollback(db: &Db, dir: &Path, parsed: &Parsed) -> Result<ExitCode, 
     let target = parsed.positional.first().map(String::as_str);
     let report = migrator
         .rollback(target, parsed.steps, parsed.dry_run)
-        .await?;
+        .await;
+    let report = name_lock_holder(&migrator, report).await?;
     print_report("Unapplying", &report);
     Ok(ExitCode::SUCCESS)
+}
+
+/// On [`MigrationError::LockTimeout`], print the session holding the lock
+/// to stderr; the error itself is returned unchanged.
+async fn name_lock_holder(
+    migrator: &Migrator<'_>,
+    outcome: Result<Report, MigrationError>,
+) -> Result<Report, MigrationError> {
+    if matches!(outcome, Err(MigrationError::LockTimeout)) {
+        match migrator.lock_holder().await {
+            Ok(Some(holder)) => {
+                eprintln!("the migration lock is held by {holder}");
+            }
+            Ok(None) => eprintln!("the migration lock has since been freed"),
+            Err(err) => eprintln!("cannot identify the lock holder: {err}"),
+        }
+    }
+    outcome
 }
 
 async fn cmd_show(db: &Db, dir: &Path) -> Result<ExitCode, MigrationError> {

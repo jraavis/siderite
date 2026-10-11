@@ -30,6 +30,8 @@ mod intents;
 pub use intents::MigrationIntent;
 mod recovery;
 pub use recovery::{RecoveryEntry, RecoveryReport};
+mod holder;
+pub use holder::LockHolder;
 mod locks;
 use locks::release_migrate_lock;
 

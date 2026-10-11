@@ -615,12 +615,14 @@ which commits an INSERT before failing cannot duplicate that row on retry.
 Execution requires a pool handle so migration DDL cannot consume a caller's
 transaction or connection scope. Inspection still accepts scoped handles.
 Twenty-six migration unit tests and three recovery integration tests passed.
-G14 remains partial: generated DDL commit/progress and history boundaries,
-lock bounds, cancellation, lock-holder disconnects and limited-privilege
-roles are now live-tested on PostgreSQL and MySQL (`tests/lock_live.rs`);
-lock-loss after success is reported as `LockReleaseUncertain`. Network
-partitions, pool exhaustion and non-superuser catalog restrictions remain
-unverified.
+G14 remains partial. Live-tested on PostgreSQL and MySQL: crashes at the
+DDL-to-progress and history-write boundaries (`tests/crash_*_live.rs`),
+and in `tests/lock_live.rs` the lock bound, waiter and holder
+cancellation, a server-side kill of the holder, a lost session before
+release in both directions (reported as `LockReleaseUncertain`), holder
+identification after a timeout, and roles without CREATE or bookkeeping
+write access. Not exercised: network partitions, pool exhaustion, and
+holder details under roles that cannot read other sessions.
 
 ## Benchmark worker and adoption gates: 2026-10-03
 

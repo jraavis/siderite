@@ -95,3 +95,5 @@ docker compose down
 | `REDIS_URL` | Redis (`redis:7-alpine`) | must select database 15 (the tests refuse anything else); they delete only their own key prefix |
 
 The credentials in the compose file are for local testing only. See [BACKENDS.md](BACKENDS.md) for the live-test status of each backend.
+
+Migration lock and crash tests (`crates/siderite-migrations/tests/lock_live.rs`, `crash_*_live.rs`) need `--test-threads=1`. Each case has a private database, but the MySQL migration lock (`GET_LOCK('siderite_migrate')`) is server-wide, not per database, so concurrent cases, or another migrator on the same server, would contend for it. The PostgreSQL advisory lock is per database.

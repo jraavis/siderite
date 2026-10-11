@@ -30,6 +30,11 @@ The standalone `siderite` binary runs `migrate`, `rollback`,
 nothing. `migrate` and `rollback` take a backend lock before re-reading
 history (PostgreSQL `pg_advisory_lock`, MySQL `GET_LOCK`, SQLite
 `BEGIN IMMEDIATE`) so concurrent replicas cannot double-apply.
+Waiting is bounded by `--lock-timeout-ms` (default 30 s); on
+`MigrationError::LockTimeout` the command prints the holding session
+(`Migrator::lock_holder()`). A run whose lock release cannot be confirmed
+fails with `MigrationError::LockReleaseUncertain`, listing the migrations
+it applied or unapplied.
 
 MongoDB and Redis return `MigrationError::UnsupportedBackend` before I/O.
 

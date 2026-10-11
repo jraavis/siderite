@@ -6,7 +6,8 @@
 //! afterwards, even when an assertion panics.
 //!
 //! Run with `--include-ignored --test-threads=1`: the MySQL lock name is
-//! server-wide, so cases must not overlap other migration tests.
+//! server-wide (not per database), so cases must not overlap each other or
+//! any other migration test against the same server.
 
 mod common;
 
@@ -19,7 +20,7 @@ use siderite_orm::{Backend, BackendCapabilities, Db};
 use siderite_orm::{ExecResult, Executor, IsolationLevel};
 use siderite_orm::{QueryPlan, QueryResult, Transaction, Value, WritePlan};
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -32,6 +33,7 @@ type Vals = Vec<Value>;
 type Iso = Option<IsolationLevel>;
 type Tx = Box<dyn Transaction>;
 type Orm<T> = std::result::Result<T, siderite_orm::OrmError>;
+type Taps<'a> = (&'a Admin, &'a AtomicBool, &'a AtomicUsize);
 
 /// PostgreSQL advisory key used by the migrator (`SIDE`).
 const PG_KEY: i64 = 0x5349_4445;
@@ -250,19 +252,14 @@ struct Ctx {
     url: String,
     admin: Admin,
     roles: Arc<Mutex<Vec<String>>>,
+    /// Pools of the limited roles, closed before the roles are dropped.
+    limited: Arc<Mutex<Vec<Admin>>>,
 }
 
 fn with_credentials(url: &str, user: &str, pass: &str) -> String {
     let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
     let host = rest.rsplit_once('@').map_or(rest, |x| x.1);
     format!("{scheme}://{user}:{pass}@{host}")
-}
-
-async fn connect(engine: Engine, url: &str) -> Res<Db> {
-    Ok(match engine {
-        Engine::Pg => Db::new(PgBackend::connect(url).await?),
-        Engine::My => Db::new(MySqlBackend::connect(url).await?),
-    })
 }
 
 fn server_url(engine: Engine) -> Res<String> {
@@ -289,14 +286,20 @@ where
     let url = scratch.connection_url().to_owned();
     let admin = Admin::connect(engine, &url).await?;
     let roles = Arc::new(Mutex::new(Vec::new()));
+    let limited = Arc::new(Mutex::new(Vec::new()));
     let ctx = Ctx {
         engine,
         db: scratch.db.clone(),
         url,
         admin: admin.clone(),
         roles: Arc::clone(&roles),
+        limited: Arc::clone(&limited),
     };
     let joined = tokio::spawn(case(ctx)).await;
+    let pools = limited.lock().map(|l| l.clone()).unwrap_or_default();
+    for pool in pools {
+        pool.close().await;
+    }
     admin.close().await;
     let cleanup = scratch.cleanup().await;
     let names = roles.lock().map(|r| r.clone()).unwrap_or_default();
@@ -370,7 +373,17 @@ impl Ctx {
             };
             self.admin.exec(&sql).await?;
         }
-        connect(self.engine, &with_credentials(&self.url, &name, "pw")).await
+        let url = with_credentials(&self.url, &name, "pw");
+        let pools = Admin::connect(self.engine, &url).await?;
+        let db = match (&pools.pg, &pools.my) {
+            (Some(p), _) => Db::new(PgBackend::from_pool(p.clone())),
+            (_, Some(p)) => Db::new(MySqlBackend::from_pool(p.clone())),
+            _ => return Err("no pool".into()),
+        };
+        if let Ok(mut l) = self.limited.lock() {
+            l.push(pools);
+        }
+        Ok(db)
     }
 }
 
@@ -442,6 +455,11 @@ async fn bounded_wait(ctx: Ctx) -> Result {
     let waited = start.elapsed();
     assert!(matches!(err, MigrationError::LockTimeout), "{err:?}");
     assert_eq!(err.to_string(), "timed out waiting for the migration lock");
+    // The timeout path names the holding session.
+    let named = Migrator::new(&ctx.db, &g).lock_holder().await?;
+    let named = named.ok_or("holder not identified")?;
+    assert_eq!(Some(named.session), ctx.admin.lock_holder().await?);
+    assert!(named.user.is_some(), "{named:?}");
     assert!(
         waited >= Duration::from_millis(550),
         "gave up early: {waited:?}"
@@ -454,6 +472,8 @@ async fn bounded_wait(ctx: Ctx) -> Result {
     assert!(ctx.admin.tables().await?.is_empty());
     assert!(holder.release().await?, "holder lost ownership");
     ctx.admin.wait_lock(false, Duration::from_secs(5)).await?;
+    let free = Migrator::new(&ctx.db, &g).lock_holder().await?;
+    assert_eq!(free, None);
     go(&ctx.db, &g, 5_000).await?;
     assert_eq!(applied(&ctx.db, &g).await?, ["0001_a"]);
     ctx.admin.wait_lock(false, Duration::from_secs(5)).await
@@ -463,8 +483,10 @@ async fn bounded_wait(ctx: Ctx) -> Result {
 async fn cancel_waiter(ctx: Ctx) -> Result {
     let g = graph(vec![quick("0001_a", &[], "lk_a")?])?;
     let mut holder = Holder::take(ctx.engine, &ctx.url).await?;
+    let tap = Tap::new(&ctx, false).await?;
+    let attempts = Arc::clone(&tap.attempts);
     let waiter = {
-        let (db, g) = (ctx.db.clone(), g.clone());
+        let (db, g) = (Db::new(tap), g.clone());
         tokio::spawn(async move {
             Migrator::new(&db, &g)
                 .with_lock_timeout(Duration::from_secs(60))?
@@ -474,7 +496,14 @@ async fn cancel_waiter(ctx: Ctx) -> Result {
                 .map_err(fail)
         })
     };
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    // Prove the waiter is polling: it failed one attempt and retried.
+    let start = Instant::now();
+    while attempts.load(Ordering::SeqCst) < 2 {
+        if start.elapsed() > Duration::from_secs(10) {
+            return Err("waiter never retried the lock".into());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert!(!waiter.is_finished(), "waiter should still be waiting");
     waiter.abort();
     assert!(waiter.await.err().is_some_and(|e| e.is_cancelled()));
@@ -533,10 +562,7 @@ async fn kill_holder(ctx: Ctx) -> Result {
     let err = outcome.err().ok_or("killed run reported success")?;
     // The run did not complete: a driver/connection error, never success,
     // and no migration is recorded.
-    assert!(
-        matches!(err, MigrationError::Orm(_) | MigrationError::State(_)),
-        "{err:?}"
-    );
+    assert!(matches!(err, MigrationError::Orm(_)), "{err:?}");
     ctx.admin.wait_lock(false, Duration::from_secs(10)).await?;
     assert!(applied(&ctx.db, &g).await?.is_empty());
     let g2 = graph(vec![quick("0002_b", &[], "lk_b")?])?;
@@ -545,29 +571,52 @@ async fn kill_holder(ctx: Ctx) -> Result {
     Ok(())
 }
 
-/// Kills the lock session right before the release statement, so the work
-/// is done and recorded but ownership cannot be confirmed.
-struct KillBeforeRelease {
+/// Backend wrapper that counts lock attempts and, when `armed`, kills the
+/// lock session right before the release statement, so the work is done
+/// and recorded but ownership cannot be confirmed.
+struct Tap {
     inner: Arc<dyn Backend>,
     admin: Admin,
     armed: Arc<AtomicBool>,
+    attempts: Arc<AtomicUsize>,
 }
 
-struct KillTx {
+struct TapTx {
     inner: Box<dyn Transaction>,
     admin: Admin,
     armed: Arc<AtomicBool>,
+    attempts: Arc<AtomicUsize>,
 }
 
-async fn maybe_kill(admin: &Admin, armed: &AtomicBool, sql: &str) -> Orm<()> {
-    let release = ["pg_advisory_unlock", "RELEASE_LOCK"]
-        .iter()
-        .any(|k| sql.contains(k));
+impl Tap {
+    async fn new(ctx: &Ctx, armed: bool) -> Res<Self> {
+        let inner: Arc<dyn Backend> = match ctx.engine {
+            Engine::Pg => Arc::new(PgBackend::connect(&ctx.url).await?),
+            Engine::My => Arc::new(MySqlBackend::connect(&ctx.url).await?),
+        };
+        Ok(Self {
+            inner,
+            admin: ctx.admin.clone(),
+            armed: Arc::new(AtomicBool::new(armed)),
+            attempts: Arc::new(AtomicUsize::new(0)),
+        })
+    }
+}
+
+/// Count lock attempts; when armed, kill the session before its release.
+async fn observe(tap: Taps<'_>, sql: &str) -> Orm<()> {
+    let (admin, armed, attempts) = tap;
+    let has = |keys: [&str; 2]| keys.iter().any(|k| sql.contains(k));
+    if has(["pg_try_advisory_lock", "GET_LOCK"]) {
+        attempts.fetch_add(1, Ordering::SeqCst);
+    }
+    let release = has(["pg_advisory_unlock", "RELEASE_LOCK"]);
     if release && armed.swap(false, Ordering::SeqCst) {
         let holder = admin.lock_holder().await.ok().flatten();
         if let Some(id) = holder {
             let _ = admin.kill(id).await;
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            // The server has dropped the session once the lock is free.
+            let _ = admin.wait_lock(false, Duration::from_secs(10)).await;
         }
     }
     Ok(())
@@ -587,7 +636,8 @@ macro_rules! delegate {
                 self.inner.execute(plan).await
             }
             async fn fetch_raw(&self, q: &str, p: Vals) -> Orm<QueryResult> {
-                maybe_kill(&self.admin, &self.armed, q).await?;
+                let tap = (&self.admin, &*self.armed, &*self.attempts);
+                observe(tap, q).await?;
                 self.inner.fetch_raw(q, p).await
             }
             async fn execute_raw(&self, sql: &str, params: Vals) -> Orm<u64> {
@@ -600,11 +650,11 @@ macro_rules! delegate {
     };
 }
 
-delegate!(KillBeforeRelease);
-delegate!(KillTx);
+delegate!(Tap);
+delegate!(TapTx);
 
 #[async_trait]
-impl Backend for KillBeforeRelease {
+impl Backend for Tap {
     fn read_parameter_count(&self, plan: &QueryPlan) -> Orm<Option<usize>> {
         self.inner.read_parameter_count(plan)
     }
@@ -615,16 +665,17 @@ impl Backend for KillBeforeRelease {
 
     async fn begin_schema(&self, transactional: bool) -> Orm<Tx> {
         let inner = self.inner.begin_schema(transactional).await?;
-        Ok(Box::new(KillTx {
+        Ok(Box::new(TapTx {
             inner,
             admin: self.admin.clone(),
             armed: Arc::clone(&self.armed),
+            attempts: Arc::clone(&self.attempts),
         }))
     }
 }
 
 #[async_trait]
-impl Transaction for KillTx {
+impl Transaction for TapTx {
     async fn commit(&self) -> Orm<()> {
         self.inner.commit().await
     }
@@ -635,16 +686,9 @@ impl Transaction for KillTx {
 }
 
 async fn kill_before_release(ctx: Ctx) -> Result {
-    let inner: Arc<dyn Backend> = match ctx.engine {
-        Engine::Pg => Arc::new(PgBackend::connect(&ctx.url).await?),
-        Engine::My => Arc::new(MySqlBackend::connect(&ctx.url).await?),
-    };
-    let armed = Arc::new(AtomicBool::new(true));
-    let db = Db::new(KillBeforeRelease {
-        inner,
-        admin: ctx.admin.clone(),
-        armed: Arc::clone(&armed),
-    });
+    let tap = Tap::new(&ctx, true).await?;
+    let armed = Arc::clone(&tap.armed);
+    let db = Db::new(tap);
     let g = graph(vec![quick("0001_a", &[], "lk_a")?])?;
     let err = Migrator::new(&db, &g)
         .migrate(None, false)
@@ -652,21 +696,45 @@ async fn kill_before_release(ctx: Ctx) -> Result {
         .err()
         .ok_or("lost release was reported as plain success")?;
     assert!(!armed.load(Ordering::SeqCst), "kill never fired");
-    match &err {
+    assert_uncertain(&err, "0001_a")?;
+    // The work really did commit, and the server dropped the lock.
+    ctx.admin.wait_lock(false, Duration::from_secs(10)).await?;
+    assert_eq!(applied(&ctx.db, &g).await?, ["0001_a"]);
+    // A re-run is a clean no-op rather than a double apply.
+    go(&ctx.db, &g, 5_000).await?;
+    Ok(())
+}
+
+/// Same, for a rollback: the listed ids are the ones it unapplied.
+async fn kill_before_release_rollback(ctx: Ctx) -> Result {
+    let g = graph(vec![quick("0001_a", &[], "lk_a")?])?;
+    go(&ctx.db, &g, 5_000).await?;
+    let tap = Tap::new(&ctx, true).await?;
+    let db = Db::new(tap);
+    let err = Migrator::new(&db, &g)
+        .rollback(None, Some(1), false)
+        .await
+        .err()
+        .ok_or("lost release was reported as plain success")?;
+    assert_uncertain(&err, "0001_a")?;
+    ctx.admin.wait_lock(false, Duration::from_secs(10)).await?;
+    assert!(applied(&ctx.db, &g).await?.is_empty());
+    assert!(ctx.admin.tables().await?.iter().all(|t| t != "lk_a"));
+    Ok(())
+}
+
+fn assert_uncertain(err: &MigrationError, id: &str) -> Result {
+    match err {
         MigrationError::LockReleaseUncertain { applied, .. } => {
-            assert_eq!(applied, &["0001_a"]);
+            assert_eq!(applied, &[id]);
         }
         other => {
             return Err(format!("not reported explicitly: {other:?}").into());
         }
     }
     let text = err.to_string();
+    assert!(text.contains("release could not be confirmed"), "{text}");
     assert!(text.contains("lock ownership is uncertain"), "{text}");
-    // The work really did commit, and the server dropped the lock.
-    ctx.admin.wait_lock(false, Duration::from_secs(10)).await?;
-    assert_eq!(applied(&ctx.db, &g).await?, ["0001_a"]);
-    // A re-run is a clean no-op rather than a double apply.
-    go(&ctx.db, &g, 5_000).await?;
     Ok(())
 }
 
@@ -768,6 +836,16 @@ live!(
     Engine::Pg
 );
 live!(kill_before_release_mysql, kill_before_release, Engine::My);
+live!(
+    kill_before_release_rollback_postgres,
+    kill_before_release_rollback,
+    Engine::Pg
+);
+live!(
+    kill_before_release_rollback_mysql,
+    kill_before_release_rollback,
+    Engine::My
+);
 live!(no_create_postgres, no_create, Engine::Pg);
 live!(no_create_mysql, no_create, Engine::My);
 live!(
