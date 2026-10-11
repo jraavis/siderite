@@ -107,6 +107,17 @@ removal and application/database health remain deployment responsibilities.
 Services built without running lifespan remain Starting. In-process
 WebSocket use requires retaining and supervising lifespan ownership.
 
+Liveness is opt-in: `App::routes([siderite::health::liveness("/livez")])`
+registers `GET /livez` answering `200` with `{"status":"alive"}` and
+`Cache-Control: no-store` in every phase, reading no database, readiness,
+version or host details (documented under the `health` tag, operation ID
+`liveness`; `liveness_router()` mounts it with `App::route`). Nothing is
+registered unless asked, and a path the app already uses is rejected when
+the app is built. The server binds only after startup and stops accepting
+connections when shutdown starts, so probes get no connection before
+startup completes or once draining begins; size the probe's failure
+threshold to cover the shutdown timeout.
+
 
 ## Bounded concurrency and streaming scope
 

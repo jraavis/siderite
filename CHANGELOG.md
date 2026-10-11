@@ -8,6 +8,10 @@
 
 
 ### Added
+- **HTTP:** opt-in liveness: `siderite::health::liveness("/livez")` is a
+  route answering `200 {"status":"alive"}` with `Cache-Control: no-store`
+  in every phase, with no database, readiness or version details; it is
+  never registered implicitly and a colliding path fails the build.
 - **HTTP:** `PageParams<MAX = 100, DEFAULT = 20>` (a `Query` type
   with validated, documented bounds) and `Page<T>` (a response body with
   `total` and `total_pages`, built from the ORM's `Page` by

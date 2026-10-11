@@ -1575,11 +1575,20 @@
       "text": "Every `Db` entry point that talks to the database runs inside an\n`orm.query` span at `debug` level:\n\n| Field | Value |\n|---|---|\n| `db.system` | backend name (`sqlite`, `postgresql`, `mysql`, `mongodb`) |\n| `db.operation` | `select`, `insert`, `update`, `delete`, `raw`, or `script` |\n| `db.table` | the table the plan targets; empty for raw SQL and scripts |\n| `elapsed_ms` | duration in milliseconds, recorded when the call finishes |\n\nEnable it with `RUST_LOG=siderite_orm=debug`.\n\nSQL text is logged only by the raw entry points and script execution, and\nonly at `trace` level (`RUST_LOG=siderite_orm=trace`). Because raw SQL is\nwritten by the developer, keep secrets out of it and pass values as bind\nparameters. Parameters are never recorded, at any level."
     },
     {
+      "id": "guides/production/observability#liveness",
+      "kind": "guide",
+      "title": "Observability > Liveness",
+      "path": "website/src/content/docs/guides/production/observability.md",
+      "line": 60,
+      "features": [],
+      "text": "```rust\nuse siderite::health::liveness;\n\nlet app = App::new().routes([liveness(\"/livez\")]);\n```\n\nLiveness is opt-in: `App::routes([siderite::health::liveness(\"/livez\")])`\nregisters `GET /livez` answering `200` with `{\"status\":\"alive\"}` and\n`Cache-Control: no-store` in every phase, reading no database, readiness,\nversion or host details (documented under the `health` tag, operation ID\n`liveness`; `liveness_router()` mounts it with `App::route`). Nothing is\nregistered unless asked, and a path the app already uses is rejected when\nthe app is built. The server binds only after startup and stops accepting\nconnections when shutdown starts, so probes get no connection before\nstartup completes or once draining begins; size the probe's failure\nthreshold to cover the shutdown timeout."
+    },
+    {
       "id": "guides/production/observability#see-also",
       "kind": "guide",
       "title": "Observability > See also",
       "path": "website/src/content/docs/guides/production/observability.md",
-      "line": 60,
+      "line": 79,
       "features": [],
       "text": "- [Configuration](/siderite/guides/production/config/)\n- [Middleware and lifespan](/siderite/guides/http/middleware/)\n- [Errors](/siderite/guides/http/errors/)"
     },

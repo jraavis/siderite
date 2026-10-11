@@ -16,6 +16,7 @@ pub mod extract;
 pub mod form;
 pub mod handler;
 pub mod header;
+pub mod health;
 pub mod lifespan;
 pub mod middleware;
 pub mod pagination;
