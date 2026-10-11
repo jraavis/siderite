@@ -8,6 +8,14 @@
 
 
 ### Changed
+- **Cache:** route-cache generation markers are now finite. They are
+  created with `set_if_absent_with_ttl` and the new
+  `RouteCache::generation_ttl` (default one hour,
+  `DEFAULT_GENERATION_TTL`); representation TTLs are clamped to
+  `min(response ttl, generation_ttl)`; invalidation deletes the marker
+  instead of writing a non-expiring one. Custom `Cache` adapters that
+  return `CacheError::Unsupported` for `set_if_absent_with_ttl` now bypass
+  route caching (`x-cache: miss`) instead of getting non-expiring markers.
 - **Cache:** `Cache::set_if_absent_with_ttl` adds atomic expiring
   insertion (zero TTL rejected, sub-millisecond TTL rounded up) with an
   explicit `CacheError::Unsupported` default for external adapters;

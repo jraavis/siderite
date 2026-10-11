@@ -160,9 +160,12 @@ eviction safe for route caching. The invariants below are normative for
    already existing marker, with the same TTL policy, is equally valid;
    writing a non-expiring marker is not.
 
-Invariants 3 to 6 are the target state implemented by roadmap task R04.
-Today's `RouteCache` still writes non-expiring markers on creation and on
-invalidation (see Status below).
+Invariants 1 to 6 are enforced by `RouteCache` (roadmap R04).
+`RouteCache::generation_ttl(duration)` configures the marker lifetime
+(`DEFAULT_GENERATION_TTL`, one hour). Expiry of the marker while a fill is
+in flight is a safe miss: the fill lands under the old token's key, and the
+next request creates a marker with a new random token. The hit path is
+unchanged: one marker `get` and one representation `get`.
 
 `set_if_absent_with_ttl` semantics: a zero TTL is rejected with
 `CacheError::InvalidTtl`; TTLs round up to whole milliseconds (a 1 ns TTL
@@ -231,18 +234,19 @@ long-lived deployments so restarts do not orphan namespaces.
 
 `set_if_absent_with_ttl` is a provided method whose default returns
 `CacheError::Unsupported`, so existing adapters keep compiling unchanged.
-`RouteCache` treats that error like any backend limitation: it bypasses
-route storage and serves the origin. It never falls back to non-expiring
-markers or to non-atomic emulation. Adapters opt in by implementing the
-method atomically (for Redis: a single `SET key value NX PX ms`).
-`Arc<T>` forwards it.
+`RouteCache` treats that error as a backend limitation: the first
+`Unsupported` clears a shared capability flag, and from then on every
+request is served from the origin with `x-cache: miss`, without any further
+backend round trip (no marker `get`, no creation attempt, no invalidation
+delete). It never falls back to non-expiring markers or to non-atomic
+emulation. Adapters opt in by implementing the method atomically (for
+Redis: a single `SET key value NX PX ms`). `Arc<T>` forwards it.
 
-Status: the contract, the trait method, `MemoryCache` and `RedisCache`
-are in place. The generation lifetime policy and the admission budget
-are tracked as roadmap tasks R04 and R05; until they land, `RouteCache`
-still creates non-expiring markers via `set_if_absent`, and its
-invalidation writes a new non-expiring marker, so the metadata bound above
-is not yet enforced.
+Status: invariants 1 to 6 are enforced (R04). The admission budget in
+"Metadata resource bound" (`max_new_targets` and the increment primitive)
+is not yet implemented and is tracked as roadmap task R05; until it lands
+the number of live markers per namespace is bounded only by
+`generation_ttl`, not by a count.
 
 ### Failures and consistency
 
