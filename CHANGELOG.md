@@ -8,6 +8,13 @@
 
 
 ### Changed
+- **Migrations:** live-tested the migration lock on PostgreSQL and MySQL:
+  bounded wait, cancelled waiters and holders, server-side kill of the lock
+  holder, and roles without CREATE or bookkeeping-table write access. A run
+  that finishes but cannot confirm lock release (for example the session
+  was lost) now fails with the new `MigrationError::LockReleaseUncertain`,
+  listing the migrations that did run, instead of a bare driver error. The
+  change is on the error path only; successful runs are unchanged.
 - **Migrations:** documented and live-tested the crash boundaries between
   DDL execution and progress recording on PostgreSQL and MySQL (kill before
   a script, after DDL, after progress, after intent clear); no runtime change.
