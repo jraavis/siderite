@@ -26,6 +26,7 @@ pub mod routing;
 pub mod security;
 mod server;
 pub mod service;
+pub mod sse;
 pub mod state;
 pub mod static_files;
 pub mod ws;
@@ -64,6 +65,7 @@ pub use security::{
 };
 pub use server::{Readiness, ServerLimits, ServerPhase};
 pub use service::RouterService;
+pub use sse::Sse;
 pub use state::State;
 pub use ws::{CloseFrame, Message, WebSocket, WebSocketResponse, WebSocketUpgrade, WsError};
 

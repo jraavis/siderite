@@ -157,6 +157,22 @@ Types used in bodies, queries and responses derive `Schema` (see below);
 nested types are always obtained through `registry.subschema::<T>()`, so named
 types become `components.schemas` entries referenced by `$ref`.
 
+## Server-sent events
+
+`Sse::new(stream)` answers with a `text/event-stream` body from a stream of `Result<Event, E>`; `siderite::sse::Event` encodes one event:
+
+```rust
+use siderite::sse::{Event, Sse};
+
+let event = Event::data("line one\nline two").event("update")?.id("7")?;
+let keepalive = Event::comment("still here");
+```
+
+- `Event::data(text)` takes any text: each line (`\n`, `\r\n` or `\r` ends one) becomes its own `data:` line, so the client gets the text back with `\n` line ends. `Event::json(&value)` sends JSON. `.retry(duration)` sets the reconnection delay in whole milliseconds, and `Event::comment(text)` sends a comment line that clients ignore.
+- `.event(name)` and `.id(id)` reject a CR or LF (and a NUL in an id, which clients ignore) with `SseError`, so a value can never split or forge an event.
+- Responses carry `Cache-Control: no-store`, so caches never store or replay a stream, and the OpenAPI response is documented as `text/event-stream`.
+- An `Err` from the stream ends the body abruptly and is never sent to the client, which sees the connection close and may reconnect (sending `Last-Event-ID`). Send an event first if the client should know why.
+
 ## Pagination
 
 `Query<PageParams>` (`use siderite::{Page, PageParams};`; they are not in the prelude, so an application's own `Page` type does not clash) reads `?page=N&per_page=M`: a 1-based page (default 1) and a page size from 1 to 100 (default 20). Choose other bounds with `PageParams<MAX, DEFAULT>`, for example `Query<PageParams<500, 50>>`; `1 <= DEFAULT <= MAX` is checked at compile time. Zero, negative, non-numeric or too large values are answered with 422 before the handler runs, other query keys are left to other extractors, and the OpenAPI parameters state the minimum, maximum and defaults.

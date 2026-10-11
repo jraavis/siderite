@@ -28,6 +28,7 @@ uuid.workspace = true
 rust_decimal.workspace = true
 
 [dev-dependencies]
+futures-util.workspace = true
 siderite-backends.workspace = true
 siderite-testkit.workspace = true
 jsonschema.workspace = true

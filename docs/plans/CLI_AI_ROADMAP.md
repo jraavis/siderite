@@ -384,7 +384,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   storms; probes reuse existing pools; failures return 503 with redacted
   public output. SQL/Redis checks are optional adapters, not mandatory drivers.
 
-- [ ] **F05 — Add SSE event encoding and response type.**
+- [x] **F05 — Add SSE event encoding and response type.**
   Depends: none. Scope: existing streaming response/description hooks.
   Done: correct multiline data, event/id/retry encoding and input validation;
   text/event-stream is documented; stream errors and cache policy are explicit.

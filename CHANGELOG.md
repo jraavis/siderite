@@ -8,6 +8,11 @@
 
 
 ### Added
+- **HTTP:** server-sent events: `Sse::new(stream)` streams
+  `siderite::sse::Event`s as `text/event-stream` with
+  `Cache-Control: no-store`. Multiline data is split into `data:` lines,
+  event names and ids that would break framing are rejected, and a
+  stream error ends the body without sending its message.
 - **HTTP:** opt-in readiness with checks:
   `readiness("/readyz", ReadinessChecks::new().check(..))` answers 200
   only while the server is Ready and every check passes. Checks are
