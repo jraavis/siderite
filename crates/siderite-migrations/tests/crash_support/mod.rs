@@ -6,12 +6,12 @@
 //! boundary between executing DDL and recording progress.
 
 use async_trait::async_trait;
-use siderite_orm::{
-    Backend, BackendCapabilities, ExecResult, Executor, IsolationLevel, OrmError, QueryPlan,
-    QueryResult, Transaction, Value, WritePlan,
-};
+use siderite_orm::{Backend, BackendCapabilities, BackendKind, Db};
+use siderite_orm::{ExecResult, Executor, IsolationLevel, OrmError};
+use siderite_orm::{QueryPlan, QueryResult, Transaction, Value, WritePlan};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 /// Where the wrapped process dies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,5 +228,92 @@ impl Transaction for CrashTx {
 
     async fn rollback(&self) -> Result<(), OrmError> {
         self.inner.rollback().await
+    }
+}
+
+type Failure = Box<dyn std::error::Error + Send + Sync>;
+
+/// Kills and reaps the child if the parent gives up early.
+struct OwnedChild(std::process::Child);
+
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Run the ignored test `child` of the current test binary until it dies
+/// at its hook, and prove the hook fired.
+///
+/// `flag_var` names the environment variable through which the child
+/// learns the flag path its hook writes; `envs` configures the rest. The
+/// child's stderr goes to a file whose tail is part of the error, so a
+/// child that dies elsewhere (a panic, a connect error) explains itself.
+/// The hook calls `abort()`, which raises SIGABRT, so the child may leave
+/// a core file behind depending on the host's core pattern.
+pub async fn run_child(
+    child: &str,
+    flag_var: &str,
+    envs: &[(&str, String)],
+) -> Result<(), Failure> {
+    let stem = format!("siderite-crash-{}", uuid::Uuid::new_v4().simple());
+    let flag = std::env::temp_dir().join(&stem);
+    let log = std::env::temp_dir().join(format!("{stem}.stderr"));
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command
+        .args(["--ignored", "--exact", child])
+        .env(flag_var, &flag)
+        .envs(envs.iter().map(|(k, v)| (*k, v.as_str())))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::fs::File::create(&log)?);
+    let mut owned = OwnedChild(command.spawn()?);
+    let waited = tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            if let Some(status) = owned.0.try_wait()? {
+                return Ok::<_, std::io::Error>(status);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    let fired = flag.exists();
+    let stderr = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_file(&flag);
+    let _ = std::fs::remove_file(&log);
+    let status = match waited {
+        Ok(status) => status?,
+        Err(_) => return Err(child_error("timed out after 60s", &stderr)),
+    };
+    if fired && !status.success() {
+        return Ok(());
+    }
+    Err(child_error(&status.to_string(), &stderr))
+}
+
+fn child_error(status: &str, stderr: &str) -> Failure {
+    let lines: Vec<&str> = stderr.lines().collect();
+    let tail = lines[lines.len().saturating_sub(40)..].join("\n");
+    format!("child did not die at its hook ({status}):\n{tail}").into()
+}
+
+/// Whether `table` exists, read from the catalog of the current database
+/// or schema (not inferred from a failing `SELECT`).
+pub async fn table_exists(db: &Db, table: &str) -> Result<bool, Failure> {
+    let sql = match db.capabilities().kind {
+        BackendKind::Postgres => {
+            "SELECT COUNT(*) AS n FROM pg_catalog.pg_tables \
+             WHERE schemaname = current_schema() AND tablename = $1"
+        }
+        BackendKind::MySql => {
+            "SELECT COUNT(*) AS n FROM information_schema.tables \
+             WHERE table_schema = DATABASE() AND table_name = ?"
+        }
+        other => return Err(format!("no catalog query for {other:?}").into()),
+    };
+    let rows = db.raw_sql(sql, vec![Value::from(table)]).await?.rows;
+    match rows.first().and_then(|row| row.get("n")) {
+        Some(Value::Int(n)) => Ok(*n > 0),
+        other => Err(format!("unexpected catalog count {other:?}").into()),
     }
 }

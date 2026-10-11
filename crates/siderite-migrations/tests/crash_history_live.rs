@@ -13,17 +13,15 @@ mod common;
 mod crash_support;
 
 use common::scratch::ScratchDb;
-use crash_support::{CrashBackend, Hook};
+use crash_support::{CrashBackend, Hook, run_child, table_exists};
 use siderite_backends::{mysql::MySqlBackend, postgres::PgBackend};
 use siderite_migrations::state::{FieldState, ModelState, SqlType};
 use siderite_migrations::{Migration, MigrationError, MigrationGraph};
 use siderite_migrations::{Migrator, Operation, RecoveryReport};
 use siderite_orm::{BackendKind, Db};
 use std::future::Future;
-use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 type Failure = Box<dyn std::error::Error + Send + Sync>;
 type Result = std::result::Result<(), Failure>;
@@ -34,15 +32,6 @@ type Outcome = std::result::Result<(), MigrationError>;
 
 const ID: &str = "0001_history_boundary";
 const TABLES: [&str; 2] = ["hist_a", "hist_b"];
-
-struct OwnedChild(Child);
-
-impl Drop for OwnedChild {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 fn model(table: &str) -> Operation {
     let id = FieldState {
@@ -100,35 +89,13 @@ async fn history_recovery_child() -> Result {
 
 /// Run the child until it aborts at `spec`, and prove the hook fired.
 async fn kill(s: &ScratchDb, atomic: bool, spec: String, op: &str) -> Result {
-    let name = format!("siderite-history-{}", Uuid::new_v4().simple());
-    let flag = std::env::temp_dir().join(name);
-    let mut child = OwnedChild(
-        Command::new(std::env::current_exe()?)
-            .args(["--ignored", "--exact", "history_recovery_child"])
-            .env("SIDERITE_HISTORY_URL", s.connection_url())
-            .env("SIDERITE_HISTORY_FLAG", &flag)
-            .env("SIDERITE_HISTORY_SPEC", spec)
-            .env("SIDERITE_HISTORY_MODE", op)
-            .env("SIDERITE_HISTORY_ATOMIC", atomic.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?,
-    );
-    let status = tokio::time::timeout(Duration::from_secs(60), async {
-        loop {
-            if let Some(status) = child.0.try_wait()? {
-                return Ok::<_, std::io::Error>(status);
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await??;
-    let fired = flag.exists();
-    let _ = std::fs::remove_file(&flag);
-    if status.success() || !fired {
-        return Err(format!("child did not die at its hook: {status}").into());
-    }
-    Ok(())
+    let envs = [
+        ("SIDERITE_HISTORY_URL", s.connection_url().to_owned()),
+        ("SIDERITE_HISTORY_SPEC", spec),
+        ("SIDERITE_HISTORY_MODE", op.to_owned()),
+        ("SIDERITE_HISTORY_ATOMIC", atomic.to_string()),
+    ];
+    run_child("history_recovery_child", "SIDERITE_HISTORY_FLAG", &envs).await
 }
 
 /// Run `case` on its own task so a failed assertion (a panic) still lets the
@@ -152,15 +119,9 @@ where
     }
 }
 
-async fn exists(db: &Db, table: &str) -> bool {
-    db.raw_sql(&format!("SELECT * FROM {table}"), vec![])
-        .await
-        .is_ok()
-}
-
 async fn assert_tables(db: &Db, want: [bool; 2]) -> Result {
     for (table, want) in TABLES.iter().zip(want) {
-        if exists(db, table).await != want {
+        if table_exists(db, table).await? != want {
             return Err(format!("{table}: expected exists={want}").into());
         }
     }
@@ -209,6 +170,8 @@ fn stale_entry(
         (entry.completed_operations, entry.completed_statements),
         (TABLES.len(), 0)
     );
+    assert_eq!(entry.total_operations, Some(TABLES.len()));
+    assert!(entry.all_operations_recorded());
     assert_eq!(entry.file_matches, Some(true));
     assert_eq!(entry.history_applied, history_applied);
     assert!(report.uncertain_steps.is_empty());
@@ -297,6 +260,9 @@ async fn stale_apply_then_cycle(scratch: Scratch, atomic: bool) -> Result {
     let db = &scratch.db;
     let spec = Hook::spec("after-history-insert", "-", 0);
     kill(&scratch, atomic, spec, "migrate").await?;
+    let stale = report(db, atomic).await?;
+    assert_applied(&stale, true);
+    stale_entry(&stale, "apply", true)?;
     backward(db, atomic).await?;
     assert_clean(db, atomic, false).await?;
     forward(db, atomic, false).await?;
@@ -397,4 +363,10 @@ live! {
     my mysql_rollback_before_delete => |s| rollback_case(s, true, false);
     my mysql_rollback_after_delete => |s| rollback_case(s, true, true);
     my mysql_stale_apply_cycle => |s| stale_apply_then_cycle(s, true);
+    // `atomic` cannot make MySQL DDL transactional; prove the flag
+    // changes nothing at the history boundaries.
+    my mysql_nonatomic_apply_before_insert =>
+        |s| apply_case(s, false, false);
+    my mysql_nonatomic_rollback_after_delete =>
+        |s| rollback_case(s, false, true);
 }

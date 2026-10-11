@@ -22,6 +22,12 @@
   again when serialized or rendered.
 
 ### Changed
+- **Migrations:** `RecoveryEntry` gains `total_operations` (the migration's
+  operation count in the supplied graph) and `all_operations_recorded()`,
+  so `inspectmigrations` shows when only the history write is outstanding.
+  The history-write recovery procedure now requires that check and an
+  empty `uncertain_steps` before a re-run, and says that a hand-edited
+  history must also drop the migration's progress row.
 - **CLI:** explicit project selection. `siderite` discovers the app with
   `cargo metadata --no-deps` and accepts `--manifest-path`, `--package` /
   `-p` and `--bin` before the command (arguments after the command are
