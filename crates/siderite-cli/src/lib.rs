@@ -22,6 +22,7 @@ pub mod commands;
 mod completions;
 pub mod connect;
 pub mod dbshell;
+mod deps;
 mod dev;
 mod dispatch;
 mod docs;

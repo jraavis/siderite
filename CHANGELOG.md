@@ -8,6 +8,9 @@
 
 
 ### Added
+- **CLI:** `siderite add` / `siderite remove` run `cargo add` /
+  `cargo remove` for the selected app package, so Cargo owns manifest
+  edits (workspace inheritance and sources are kept).
 - **CLI:** `siderite ai validate [--json] [--live]` reports the
   `verify` run as bounded findings with locations, `explain` fixes,
   documentation links and reproduce commands; it applies no fixes and

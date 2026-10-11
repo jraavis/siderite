@@ -232,6 +232,28 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
+            "add",
+            Group::App,
+            "add CRATE... [--dry-run]",
+            "cargo add for the app package",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Package,
+        mutates: &[Mutation::ProjectFiles],
+        ..cmd(
+            "remove",
+            Group::App,
+            "remove CRATE... [--dry-run]",
+            "cargo remove for the app package",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
         needs: Needs::Nothing,
         mutates: &[Mutation::Toolchain],
         formats: TEXT_JSON,
