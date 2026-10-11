@@ -1,7 +1,8 @@
 # Framework reliability, CLI and AI tooling roadmap
 
 Reviewed: 2026-10-05. Source baseline: `0f30c32` plus the local gap plan.
-Status: planning only; all implementation tasks below remain open.
+Status: in progress; checked tasks are implemented on the
+`roadmap-implementation` branch, the rest remain open.
 
 The [developer experience expansion](DEVELOPER_EXPERIENCE.md) adds the
 complete Siderite-only daily workflow, 20 additional tasks and AI-focused
@@ -132,120 +133,120 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
 
 ### A. Reliability and maintainability
 
-- [ ] **R01 — Specify generation expiry and admission invariants.**
+- [x] **R01 — Specify generation expiry and admission invariants.**
   Depends: none. Scope: cache contract and focused regression fixtures.
   Done: expiry/eviction always yields a fresh random token; delayed fills
   cannot revive old data; a concrete cross-process metadata resource bound
   and cache-bypass behavior are specified for unique and uncacheable targets.
   Include retired namespaces and compatibility for external Cache adapters.
 
-- [ ] **R02 — Add atomic expiring insertion to Cache.**
+- [x] **R02 — Add atomic expiring insertion to Cache.**
   Depends: R01. Scope: trait, Arc forwarding and MemoryCache.
   Done: unsupported adapters fail explicitly; existing implementations remain
   source-compatible where feasible; expiry and insertion are atomic; tests
   cover concurrent creators, zero/subunit TTL and expiry rounding.
 
-- [ ] **R03 — Implement Redis atomic expiring insertion.**
+- [x] **R03 — Implement Redis atomic expiring insertion.**
   Depends: R02. Scope: Redis adapter only.
   Done: initialization uses one atomic operation; live tests prove TTL,
   concurrent creation and cancellation behavior. No GET-then-SET emulation.
 
-- [ ] **R04 — Apply generation lifetime policy.**
+- [x] **R04 — Apply generation lifetime policy.**
   Depends: R03. Scope: generation initialization/invalidation and policy.
   Done: finite lifetimes for both paths; expiry during fills and concurrent
   writes causes safe misses; existing eviction/ABA regression tests pass.
 
-- [ ] **R05 — Enforce and measure metadata bounds.**
+- [x] **R05 — Enforce and measure metadata bounds.**
   Depends: R04. Scope: R01 admission design and load regression.
   Done: sustained distinct targets, uncacheable responses and namespace churn
   stay within the documented bound; record latency and memory evidence.
   Do not change a shared Redis server's eviction configuration automatically.
   G19 stays open until R01-R05 pass with MemoryCache and live Redis.
 
-- [ ] **R06 — Test DDL-to-progress crash recovery.**
+- [x] **R06 — Test DDL-to-progress crash recovery.**
   Depends: none. Scope: existing migration crash harness.
   Done: owned PostgreSQL/MySQL processes die at deterministic boundaries;
   inspection and retry show documented outcomes without unsafe silent replay.
   Preserve existing intent and checksum safeguards.
 
-- [ ] **R07 — Test history-write crash boundaries.**
+- [x] **R07 — Test history-write crash boundaries.**
   Depends: R06. Scope: before/after history recording.
   Done: recovery distinguishes recorded success, rollback and uncertainty;
   operator procedures match observed schema/history, including atomic PG.
 
-- [ ] **R08 — Test migration disconnect and limited privileges.**
+- [x] **R08 — Test migration disconnect and limited privileges.**
   Depends: R06. Scope: lock acquisition/release and permission failures.
   Done: bounded waits, cancellation, diagnostics and release behavior are
   verified on real services; uncertain lock ownership is reported explicitly.
   Update G14 only for boundaries actually exercised.
 
-- [ ] **R09 — Refresh and enforce the size baseline.**
+- [x] **R09 — Refresh and enforce the size baseline.**
   Depends: none. Scope: file/line inventory and CI guard.
   Done: changed/new code cannot worsen violations; baseline records exact
   existing exceptions and deletion targets, without broad lint suppression.
 
-- [ ] **R10 — Split MongoDB compilation modules.**
+- [x] **R10 — Split MongoDB compilation modules.**
   Depends: R09. Scope: private compilation domains, unchanged public API.
   Done: each file satisfies limits; compiler and live Mongo regressions pass.
 
-- [ ] **R11 — Split migration roundtrip tests.**
+- [x] **R11 — Split migration roundtrip tests.**
   Depends: R09. Scope: test modules and shared fixtures.
   Done: discovery preserves every test and relevant backend cases still run.
 
-- [ ] **R12 — Split validation tests.**
+- [x] **R12 — Split validation tests.**
   Depends: R09. Scope: validation domains and reusable fixtures.
   Done: runtime and compile-fail coverage remains intact within size limits.
 
-- [ ] **R13 — Split MongoDB integration tests.**
+- [x] **R13 — Split MongoDB integration tests.**
   Depends: R09. Scope: integration-test domains.
   Done: no duplicate fixtures or skipped live cases; all files meet limits.
   Recheck the complete inventory before declaring G18 closed.
 
 ### B. Shared CLI contracts and useful first commands
 
-- [ ] **C01 — Make project selection explicit.**
+- [x] **C01 — Make project selection explicit.**
   Depends: none. Scope: project discovery using Cargo metadata.
   Done: nested packages, virtual workspaces, multiple binaries, paths with
   spaces and missing tools have deterministic selection/errors. Specify
   package, manifest and binary flags without breaking app-argument forwarding.
 
-- [ ] **C02 — Add typed reports and output contracts.**
+- [x] **C02 — Add typed reports and output contracts.**
   Depends: none. Scope: shared diagnostics/route/model DTOs and JSON schema.
   Done: stable ordering, envelope version, redaction and exit-code snapshots;
   no new database connections; existing text output remains compatible.
 
-- [ ] **C03 — Expose check/routes JSON end to end.**
+- [x] **C03 — Expose check/routes JSON end to end.**
   Depends: C01, C02. Scope: parser, APP_COMMANDS, dispatch and AppCli.
   Done: flags before/after commands work or fail clearly; stdout parses as
   one JSON value; errors retain exit semantics; hidden routes remain omitted.
 
-- [ ] **C04 — Export OpenAPI JSON from the app binary.**
+- [x] **C04 — Export OpenAPI JSON from the app binary.**
   Depends: C01, C02. Scope: `openapi export [--output PATH]`.
   Done: call the existing factory/openapi path without build_app connections,
   server startup or migrations; test mounted routes, conflicts and disabled
   HTTP docs. Validate against the existing OpenAPI schema fixtures. File
   writes are atomic, and existing output is not silently overwritten.
 
-- [ ] **C05 — Expose migration status as structured data.**
+- [x] **C05 — Expose migration status as structured data.**
   Depends: C02, C03. Scope: migration report API and both CLI entry points.
   Done: selected alias and applied/pending status agree with existing text;
   live access is explicit, bounded and redacted; failures are not empty
   success.
   Do not derive status by scraping printed migration lines.
 
-- [ ] **C06 — Add offline doctor diagnostics.**
+- [x] **C06 — Add offline doctor diagnostics.**
   Depends: C01, C02. Scope: toolchain, configuration and feature checks.
   Done: compare actual toolchain with manifest MSRV; malformed config and
   missing tools produce actionable text/JSON. DB clients are advisory unless
   requested by dbshell. Port checks are advisory and acknowledge races.
 
-- [ ] **C07 — Add opt-in doctor live probes.**
+- [x] **C07 — Add opt-in doctor live probes.**
   Depends: C05, C06. Scope: timeout-limited alias checks and migration status.
   Done: no schema mutation, bounded concurrency, alias-specific results and
   redacted errors; absence of services fails only the explicitly requested
   checks. Document connection-time driver side effects where applicable.
 
-- [ ] **C08 — Add fmt/lint/clean passthroughs.**
+- [x] **C08 — Add fmt/lint/clean passthroughs.**
   Depends: C01. Scope: existing Cargo command runner.
   Done: preserve argument boundaries and child exit status; lint delegates
   to Clippy and is never confused with framework `check`; missing components
