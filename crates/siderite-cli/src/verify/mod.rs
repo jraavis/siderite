@@ -7,7 +7,14 @@
 //! framework checks of the app). A failed build skips the steps that need
 //! it. Offline is the default profile; `--live` also runs the ignored
 //! (live-service) tests. No migration is ever applied.
+//!
+//! Lint, build and test run with cargo's JSON message format, so their
+//! compiler diagnostics keep codes, spans and rendered explanations
+//! (versioned by `diagnostic_format`). Per-test results need unstable
+//! libtest options, so test outcomes are reported per step only
+//! (`test_results: "aggregate"`), not parsed from terminal output.
 
+use crate::cargo_msg::{CompilerDiagnostic, DIAGNOSTIC_FORMAT};
 use crate::error::CliError;
 use crate::project::{self, ReportFile, passthrough};
 use crate::report::channel::REPORT_PATH_ENV;
@@ -19,7 +26,13 @@ use std::path::Path;
 use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
+mod capture;
+
+use capture::{Captured, capture};
+
 type Code = Result<u8, CliError>;
+
+const JSON_FORMAT: &str = "--message-format=json";
 
 /// How many trailing output lines a failed step keeps.
 const TAIL: usize = 30;
@@ -49,8 +62,14 @@ pub(crate) struct Step {
     pub duration_ms: u64,
     /// The child's exit code, when it ran.
     pub exit_code: Option<i32>,
-    /// The last lines of a failed step's output (redacted).
+    /// The last lines of a failed step's output that are not compiler
+    /// diagnostics (redacted).
     pub output: Option<String>,
+    /// Distinct compiler diagnostics (rustc and Clippy), errors first,
+    /// at most [`capture::MAX_DIAGNOSTICS`], redacted.
+    pub diagnostics: Vec<CompilerDiagnostic>,
+    /// Diagnostics left out by that bound.
+    pub omitted_diagnostics: usize,
 }
 
 /// The `data` of a `verify` envelope.
@@ -58,6 +77,11 @@ pub(crate) struct Step {
 pub(crate) struct VerifyData {
     /// `offline` or `live`.
     pub profile: &'static str,
+    /// Version of the compiler diagnostic shape.
+    pub diagnostic_format: u32,
+    /// `aggregate`: stable Rust has no structured per-test output, so a
+    /// test step reports the outcome of `cargo test` as a whole.
+    pub test_results: &'static str,
     /// Every step, in order.
     pub steps: Vec<Step>,
 }
@@ -94,12 +118,24 @@ pub(crate) fn parse(raw: &[String]) -> Result<Options, CliError> {
     Ok(options)
 }
 
-/// A step to run: its name, Cargo arguments and whether it needs a
-/// successful build.
+/// A step to run: its name, Cargo arguments, whether it needs a
+/// successful build and whether cargo reports in JSON.
 struct Plan {
     name: &'static str,
     args: Vec<String>,
     needs_build: bool,
+    json: bool,
+}
+
+/// `plan.args` with cargo's JSON message format, which goes before any
+/// `--` (after it, the arguments belong to Clippy or the tests).
+fn cargo_args(plan: &Plan) -> Vec<String> {
+    let mut args = plan.args.clone();
+    if plan.json {
+        let at = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        args.insert(at, JSON_FORMAT.to_owned());
+    }
+    args
 }
 
 /// `list` as owned strings.
@@ -122,26 +158,31 @@ fn plans(live: bool, bin: Option<&str>) -> Vec<Plan> {
             name: "fmt",
             args: owned(&["fmt", "--check"]),
             needs_build: false,
+            json: false,
         },
         Plan {
             name: "lint",
             args: owned(&["clippy", "--all-targets", "--", "-D", "warnings"]),
             needs_build: false,
+            json: true,
         },
         Plan {
             name: "build",
             args: owned(&["build", "--all-targets"]),
             needs_build: false,
+            json: true,
         },
         Plan {
             name: "test",
             args: test,
             needs_build: true,
+            json: true,
         },
         Plan {
             name: "check",
             args: check,
             needs_build: true,
+            json: false,
         },
     ]
 }
@@ -175,7 +216,12 @@ pub(crate) fn verify(
         steps.push(step);
     }
     let profile = if options.live { "live" } else { "offline" };
-    let data = VerifyData { profile, steps };
+    let data = VerifyData {
+        profile,
+        diagnostic_format: DIAGNOSTIC_FORMAT,
+        test_results: "aggregate",
+        steps,
+    };
     Ok(Envelope::new("verify", data, diags))
 }
 
@@ -187,6 +233,8 @@ fn skipped(name: &'static str, command: String) -> Step {
         duration_ms: 0,
         exit_code: None,
         output: Some("skipped: the build failed".to_owned()),
+        diagnostics: Vec::new(),
+        omitted_diagnostics: 0,
     }
 }
 
@@ -205,36 +253,36 @@ fn run_step(dir: &Path, plan: &Plan, shown: String) -> Result<Step, CliError> {
         started: Instant::now(),
     };
     if let Some(err) = missing_component(plan.name) {
-        return Ok(finish(pending, None, &err.to_string()));
+        return Ok(finish(pending, None, text(err.to_string())));
     }
     let mut command = Command::new("cargo");
-    command.args(&plan.args).current_dir(dir);
+    command.args(cargo_args(plan)).current_dir(dir);
     let report = (plan.name == "check").then(ReportFile::new).transpose()?;
     if let Some(report) = &report {
         command.env(REPORT_PATH_ENV, report.path());
     }
-    let (code, mut text) = match command.output() {
+    let (code, mut captured) = match command.output() {
         Ok(Output {
             status,
             stdout,
             stderr,
         }) => {
-            let mut text = String::from_utf8_lossy(&stderr).into_owned();
-            text.push_str(&String::from_utf8_lossy(&stdout));
-            (status.code(), text)
+            let stdout = String::from_utf8_lossy(&stdout);
+            let stderr = String::from_utf8_lossy(&stderr);
+            (status.code(), capture(&stdout, &stderr, plan.json))
         }
         Err(err) => {
             let what = &pending.command;
-            (None, spawn_error(what, &err).to_string())
+            (None, text(spawn_error(what, &err).to_string()))
         }
     };
     // A failed framework check is explained by its report.
     if code != Some(0)
         && let Some(found) = report.as_ref().and_then(|r| r.read(true))
     {
-        text = found;
+        captured.text = found;
     }
-    Ok(finish(pending, code, &text))
+    Ok(finish(pending, code, captured))
 }
 
 /// The error for a `fmt` or `lint` step whose rustup component is
@@ -252,13 +300,21 @@ struct Pending {
     started: Instant,
 }
 
-fn finish(pending: Pending, code: Option<i32>, text: &str) -> Step {
+/// Plain text output, without compiler diagnostics.
+fn text(text: String) -> Captured {
+    Captured {
+        text,
+        ..Captured::default()
+    }
+}
+
+fn finish(pending: Pending, code: Option<i32>, out: Captured) -> Step {
     let status = if code == Some(0) {
         Status::Passed
     } else {
         Status::Failed
     };
-    let output = (status == Status::Failed).then(|| tail(text));
+    let output = (status == Status::Failed).then(|| tail(&out.text));
     let millis = pending.started.elapsed().as_millis();
     Step {
         name: pending.name,
@@ -267,6 +323,8 @@ fn finish(pending: Pending, code: Option<i32>, text: &str) -> Step {
         duration_ms: u64::try_from(millis).unwrap_or(u64::MAX),
         exit_code: code,
         output,
+        diagnostics: out.diagnostics,
+        omitted_diagnostics: out.omitted,
     }
 }
 
@@ -292,12 +350,8 @@ pub(crate) fn render(report: &Envelope<VerifyData>) -> String {
             "{status:<8} {:<6} {secs:>7.1}s  {}",
             step.name, step.command
         );
-        if step.status == Status::Failed
-            && let Some(output) = &step.output
-        {
-            for line in output.lines() {
-                let _ = writeln!(out, "    {line}");
-            }
+        if step.status == Status::Failed {
+            failure_text(&mut out, step);
         }
     }
     let failed = report.diagnostics.len();
@@ -306,6 +360,17 @@ pub(crate) fn render(report: &Envelope<VerifyData>) -> String {
     let counts = format!("{failed} of {total} steps failed");
     let _ = writeln!(out, "verify ({profile}): {counts}");
     out
+}
+
+/// A failed step's error diagnostics as rustc renders them, then the
+/// rest of its output, indented.
+fn failure_text(out: &mut String, step: &Step) {
+    let errors = step.diagnostics.iter().filter(|d| d.level == "error");
+    let rendered = errors.filter_map(|d| d.rendered.as_deref());
+    let output = step.output.as_deref().into_iter();
+    for line in rendered.chain(output).flat_map(str::lines) {
+        let _ = writeln!(out, "    {line}");
+    }
 }
 
 /// `siderite verify` for the app in `dir`.

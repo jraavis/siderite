@@ -3,8 +3,8 @@
 //! binary is taken from the artifact messages instead of being guessed.
 
 use super::process::{self, Group, KillOnDrop};
+use crate::cargo_msg::{self, Artifact, CargoMessage, CompilerDiagnostic};
 use crate::error::CliError;
-use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -88,31 +88,21 @@ pub(crate) enum Message {
 
 /// Classify one JSON line; non-JSON lines are ignored.
 pub(crate) fn message(line: &str) -> Message {
-    let Ok(value) = serde_json::from_str::<Value>(line) else {
-        return Message::Other;
-    };
-    match value.get("reason").and_then(Value::as_str) {
-        Some("compiler-message") => value
-            .pointer("/message/rendered")
-            .and_then(Value::as_str)
-            .map_or(Message::Other, |t| Message::Rendered(t.to_owned())),
-        Some("compiler-artifact") => executable(&value),
-        _ => Message::Other,
+    match cargo_msg::parse(line) {
+        CargoMessage::Compiler(diag) => rendered(diag),
+        CargoMessage::Artifact(artifact) => executable(artifact),
+        CargoMessage::Other | CargoMessage::Text => Message::Other,
     }
 }
 
-fn executable(value: &Value) -> Message {
-    let is_bin = value
-        .pointer("/target/kind")
-        .and_then(Value::as_array)
-        .is_some_and(|kinds| kinds.iter().any(|k| k == "bin"));
-    let exe = value.get("executable").and_then(Value::as_str);
-    let name = value.pointer("/target/name").and_then(Value::as_str);
-    match (is_bin, exe, name) {
-        (true, Some(exe), Some(name)) => {
-            let exe = PathBuf::from(exe);
-            Message::Executable(name.to_owned(), exe)
-        }
+fn rendered(diag: CompilerDiagnostic) -> Message {
+    diag.rendered.map_or(Message::Other, Message::Rendered)
+}
+
+fn executable(artifact: Artifact) -> Message {
+    let is_bin = artifact.target.kind.iter().any(|k| k == "bin");
+    match (is_bin, artifact.executable) {
+        (true, Some(exe)) => Message::Executable(artifact.target.name, exe),
         _ => Message::Other,
     }
 }
@@ -150,7 +140,7 @@ mod tests {
     #[test]
     fn classifies_cargo_messages() {
         let rendered = r#"{"reason":"compiler-message","message":
-            {"rendered":"error[E0425]: x\n"}}"#;
+            {"level":"error","message":"x","rendered":"error[E0425]: x\n"}}"#;
         let rendered = rendered.replace('\n', " ");
         assert_eq!(
             message(&rendered),

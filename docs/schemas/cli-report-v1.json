@@ -189,9 +189,16 @@
     },
     "VerifyData": {
       "type": "object",
-      "required": ["profile", "steps"],
+      "required": [
+        "profile",
+        "diagnostic_format",
+        "test_results",
+        "steps"
+      ],
       "properties": {
         "profile": { "enum": ["offline", "live"] },
+        "diagnostic_format": { "const": 1 },
+        "test_results": { "const": "aggregate" },
         "steps": {
           "type": "array",
           "items": {
@@ -202,7 +209,9 @@
               "status",
               "duration_ms",
               "exit_code",
-              "output"
+              "output",
+              "diagnostics",
+              "omitted_diagnostics"
             ],
             "properties": {
               "name": {
@@ -212,7 +221,47 @@
               "status": { "enum": ["passed", "failed", "skipped"] },
               "duration_ms": { "type": "integer", "minimum": 0 },
               "exit_code": { "type": ["integer", "null"] },
-              "output": { "type": ["string", "null"] }
+              "output": { "type": ["string", "null"] },
+              "diagnostics": {
+                "type": "array",
+                "maxItems": 50,
+                "items": { "$ref": "#/$defs/CompilerDiagnostic" }
+              },
+              "omitted_diagnostics": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "CompilerDiagnostic": {
+      "type": "object",
+      "required": ["level", "code", "message", "spans", "rendered"],
+      "properties": {
+        "level": { "type": "string" },
+        "code": { "type": ["string", "null"] },
+        "message": { "type": "string" },
+        "rendered": { "type": ["string", "null"] },
+        "spans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "file",
+              "line_start",
+              "line_end",
+              "column_start",
+              "column_end",
+              "primary",
+              "label"
+            ],
+            "properties": {
+              "file": { "type": "string" },
+              "line_start": { "type": "integer", "minimum": 1 },
+              "line_end": { "type": "integer", "minimum": 1 },
+              "column_start": { "type": "integer", "minimum": 1 },
+              "column_end": { "type": "integer", "minimum": 1 },
+              "primary": { "type": "boolean" },
+              "label": { "type": ["string", "null"] }
             }
           }
         }

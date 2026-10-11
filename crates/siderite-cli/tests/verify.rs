@@ -7,7 +7,7 @@
 mod common;
 
 use common::{fixture, one_value, scratch, script, siderite, stderr};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::path::Path;
 
 /// A `cargo` that logs each call to `$LOG` and fails the subcommand named
@@ -18,9 +18,32 @@ if [ -n "$SIDERITE_REPORT_PATH" ]; then
 fi
 if [ "$1" = "$FAIL_SUB" ]; then
   echo "connecting to postgres://app:hunter2@db/app" >&2
+  printf '%s\n' "$DIAG"
   exit 3
 fi
 exit 0"#;
+
+/// A rustc error as cargo reports it in JSON.
+fn diag() -> String {
+    let span = json!({
+        "file_name": "src/main.rs",
+        "line_start": 3,
+        "line_end": 3,
+        "column_start": 5,
+        "column_end": 9,
+        "is_primary": true,
+        "label": null,
+    });
+    let message = json!({
+        "level": "error",
+        "code": {"code": "E0308", "explanation": null},
+        "message": "mismatched types",
+        "spans": [span],
+        "rendered": "error[E0308]: mismatched types\n",
+    });
+    let line = json!({"reason": "compiler-message", "message": message});
+    line.to_string()
+}
 
 /// The package, a `PATH` with the stand-ins first, and the call log.
 fn setup(root: &Path, components: bool) -> (std::path::PathBuf, String) {
@@ -38,7 +61,12 @@ fn run(root: &Path, args: &[&str], fail: &str) -> (Value, i32, Vec<String>) {
     let (app, path) = setup(root, true);
     let log = root.join("calls.txt");
     let log_path = log.display().to_string();
-    let fake = [("LOG", log_path.as_str()), ("FAIL_SUB", fail)];
+    let diag = diag();
+    let fake = [
+        ("LOG", log_path.as_str()),
+        ("FAIL_SUB", fail),
+        ("DIAG", diag.as_str()),
+    ];
     let out = siderite(&app, &path, args, &fake);
     let report = one_value(&out);
     let calls = std::fs::read_to_string(&log).unwrap_or_default();
@@ -67,9 +95,9 @@ fn every_step_passes_in_order() {
         calls,
         [
             "fmt --check",
-            "clippy --all-targets -- -D warnings",
-            "build --all-targets",
-            "test --all-targets",
+            "clippy --all-targets --message-format=json -- -D warnings",
+            "build --all-targets --message-format=json",
+            "test --all-targets --message-format=json",
             "run -- check --json",
         ]
     );
@@ -89,6 +117,13 @@ fn a_failed_build_skips_test_and_check() {
     let output = build["output"].as_str().unwrap();
     assert!(output.contains("postgres://"), "{output}");
     assert!(!output.contains("hunter2"), "{output}");
+    let found = &build["diagnostics"][0];
+    assert_eq!(found["code"], "E0308");
+    assert_eq!(found["spans"][0]["file"], "src/main.rs");
+    assert_eq!(found["spans"][0]["primary"], true);
+    assert!(!output.contains("compiler-message"), "{output}");
+    assert_eq!(report["data"]["diagnostic_format"], 1);
+    assert_eq!(report["data"]["test_results"], "aggregate");
     let diags = report["diagnostics"].as_array().unwrap();
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0]["code"], "verify.E001");
@@ -111,7 +146,9 @@ fn live_includes_ignored_tests() {
     let (report, code, calls) = run(&root.0, &args, "");
     assert_eq!(code, 0);
     assert_eq!(report["data"]["profile"], "live");
-    assert!(calls.contains(&"test --all-targets -- --include-ignored".into()));
+    let test = "test --all-targets --message-format=json -- \
+                --include-ignored";
+    assert!(calls.contains(&test.to_owned()), "{calls:?}");
 }
 
 #[test]
@@ -132,11 +169,20 @@ fn text_output_and_usage_errors() {
     let root = scratch("verify-text");
     let (app, path) = setup(&root.0, true);
     let log = root.0.join("calls.txt").display().to_string();
-    let fake = [("LOG", log.as_str()), ("FAIL_SUB", "test")];
+    let diag = diag();
+    let fake = [
+        ("LOG", log.as_str()),
+        ("FAIL_SUB", "test"),
+        ("DIAG", diag.as_str()),
+    ];
     let out = siderite(&app, &path, &["verify"], &fake);
     assert_eq!(out.status.code(), Some(1));
     let text = common::stdout(&out);
     assert!(text.contains("FAILED   test"), "{text}");
+    assert!(
+        text.contains("    error[E0308]: mismatched types"),
+        "{text}"
+    );
     assert!(text.contains("1 of 5 steps failed"), "{text}");
     let out = siderite(&app, &path, &["verify", "--bogus"], &fake);
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));

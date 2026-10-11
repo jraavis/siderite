@@ -16,6 +16,7 @@
 mod ai;
 mod app_cli;
 mod args;
+mod cargo_msg;
 pub mod check;
 pub mod commands;
 mod completions;
