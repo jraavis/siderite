@@ -34,8 +34,12 @@ use siderite_orm::{
 };
 use thiserror::Error;
 
-/// Largest `PX` / `PEXPIRE` argument Redis accepts (signed 64-bit milliseconds).
-const MAX_TTL_MS: u64 = i64::MAX as u64;
+/// Largest TTL accepted, in milliseconds (`i64::MAX / 2`).
+///
+/// Redis rejects a relative TTL whose absolute deadline (now plus the TTL)
+/// overflows a signed 64-bit millisecond count. Half of `i64::MAX` leaves
+/// room for any realistic clock value, so it is validated up front.
+const MAX_TTL_MS: u64 = (i64::MAX / 2) as u64;
 
 /// Failure from [`RedisStore`].
 ///
@@ -223,7 +227,7 @@ impl RedisStore {
     /// `SET`. `ttl` of `None` stores the key with no expiry and clears any previous one.
     ///
     /// # Errors
-    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above [`i64::MAX`] milliseconds,
+    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above `i64::MAX / 2` milliseconds,
     /// before any command is sent. Otherwise connection or command errors.
     pub async fn set(
         &self,
@@ -263,8 +267,8 @@ impl RedisStore {
     /// whole command or none of it. `ttl` is truncated to whole milliseconds.
     ///
     /// # Errors
-    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above [`i64::MAX`]
-    /// milliseconds, before any command is sent. Otherwise connection or
+    /// [`RedisError::Invalid`] when `ttl` is below 1ms or above
+    /// `i64::MAX / 2` milliseconds, before any command is sent. Otherwise connection or
     /// command errors.
     pub async fn set_nx_px(
         &self,
@@ -677,7 +681,9 @@ fn required_ttl(ttl: Duration) -> Result<u64, RedisError> {
 }
 
 fn ttl_rejected() -> RedisError {
-    RedisError::Invalid("redis TTL must be between 1 millisecond and i64::MAX milliseconds".into())
+    RedisError::Invalid(
+        "redis TTL must be between 1 millisecond and i64::MAX / 2 milliseconds".into(),
+    )
 }
 
 fn as_count(n: i64) -> Result<u64, RedisError> {

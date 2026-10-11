@@ -12,8 +12,9 @@
   insertion (zero TTL rejected, sub-millisecond TTL rounded up) with an
   explicit `CacheError::Unsupported` default for external adapters;
   implemented for `MemoryCache`, `Arc` and `RedisCache` (a single
-  `SET NX PX`; TTLs above `i64::MAX / 2` ms are rejected, not clamped). Generation expiry, metadata
-  bound and bypass contract documented in `docs/CACHE.md`.
+  `SET NX PX`; TTLs above `i64::MAX / 2` ms are rejected, not clamped).
+  Generation expiry, metadata bound and bypass contract documented in
+  `docs/CACHE.md`.
 - **SQLite:** writers of one `SqliteBackend` (statements, raw writes,
   scripts, transactions and transactional schema changes) queue in FIFO
   order for one write slot instead of racing for the file lock and sleeping

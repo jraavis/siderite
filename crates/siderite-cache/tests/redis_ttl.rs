@@ -42,7 +42,7 @@ where
 #[ignore = "requires explicit REDIS_URL and an isolated live namespace"]
 async fn creates_with_ttl_then_expires() {
     with_cache(|cache| async move {
-        let ttl = Duration::from_millis(400);
+        let ttl = Duration::from_secs(2);
         assert!(
             cache
                 .set_if_absent_with_ttl("m", vec![0, 255], ttl)
@@ -71,7 +71,7 @@ async fn creates_with_ttl_then_expires() {
         };
         assert!(after <= left);
 
-        tokio::time::sleep(Duration::from_millis(700)).await;
+        tokio::time::sleep(Duration::from_millis(2500)).await;
         assert_eq!(cache.get("m").await.unwrap(), None);
         assert!(matches!(
             cache.store().ttl("m").await.unwrap(),
@@ -99,6 +99,15 @@ async fn sub_millisecond_ttl_rounds_up_and_invalid_ttls_fail() {
                 .await
                 .unwrap()
         );
+        match cache.store().ttl("t").await.unwrap() {
+            Ttl::ExpiresIn(left) => assert!(
+                left <= Duration::from_millis(1),
+                "1ns TTL must round up to 1ms, got {left:?}"
+            ),
+            // The 1ms deadline may already have passed.
+            Ttl::Missing => {}
+            Ttl::Persistent => panic!("1ns write must carry a TTL"),
+        }
         for ttl in [
             Duration::ZERO,
             Duration::MAX,
@@ -170,18 +179,29 @@ async fn exactly_one_concurrent_creator_wins() {
 async fn cancellation_never_leaves_a_non_expiring_key() {
     with_cache(|cache| async move {
         const ATTEMPTS: u64 = 300;
+        // `timeout(ZERO)` polls the future once, then drops it: a
+        // deterministic cancellation after the command may be queued.
         let mut cancelled = 0;
         for i in 0..ATTEMPTS {
             let key = format!("cancel-{i}");
-            let budget = Duration::from_micros(i % 120);
             let attempt = tokio::time::timeout(
-                budget,
+                Duration::ZERO,
                 cache.set_if_absent_with_ttl(&key, vec![1], Duration::from_secs(60)),
             )
             .await;
             cancelled += u64::from(attempt.is_err());
         }
-        // Abort mid-flight as well.
+        assert!(cancelled > 0, "no attempt was cancelled");
+        // Racy budgets cancel at varying points of the exchange.
+        for i in 0..ATTEMPTS {
+            let key = format!("cancel-race-{i}");
+            let budget = Duration::from_micros(i % 120);
+            let _ = tokio::time::timeout(
+                budget,
+                cache.set_if_absent_with_ttl(&key, vec![1], Duration::from_secs(60)),
+            )
+            .await;
+        }
         let mut handles = Vec::new();
         for i in 0..ATTEMPTS {
             let (cache, key) = (cache.clone(), format!("abort-{i}"));
@@ -201,19 +221,26 @@ async fn cancellation_never_leaves_a_non_expiring_key() {
         // Let any command already on the wire land before inspecting.
         tokio::time::sleep(Duration::from_millis(300)).await;
         let mut present = 0;
-        for prefix in ["cancel", "abort"] {
+        let mut cancelled_present = 0;
+        for prefix in ["cancel", "cancel-race", "abort"] {
             for i in 0..ATTEMPTS {
                 let key = format!("{prefix}-{i}");
                 match cache.store().ttl(&key).await.unwrap() {
                     Ttl::Missing => {}
                     Ttl::ExpiresIn(left) => {
                         present += 1;
+                        cancelled_present += u64::from(prefix == "cancel");
                         assert!(left <= Duration::from_secs(60));
                     }
                     Ttl::Persistent => panic!("`{key}` exists without a TTL"),
                 }
             }
         }
+        // The command still landed after the drop, and with its TTL.
+        assert!(
+            cancelled_present > 0,
+            "no cancelled write landed ({cancelled} cancelled)"
+        );
         eprintln!("cancelled={cancelled} keys_present={present}");
     })
     .await;
