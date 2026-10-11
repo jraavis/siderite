@@ -220,6 +220,15 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--max-bytes` bounds the snapshot; anything cut is marked incomplete in both formats, with a `snapshot.W001` note.
 - Through `siderite`, the context is the only stdout output; cargo and anything the app factory prints go to stderr. When the app writes nothing (a build failure), stdout stays empty and the exit code is `1` (`--format json` output must be valid JSON).
 
+## `ai init`
+
+`siderite ai init [--check] [--dry-run] [--force]` writes `.siderite/context.md`, the one context file `siderite` owns in a project, for AI assistants and editors to read. The file has a generated block between `<!-- siderite:context begin ... -->` and `<!-- siderite:context end -->`: the commands to use, framework conventions, this project's databases, models and documented routes (from the snapshot, without timestamps), and examples for this framework version. The examples live in `crates/siderite-cli/src/ai/examples/` and are compiled and exercised in the test suite, so they match the release they ship with. Nothing is fetched from the network and no source files are copied.
+
+- Everything outside the markers belongs to you and is kept byte for byte; a new file starts with a "Project notes" section for that.
+- The begin marker records `format`, the `siderite` version and a hash of the block. A rerun reports the file as up to date, stale (another framework version, or the project changed; the diff is shown and the block replaced) or edited by hand (the block differs from its hash: nothing is written and the diff is shown; `--force` replaces the block and still keeps your text outside it). A file without markers is never touched.
+- `--check` writes nothing and exits `1` when the file is missing or stale (for CI); `--dry-run` shows the exact change. The file is written through the shared write plan (no symbolic-link escapes, atomic).
+- It runs in the app binary, so through `siderite` the file lands in the package directory.
+
 ## Application snapshot
 
 `siderite_cli::report::snapshot::snapshot(app, models, settings, limits)` builds a bounded, versioned description of an application for tools and AI context (`ai dump-context` renders it). It reads compiled metadata only and opens no connection. The `snapshot` envelope's `data`:

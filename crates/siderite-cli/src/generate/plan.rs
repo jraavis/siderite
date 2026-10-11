@@ -2,7 +2,8 @@
 //!
 //! A [`Plan`] collects files relative to a root. [`Plan::check`] decides,
 //! without writing anything, what each would do: create a new file, leave
-//! an identical one alone, or conflict with user content. Paths that are
+//! an identical one alone, replace a file the generator owns, or conflict
+//! with user content. Paths that are
 //! absolute, climb with `..`, pass through a symbolic link or collide
 //! inside the plan are rejected.
 //! [`Plan::apply`] writes each file atomically and refuses conflicts.
@@ -20,6 +21,11 @@ pub(crate) enum Action {
     Create,
     /// The file already has these contents.
     Unchanged,
+    /// A generator-owned file will be replaced.
+    Replace {
+        /// Unified diff from the existing file to the planned one.
+        diff: String,
+    },
     /// User content would be overwritten; nothing is written.
     Conflict {
         /// Unified diff from the existing file to the planned one.
@@ -43,7 +49,7 @@ type Done = Result<(), CliError>;
 #[derive(Debug, Clone)]
 pub(crate) struct Plan {
     root: PathBuf,
-    files: BTreeMap<PathBuf, String>,
+    files: BTreeMap<PathBuf, (String, bool)>,
 }
 
 impl Plan {
@@ -61,6 +67,20 @@ impl Plan {
     ///   A usage error for an absolute path, `..`, an empty path, or a
     ///   path planned twice or both as a file and as a directory.
     pub(crate) fn add(&mut self, rel: &str, text: impl Into<String>) -> Done {
+        self.insert(rel, text.into(), false)
+    }
+
+    /// Plan a file the generator owns: different existing contents are
+    /// replaced instead of being a conflict. The caller is responsible
+    /// for preserving user content inside it.
+    ///
+    /// Errors:
+    ///   As [`Self::add`].
+    pub(crate) fn add_owned(&mut self, rel: &str, text: String) -> Done {
+        self.insert(rel, text, true)
+    }
+
+    fn insert(&mut self, rel: &str, text: String, owned: bool) -> Done {
         let path = relative(rel)?;
         let clash = self
             .files
@@ -70,7 +90,7 @@ impl Plan {
             let msg = format!("`{rel}` collides with `{}`", show(other));
             return Err(CliError::usage(msg));
         }
-        self.files.insert(path, text.into());
+        self.files.insert(path, (text, owned));
         Ok(())
     }
 
@@ -82,7 +102,7 @@ impl Plan {
     ///   an IO error reading an existing file.
     pub(crate) fn check(&self) -> Result<Vec<Change>, CliError> {
         let mut changes = Vec::with_capacity(self.files.len());
-        for (rel, contents) in &self.files {
+        for (rel, (contents, owned)) in &self.files {
             let target = self.root.join(rel);
             no_links(&self.root, rel)?;
             let path = show(rel);
@@ -93,10 +113,10 @@ impl Plan {
                 let old = std::fs::read_to_string(&target)
                     .map_err(|err| io_error("read", &target, &err))?;
                 let diff = unified(&path, &old, contents);
-                if diff.is_empty() {
-                    Action::Unchanged
-                } else {
-                    Action::Conflict { diff }
+                match (diff.is_empty(), owned) {
+                    (true, _) => Action::Unchanged,
+                    (false, true) => Action::Replace { diff },
+                    (false, false) => Action::Conflict { diff },
                 }
             } else {
                 Action::Create
@@ -132,14 +152,16 @@ impl Plan {
         }
         for change in &changes {
             let target = self.root.join(&change.path);
-            if change.action != Action::Create {
-                continue;
-            }
+            let replace = match change.action {
+                Action::Create => false,
+                Action::Replace { .. } => true,
+                Action::Unchanged | Action::Conflict { .. } => continue,
+            };
             if let Some(dir) = target.parent() {
                 let created = std::fs::create_dir_all(dir);
                 created.map_err(|err| io_error("create", dir, &err))?;
             }
-            write_atomic(&target, change.contents.as_bytes(), false)?;
+            write_atomic(&target, change.contents.as_bytes(), replace)?;
         }
         Ok(changes)
     }
@@ -158,6 +180,9 @@ pub(crate) fn preview(changes: &[Change]) -> String {
             }
             Action::Unchanged => {
                 out.push_str(&format!("unchanged {}\n", change.path));
+            }
+            Action::Replace { diff } => {
+                out.push_str(&format!("replace {}\n{diff}", change.path));
             }
             Action::Conflict { diff } => {
                 let path = &change.path;
@@ -198,6 +223,23 @@ fn no_links(root: &Path, rel: &Path) -> Result<(), CliError> {
         }
     }
     Ok(())
+}
+
+/// One line per applied change; replacements also show their diff.
+pub(crate) fn summary(changes: &[Change]) -> String {
+    let mut out = String::new();
+    for change in changes {
+        let path = &change.path;
+        match &change.action {
+            Action::Create => out.push_str(&format!("created {path}\n")),
+            Action::Unchanged => out.push_str(&format!("unchanged {path}\n")),
+            Action::Replace { diff } => {
+                out.push_str(&format!("updated {path}\n{diff}"));
+            }
+            Action::Conflict { .. } => out.push_str(&format!("kept {path}\n")),
+        }
+    }
+    out
 }
 
 /// A relative path with `/` separators on every platform.

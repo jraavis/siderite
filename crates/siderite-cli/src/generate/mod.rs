@@ -9,4 +9,4 @@ pub(crate) mod plan;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use plan::{Plan, preview};
+pub(crate) use plan::{Plan, preview, summary};

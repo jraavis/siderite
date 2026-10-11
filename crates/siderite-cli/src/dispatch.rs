@@ -128,7 +128,7 @@ fn run_app(
         let missing = Output::Envelope(command);
         return project::cargo_run_captured(dir, bin, raw, missing);
     }
-    if command == "ai" {
+    if command == "ai" && raw.iter().any(|a| a == "dump-context") {
         // The context is the output: keep factory prints off stdout.
         let output = if format_json(raw) {
             Output::Json
@@ -207,6 +207,7 @@ Create and run an app:
   check [--json]                Validate config, models, migrations and routes
   ai dump-context [--format F] [--live]
                                 Markdown or JSON context for AI tools
+  ai init [--check] [--dry-run]  Write or refresh .siderite/context.md
   openapi export [-o PATH] [--force]
                                 Write the OpenAPI document (stdout or PATH)
   dbshell                       Open the database's native client

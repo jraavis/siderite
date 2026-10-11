@@ -7,10 +7,13 @@
 //! context names the binary it came from and when that binary was built,
 //! so a tool can tell when it may be stale.
 
+pub(crate) mod init;
 mod markdown;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_init;
 
 use crate::error::CliError;
 use crate::report::snapshot::{Limits, Snapshot, snapshot};
@@ -54,7 +57,9 @@ const USAGE: &str = "usage: ai dump-context [--format markdown|json] \
 ///   A usage error for anything else.
 pub(crate) fn parse(rest: &[String], json: bool) -> Result<Options, CliError> {
     if rest.get(1).map(String::as_str) != Some("dump-context") {
-        return Err(CliError::usage(USAGE));
+        let init = "ai init [--check] [--dry-run] [--force]";
+        let msg = format!("{USAGE}\n       {init}");
+        return Err(CliError::usage(msg));
     }
     let mut options = Options {
         format: if json { Format::Json } else { Format::Markdown },

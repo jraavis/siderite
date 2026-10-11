@@ -202,7 +202,14 @@ siderite ai dump-context --json     # versioned JSON envelope
 siderite ai dump-context --live     # also read migration status
 ```
 
-Describes the app for AI assistants from its compiled metadata: framework
+`siderite ai init` writes `.siderite/context.md` for AI assistants:
+commands, conventions, this project's models and routes, and examples
+compiled against your siderite version. Rerun it after changes (`--check`
+tells CI when it is stale). Only the block between its markers is
+generated; your notes around it are kept, and a hand-edited block is
+left alone unless you pass `--force`.
+
+`ai dump-context` describes the app from its compiled metadata: framework
 version, database aliases and backend kinds (never URLs), models and
 their fields, documented routes, and migration status (`unknown` unless
 `--live`). Output is bounded (`--max-bytes`), says what was cut, and is

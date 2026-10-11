@@ -42,6 +42,21 @@ fn creates_then_reports_unchanged_and_conflicts() {
 }
 
 #[test]
+fn owned_files_are_replaced_with_a_diff() {
+    let scratch = ScratchDir::new("plan-owned");
+    let root = scratch.path();
+    std::fs::write(root.join("ctx.md"), "v1\n").unwrap();
+    let mut plan = Plan::new(root);
+    plan.add_owned("ctx.md", "v2\n".to_owned()).unwrap();
+    let changes = plan.apply().unwrap();
+    let Action::Replace { diff } = &changes[0].action else {
+        panic!("{changes:?}");
+    };
+    assert!(diff.contains("-v1\n+v2\n"), "{diff}");
+    assert_eq!(read(root, "ctx.md"), "v2\n");
+}
+
+#[test]
 fn bad_paths_are_rejected() {
     let mut plan = Plan::new("/nowhere");
     for bad in ["", "/etc/passwd", "../x", "a/../../x", "./a"] {

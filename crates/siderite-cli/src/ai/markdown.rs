@@ -3,7 +3,7 @@
 //! the OpenAPI document itself is left to `openapi export`.
 
 use super::Context;
-use crate::report::snapshot::Section;
+use crate::report::snapshot::{Section, Snapshot};
 use crate::report::{Diagnostic, Envelope};
 use std::fmt::Write;
 
@@ -27,10 +27,7 @@ pub(crate) fn render(report: &Envelope<Context>) -> String {
         snap.format, snap.format_version, snap.framework.version
     );
     source(&mut out, ctx);
-    features(&mut out, ctx);
-    databases(&mut out, ctx);
-    models(&mut out, ctx);
-    routes(&mut out, ctx);
+    project(&mut out, snap);
     migrations(&mut out, ctx);
     notes(&mut out, &report.diagnostics);
     out
@@ -53,8 +50,16 @@ fn source(out: &mut String, ctx: &Context) {
     }
 }
 
-fn features(out: &mut String, ctx: &Context) {
-    let features = &ctx.snapshot.features;
+/// The project sections: features, databases, models and routes.
+pub(crate) fn project(out: &mut String, snap: &Snapshot) {
+    features(out, snap);
+    databases(out, snap);
+    models(out, snap);
+    routes(out, snap);
+}
+
+fn features(out: &mut String, snap: &Snapshot) {
+    let features = &snap.features;
     let list = if features.is_empty() {
         "none".to_owned()
     } else {
@@ -63,23 +68,22 @@ fn features(out: &mut String, ctx: &Context) {
     let _ = writeln!(out, "CLI features: {list}.\n");
 }
 
-fn databases(out: &mut String, ctx: &Context) {
+fn databases(out: &mut String, snap: &Snapshot) {
     let _ = writeln!(out, "## Databases\n");
-    if ctx.snapshot.databases.is_empty() {
+    if snap.databases.is_empty() {
         let _ = writeln!(out, "None configured.\n");
         return;
     }
     let _ = writeln!(out, "| Alias | Backend |\n|---|---|");
-    for db in &ctx.snapshot.databases {
+    for db in &snap.databases {
         let (alias, backend) = (cell(&db.alias), cell(&db.backend));
         let _ = writeln!(out, "| {alias} | {backend} |");
     }
     out.push('\n');
 }
 
-fn models(out: &mut String, ctx: &Context) {
+fn models(out: &mut String, snap: &Snapshot) {
     let _ = writeln!(out, "## Models\n");
-    let snap = &ctx.snapshot;
     completeness(out, &snap.completeness.models);
     if snap.models.is_empty() {
         let _ = writeln!(out, "None registered.\n");
@@ -110,9 +114,8 @@ fn models(out: &mut String, ctx: &Context) {
     }
 }
 
-fn routes(out: &mut String, ctx: &Context) {
+fn routes(out: &mut String, snap: &Snapshot) {
     let _ = writeln!(out, "## Routes\n");
-    let snap = &ctx.snapshot;
     completeness(out, &snap.completeness.routes);
     if snap.routes.is_empty() {
         let _ = writeln!(out, "No documented routes.\n");
