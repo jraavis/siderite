@@ -205,6 +205,15 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - `--output` is relative to the directory `siderite` was run in. The file is written to a temporary sibling, synced, then linked into place, so readers never see a partial document. An existing file is never replaced without `--force`, including one created concurrently; `--force` replaces it with an atomic rename.
 - A document that cannot be generated (for example duplicate operation ids) exits `1` with nothing on stdout.
 
+## `ai dump-context`
+
+`siderite ai dump-context [--format markdown|json] [--live] [--max-bytes N]` (`--json` is the same as `--format json`) prints the application snapshot below as context for AI tools: Markdown by default (headings and tables for databases, models with their fields, documented routes, migration status and notes), or the `ai dump-context` envelope whose `data` holds the `snapshot`, its `source` (binary name and build time, so a stale context can be spotted) and `migrations`.
+
+- Offline by default: nothing connects, and `migrations.state` is `unknown`. `--live` reads the selected database's migration status through the `showmigrations --json` code (read-only, bounded to 30 s); a failure is `state: failed` with a redacted `ai.E001` error and exit `1`, never an empty success.
+- Secrets never reach the output: database URLs appear as alias and backend kind only, and descriptions, summaries and every OpenAPI string are redacted.
+- `--max-bytes` bounds the snapshot; anything cut is marked incomplete in both formats, with a `snapshot.W001` note.
+- Through `siderite`, the context is the only stdout output; cargo and anything the app factory prints go to stderr. When the app writes nothing (a build failure), stdout stays empty and the exit code is `1` (`--format json` output must be valid JSON).
+
 ## Application snapshot
 
 `siderite_cli::report::snapshot::snapshot(app, models, settings, limits)` builds a bounded, versioned description of an application for tools and AI context (`ai dump-context` renders it). It reads compiled metadata only and opens no connection. The `snapshot` envelope's `data`:

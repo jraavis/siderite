@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `ai dump-context [--format markdown|json] [--live]
+  [--max-bytes N]`: the application snapshot as Markdown or a JSON
+  envelope for AI tools, offline by default with migration status
+  labelled `unknown`; `--live` reads it read-only and bounded, and a
+  failure is a redacted `ai.E001`. The context names its binary and build
+  time, and stays the only stdout output when run through `siderite`.
 - **CLI:** `siderite_cli::report::snapshot`: a bounded, versioned
   application snapshot (framework version, compiled features, database
   aliases with backend kinds only, models, documented routes and the
