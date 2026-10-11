@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `check --json` and `routes --json` (the flag may come before or
+  after the command) write one versioned JSON envelope to stdout with the
+  usual exit codes. Failures, usage errors included, are envelopes with
+  `data: null` and a `cli.E001`-`cli.E003` diagnostic. `siderite` runs the
+  app with a private report file (`SIDERITE_REPORT_PATH`) and sends the
+  app's stdout to stderr, so factory prints cannot corrupt the JSON.
 - **CLI:** typed reports and an output contract (`siderite_cli::report`):
   a versioned JSON envelope (`schema_version`, `command`, `ok`, `data`,
   `diagnostics`) with a JSON Schema in `docs/schemas/cli-report-v1.json`,

@@ -88,8 +88,8 @@ AppCli::new(build_app)
 | Command | What it does |
 |---|---|
 | `run [--addr ADDR]` | Connects every configured SQL database, registers each under its alias, and serves the app. Redis and MongoDB aliases are skipped: register those yourself in the factory |
-| `routes` | Prints `METHOD PATH operation_id` for every route, mounts included |
-| `check` | Validates configuration, models, migrations, routes, and the backend. Exits `1` when an error is found |
+| `routes [--json]` | Prints `METHOD PATH operation_id` for every route, mounts included |
+| `check [--json]` | Validates configuration, models, migrations, routes, and the backend. Exits `1` when an error is found |
 | `dbshell` | Starts the database’s native client |
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the graph and writes a JSON migration. Never connects to a database |
 | `migrate [TARGET] [--dry-run]` | Applies migrations |
@@ -108,6 +108,7 @@ reversibility.
 | `--database-url URL` | Database URL, overriding the settings |
 | `--migrations-dir DIR` | Directory of JSON migrations (default `migrations`) |
 | `--addr ADDR` | Listen address for `run` |
+| `--json` | One JSON report on stdout (`check`, `routes`; see below) |
 | `--help`, `-h` | Help |
 
 Flags may appear anywhere and take `--flag value` or `--flag=value`.
@@ -148,6 +149,30 @@ count as unset.
 `--database-url`, then the URL configured for the selected alias, then,
 for the `default` alias only, `DATABASE_URL`. With none of those, the
 command fails with a “no database” error naming the alias.
+
+## JSON output
+
+`check` and `routes` accept `--json`, before or after the command
+(`siderite --json routes`, `siderite check --json`). Stdout then carries
+exactly one JSON value and a newline, a versioned envelope described by
+[`docs/schemas/cli-report-v1.json`](https://github.com/jraavis/siderite/blob/master/docs/schemas/cli-report-v1.json):
+
+```json
+{"schema_version":1,"command":"routes","ok":true,"data":{"routes":[]},"diagnostics":[]}
+```
+
+- Exit codes keep their meaning: `0` success, `1` failure (`check` found an
+  error, `ok: false`), `2` usage error.
+- Every failure is an envelope too, with `data: null`, `ok: false` and one
+  diagnostic: `cli.E001` usage error, `cli.E002` the command failed,
+  `cli.E003` the application exited without a report (build failure,
+  crash, or a `siderite-cli` that predates `--json`).
+- Through `siderite`, cargo's build output and anything the app factory
+  prints go to stderr: the app writes its report to a private file
+  (`SIDERITE_REPORT_PATH`), never to the shared stdout.
+- `--json` with any other command, with `--help`, or without a command is
+  a usage error. `routes` lists documented routes only (hidden endpoints
+  are omitted).
 
 ## `check`
 

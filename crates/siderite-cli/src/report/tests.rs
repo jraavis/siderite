@@ -151,14 +151,27 @@ fn diagnostics_redact_connection_strings() {
     assert_eq!(redact_text("sqlite::memory:"), "sqlite::memory:");
 }
 
+const SCHEMA: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/cli-report-v1.json"
+));
+
+fn validator() -> jsonschema::Validator {
+    let schema: Value = serde_json::from_str(SCHEMA).unwrap();
+    jsonschema::validator_for(&schema).unwrap()
+}
+
+fn assert_valid(validator: &jsonschema::Validator, value: &Value) {
+    let errors: Vec<_> = validator
+        .iter_errors(value)
+        .map(|e| e.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}\n{value}");
+}
+
 #[test]
 fn outputs_validate_against_the_published_schema() {
-    const SCHEMA: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/schemas/cli-report-v1.json"
-    ));
-    let schema: Value = serde_json::from_str(SCHEMA).unwrap();
-    let validator = jsonschema::validator_for(&schema).unwrap();
+    let validator = validator();
     let scratch = ScratchDir::new("report-schema");
     let dir = scratch.path();
     let settings = CliSettings::new().database("default", "sqlite::memory:");
@@ -187,12 +200,7 @@ fn outputs_validate_against_the_published_schema() {
         .unwrap(),
     ];
     for sample in &samples {
-        let value: Value = serde_json::from_str(sample).unwrap();
-        let errors: Vec<_> = validator
-            .iter_errors(&value)
-            .map(|e| e.to_string())
-            .collect();
-        assert!(errors.is_empty(), "{errors:?}\n{sample}");
+        assert_valid(&validator, &serde_json::from_str(sample).unwrap());
     }
     // The schema rejects a wrong version and a mistyped payload.
     let sample = &samples[0];
@@ -253,11 +261,7 @@ fn deserialized_diagnostics_are_redacted_on_output() {
 
 #[test]
 fn every_check_code_matches_the_schema_pattern() {
-    let schema: Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/schemas/cli-report-v1.json"
-    )))
-    .unwrap();
+    let schema: Value = serde_json::from_str(SCHEMA).unwrap();
     let code = &schema["$defs"]["Diagnostic"]["properties"]["code"];
     let validator = jsonschema::validator_for(code).unwrap();
     let scratch = ScratchDir::new("report-codes");
@@ -274,4 +278,105 @@ fn every_check_code_matches_the_schema_pattern() {
     for bad in ["E001", "models.e001", "Models.E001", "models.X001"] {
         assert!(!validator.is_valid(&Value::from(bad)), "{bad}");
     }
+}
+
+/// Run `args` with reports going to a scratch file; return the exit code
+/// and the parsed report (`Value::Null` when nothing was written).
+fn json_run(cli: &AppCli, args: &[&str]) -> (u8, Value) {
+    let scratch = ScratchDir::new("report-json");
+    let path = scratch.path().join("report.json");
+    let env = Env {
+        report_path: Some(path.clone()),
+        ..Env::default()
+    };
+    let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+    let outcome = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap()
+        .block_on(cli.execute(&args, &env));
+    let code = outcome.unwrap_or_else(|err| err.exit_code());
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    if text.is_empty() {
+        return (code, Value::Null);
+    }
+    assert_eq!(text.matches('\n').count(), 1, "{text}");
+    (code, serde_json::from_str(&text).unwrap())
+}
+
+#[test]
+fn json_flag_works_before_and_after_the_command() {
+    let validator = validator();
+    for args in [["--json", "routes"], ["routes", "--json"]] {
+        let (code, report) = json_run(&cli(), &args);
+        assert_eq!(code, EXIT_OK);
+        assert_valid(&validator, &report);
+        assert_eq!(report["command"], "routes");
+        let paths: Vec<_> = report["data"]["routes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["path"].as_str().unwrap().to_owned())
+            .collect();
+        assert!(paths.contains(&"/health".to_owned()), "{paths:?}");
+        assert!(!paths.contains(&"/secret".to_owned()), "hidden route");
+    }
+}
+
+#[test]
+fn json_check_keeps_its_exit_code() {
+    let validator = validator();
+    let scratch = ScratchDir::new("report-json-check");
+    let clean = cli().migrations_dir(scratch.path());
+    let (code, report) = json_run(&clean, &["check", "--json"]);
+    assert_eq!(code, EXIT_OK);
+    assert_valid(&validator, &report);
+    assert_eq!(report["ok"], true);
+    let failing = cli().models(&[no_pk()]).migrations_dir(scratch.path());
+    let (code, report) = json_run(&failing, &["--json", "check"]);
+    assert_eq!(code, EXIT_FAILURE);
+    assert_valid(&validator, &report);
+    assert_eq!(report["ok"], false);
+    assert!(report["data"]["errors"].as_u64().unwrap() >= 1);
+    let codes = report["diagnostics"].as_array().unwrap();
+    assert!(codes.iter().any(|d| d["code"] == "models.E003"), "{report}");
+}
+
+#[test]
+fn json_failures_are_envelopes_with_exit_semantics() {
+    let validator = validator();
+    let cases: [(&[&str], &str); 7] = [
+        (&["run", "--json"], "run"),
+        (&["--json", "migrate"], "migrate"),
+        (&["--json"], "siderite"),
+        (&["routes", "--json", "--help"], "routes"),
+        (&["routes", "--json=1"], "routes"),
+        (&["check", "extra", "--json"], "check"),
+        (&["--json", "frobnicate"], "frobnicate"),
+    ];
+    for (args, command) in cases {
+        let (code, report) = json_run(&cli(), args);
+        assert_eq!(code, EXIT_USAGE, "{args:?}");
+        assert_valid(&validator, &report);
+        assert_eq!(report["command"], command, "{args:?}");
+        assert_eq!(report["ok"], false);
+        assert!(report["data"].is_null());
+        assert_eq!(report["diagnostics"][0]["code"], channel::USAGE_CODE);
+    }
+    // A failing command without a report is code cli.E002, exit 1.
+    let broken = AppCli::new(|| {
+        App::new()
+            .route("/a", get(|| async { "a" }).operation_id("same"))
+            .route("/b", get(|| async { "b" }).operation_id("same"))
+    });
+    let (code, report) = json_run(&broken, &["routes", "--json"]);
+    assert_eq!(code, EXIT_FAILURE);
+    assert_valid(&validator, &report);
+    assert_eq!(report["diagnostics"][0]["code"], channel::FAILED_CODE);
+}
+
+#[test]
+fn text_mode_writes_no_report() {
+    let (code, report) = json_run(&cli(), &["routes"]);
+    assert_eq!(code, EXIT_OK);
+    assert!(report.is_null());
 }

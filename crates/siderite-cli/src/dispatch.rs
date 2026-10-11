@@ -1,7 +1,9 @@
 //! Top-level `siderite` binary: `new`, cargo wrap, or standalone migrations.
 
+use crate::args::{check_json_args, json_requested};
 use crate::error::CliError;
 use crate::project::{self, CARGO_COMMANDS, is_app_command};
+use crate::report::channel;
 use crate::scaffold;
 use crate::standalone;
 use crate::target::{self, ProjectArgs, Selected, split_project};
@@ -14,12 +16,37 @@ use std::env;
 pub async fn run() -> Result<u8, CliError> {
     let raw: Vec<String> = env::args().skip(1).collect();
     let cwd = env::current_dir().map_err(|err| CliError::Io(format!("cannot read cwd: {err}")))?;
-    dispatch(&raw, &cwd).await
+    let outcome = dispatch(&raw, &cwd).await;
+    if let Err(err) = &outcome
+        && let Err(write) = report_json_error(&raw, err)
+    {
+        // The original error decides the exit code, not this write.
+        eprintln!("{write}");
+    }
+    outcome
+}
+
+/// In JSON mode, write a failure of the `siderite` binary itself as an
+/// envelope on stdout (cargo passthroughs keep their own output).
+fn report_json_error(raw: &[String], err: &CliError) -> Result<(), CliError> {
+    let Ok((_, raw)) = split_project(raw) else {
+        return Ok(());
+    };
+    let command = first_command(&raw).unwrap_or("siderite");
+    if !json_requested(&raw) || CARGO_COMMANDS.contains(&command) {
+        return Ok(());
+    }
+    channel::emit_json(&channel::error_envelope(command, err), None)
 }
 
 async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError> {
     let (project, raw) = split_project(raw)?;
     let raw = raw.as_slice();
+    let command = first_command(raw);
+    let cargo = command.is_some_and(|c| CARGO_COMMANDS.contains(&c));
+    if json_requested(raw) && !cargo {
+        check_json_args(raw, command)?;
+    }
     if raw.iter().any(|a| a == "--help" || a == "-h")
         && first_command(raw).is_none_or(|c| c == "help")
     {
@@ -50,7 +77,11 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     }
     if is_app_command(command) {
         if let Some(app) = target::locate("cargo", cwd, &project, true)? {
-            return project::cargo_run(&app.dir, app.bin.as_deref(), raw);
+            let bin = app.bin.as_deref();
+            if json_requested(raw) {
+                return project::cargo_run_report(&app.dir, bin, raw, command);
+            }
+            return project::cargo_run(&app.dir, bin, raw);
         }
         if command == "run"
             || command == "routes"
@@ -113,8 +144,8 @@ siderite {} — FastAPI-style Rust web framework
 Create and run an app:
   new NAME                      Write a new API crate
   run [--addr ADDR]             Serve the app
-  routes                        List METHOD PATH operation_id
-  check                         Validate config, models, migrations and routes
+  routes [--json]               List METHOD PATH operation_id
+  check [--json]                Validate config, models, migrations and routes
   dbshell                       Open the database's native client
   build [--release ...]         cargo build in the app package
   test                          cargo test in the app package
@@ -135,6 +166,7 @@ Options:
   --manifest-path PATH          Cargo.toml of the app (before the command)
   --package, -p NAME            Workspace package of the app
   --bin NAME                    Binary of the app package
+  --json                        One JSON report on stdout (check, routes)
   --help                        Show this help
 
 `run`, `routes`, `check`, `dbshell` and `makemigrations` invoke `cargo run`

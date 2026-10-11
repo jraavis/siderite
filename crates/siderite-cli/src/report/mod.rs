@@ -17,6 +17,7 @@
 //! found an error) and `2` (usage error); see [`EXIT_OK`].
 
 pub mod build;
+pub mod channel;
 pub mod json;
 mod redact;
 pub mod text;

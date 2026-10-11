@@ -7,6 +7,8 @@
 use crate::error::CliError;
 use std::path::PathBuf;
 
+type Usage = Result<(), CliError>;
+
 /// Flags recognised before a command runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GlobalArgs {
@@ -20,6 +22,8 @@ pub struct GlobalArgs {
     pub addr: Option<String>,
     /// `--help` / `-h` before any command.
     pub help: bool,
+    /// `--json`: write one versioned JSON report to stdout.
+    pub json: bool,
 }
 
 /// Split `args` into [`GlobalArgs`] and the remaining arguments.
@@ -42,6 +46,13 @@ pub fn split_global(args: &[String]) -> Result<(GlobalArgs, Vec<String>), CliErr
             rest.push(arg.clone());
             continue;
         };
+        if flag == "--json" {
+            if inline.is_some() {
+                return Err(CliError::usage("--json takes no value"));
+            }
+            global.json = true;
+            continue;
+        }
         let slot = match flag {
             "--database-url" => &mut global.database_url,
             "--database" => &mut global.database,
@@ -59,6 +70,36 @@ pub fn split_global(args: &[String]) -> Result<(GlobalArgs, Vec<String>), CliErr
         *slot = Some(flag_value(flag, inline, args, &mut i)?);
     }
     Ok((global, rest))
+}
+
+/// Whether `args` ask for JSON output, even when they fail to parse (so
+/// the parse error itself can be reported as JSON).
+pub fn json_requested(args: &[String]) -> bool {
+    args.iter()
+        .any(|a| a == "--json" || a.starts_with("--json="))
+}
+
+/// The commands that support `--json`.
+pub const JSON_COMMANDS: &[&str] = &["check", "routes"];
+
+/// Validate a `--json` command line: it needs one of [`JSON_COMMANDS`]
+/// and cannot be combined with `--help`.
+///
+/// Errors:
+///   A usage error naming the problem.
+pub fn check_json_args(args: &[String], command: Option<&str>) -> Usage {
+    let Some(command) = command else {
+        return Err(CliError::usage("--json needs a command: check or routes"));
+    };
+    if !JSON_COMMANDS.contains(&command) {
+        return Err(CliError::usage(format!(
+            "--json is supported by `check` and `routes`, not `{command}`"
+        )));
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        return Err(CliError::usage("--help cannot be combined with --json"));
+    }
+    Ok(())
 }
 
 /// `--flag=value` -> (`--flag`, Some(`value`)); `--flag` -> (`--flag`, None).
@@ -138,6 +179,17 @@ mod tests {
         let (global, rest) = split(&["migrate", "--help"]).unwrap();
         assert!(!global.help);
         assert_eq!(rest, ["migrate", "--help"]);
+    }
+
+    #[test]
+    fn json_is_a_flag_anywhere_without_a_value() {
+        for list in [["--json", "check"], ["check", "--json"]] {
+            let (global, rest) = split(&list).unwrap();
+            assert!(global.json);
+            assert_eq!(rest, ["check"]);
+        }
+        let err = split(&["routes", "--json=1"]).unwrap_err();
+        assert_eq!(err.exit_code(), 2);
     }
 
     #[test]

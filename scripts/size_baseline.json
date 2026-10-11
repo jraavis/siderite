@@ -23,7 +23,7 @@
     "crates/siderite-backends": 527,
     "crates/siderite-bench": 9,
     "crates/siderite-cache": 121,
-    "crates/siderite-cli": 116,
+    "crates/siderite-cli": 115,
     "crates/siderite-config": 18,
     "crates/siderite-core": 301,
     "crates/siderite-macros": 246,

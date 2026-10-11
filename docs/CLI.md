@@ -66,8 +66,8 @@ AppCli::new(build_app)
 | Command | What it does |
 |---|---|
 | `run [--addr ADDR]` | Connects every configured SQL database, registers each under its alias (`App::database`), and serves the app. Aliases whose URL is Redis or MongoDB are skipped: register those yourself in the factory. |
-| `routes` | Prints `METHOD PATH operation_id` for every route, mounts included. |
-| `check` | Validates configuration, models, migrations, routes and the backend (see below). Exits `1` when an error is found. |
+| `routes [--json]` | Prints `METHOD PATH operation_id` for every route, mounts included. |
+| `check [--json]` | Validates configuration, models, migrations, routes and the backend (see below). Exits `1` when an error is found. |
 | `dbshell` | Starts the database's native client. Replaces Django-style `shell`. |
 | `makemigrations [--name SLUG] [--empty] [--dry-run]` | Diffs compiled models against the migration graph and writes a JSON migration. Never connects to a database. |
 | `migrate [TARGET] [--dry-run]` | Applies migrations. |
@@ -135,7 +135,16 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 - `ok` is `false` when any diagnostic has severity `error`. A diagnostic has `code` (the stable `check` ids below), `severity` (`info`, `warning`, `error`), `message` and optional `location` and `hint`. Codes match `^[a-z][a-z0-9_]*\.[EWI][0-9]{3}$`; `info` is reserved and never makes a report fail. Free text is redacted when the diagnostic is built and again when it is rendered: URL passwords (the userinfo ends at the last `@`, so unencoded `/ ? # @`, spaces and quotes are covered), every URL of a comma-separated list, and secret-looking `key=value` pairs anywhere (query parameters, libpq DSNs, `;Pwd=`, `sig=`) become `***`.
 - Reports are sorted deterministically: routes by path then method, models by name then table, fields by name then column, tags alphabetically. `routes` lists documented routes (from OpenAPI; hidden endpoints are omitted), not a complete runtime inventory.
 - Exit codes: `0` success, `1` failure (including a `check` that finds an error), `2` usage error.
-- JSON mode (`--json`, planned) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
+- JSON mode (`--json`, accepted before or after `check` and `routes`) writes exactly one JSON value and a newline to stdout; logs and diagnostics go to stderr. The OpenAPI export is the raw OpenAPI document, not enveloped.
+- In JSON mode every failure is an envelope as well, with `ok: false`, `data: null` and one diagnostic:
+
+  | Code | Exit | Meaning |
+  |---|---|---|
+  | `cli.E001` | `2` | usage error (unknown command or flag, `--json` with a command other than `check` / `routes`, with `--help` or without a command) |
+  | `cli.E002` | `1` | the command failed before producing its report (for example the OpenAPI document cannot be generated) |
+  | `cli.E003` | `1` (`2` if the app exited `2`) | the application exited without a valid report: a build failure, a crash, or a `siderite-cli` that predates `--json` |
+
+- `siderite` runs the application with `SIDERITE_REPORT_PATH` set to a private, freshly created file and sends the child's stdout to stderr. The application writes its report to that file, so cargo output and anything the app factory prints can never corrupt stdout. An application binary run directly writes the report to its own stdout; keep the factory silent in that case.
 
 ## `check`
 
