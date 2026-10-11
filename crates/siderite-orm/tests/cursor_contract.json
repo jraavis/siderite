@@ -1,0 +1,108 @@
+{
+  "format": 1,
+  "cases": [
+    {
+      "name": "the primary key breaks ties",
+      "rows": [
+        {"id": 1, "score": 10}, {"id": 2, "score": 20}, {"id": 3, "score": 10},
+        {"id": 4, "score": 30}, {"id": 5, "score": 20}
+      ],
+      "order": [{"field": "score", "dir": "asc"}],
+      "pages": [
+        {"limit": 2, "ids": [1, 3], "more": true},
+        {"limit": 2, "ids": [2, 5], "more": true},
+        {"limit": 2, "ids": [4], "more": false}
+      ]
+    },
+    {
+      "name": "mixed directions",
+      "rows": [
+        {"id": 1, "group": "a", "score": 1}, {"id": 2, "group": "b", "score": 5},
+        {"id": 3, "group": "a", "score": 3}, {"id": 4, "group": "b", "score": 5},
+        {"id": 5, "group": "a", "score": 3}
+      ],
+      "order": [
+        {"field": "group", "dir": "asc"},
+        {"field": "score", "dir": "desc"}
+      ],
+      "pages": [
+        {"limit": 2, "ids": [3, 5], "more": true},
+        {"limit": 2, "ids": [1, 2], "more": true},
+        {"limit": 2, "ids": [4], "more": false}
+      ]
+    },
+    {
+      "name": "nulls sort last ascending",
+      "rows": [
+        {"id": 1, "due": null}, {"id": 2, "due": 5}, {"id": 3, "due": null},
+        {"id": 4, "due": 1}, {"id": 5, "due": 5}
+      ],
+      "order": [{"field": "due", "dir": "asc"}],
+      "pages": [
+        {"limit": 2, "ids": [4, 2], "more": true},
+        {"limit": 2, "ids": [5, 1], "more": true},
+        {"limit": 2, "ids": [3], "more": false}
+      ]
+    },
+    {
+      "name": "nulls sort first descending",
+      "rows": [
+        {"id": 1, "due": null}, {"id": 2, "due": 5}, {"id": 3, "due": null},
+        {"id": 4, "due": 1}
+      ],
+      "order": [{"field": "due", "dir": "desc"}],
+      "pages": [
+        {"limit": 3, "ids": [1, 3, 2], "more": true},
+        {"limit": 3, "ids": [4], "more": false}
+      ]
+    },
+    {
+      "name": "text ordering and an exact last page",
+      "rows": [
+        {"id": 1, "name": "pear"}, {"id": 2, "name": "apple"},
+        {"id": 3, "name": "fig"}, {"id": 4, "name": "apple"}
+      ],
+      "order": [{"field": "name", "dir": "asc"}],
+      "pages": [
+        {"limit": 2, "ids": [2, 4], "more": true},
+        {"limit": 2, "ids": [3, 1], "more": false}
+      ]
+    },
+    {
+      "name": "the primary key alone, descending",
+      "rows": [{"id": 1}, {"id": 2}, {"id": 3}],
+      "order": [{"field": "id", "dir": "desc"}],
+      "pages": [
+        {"limit": 2, "ids": [3, 2], "more": true},
+        {"limit": 2, "ids": [1], "more": false}
+      ]
+    },
+    {
+      "name": "writes between pages",
+      "rows": [
+        {"id": 1, "score": 1}, {"id": 2, "score": 2}, {"id": 3, "score": 3},
+        {"id": 4, "score": 4}, {"id": 5, "score": 5}
+      ],
+      "order": [{"field": "score", "dir": "asc"}],
+      "pages": [
+        {"limit": 2, "ids": [1, 2], "more": true},
+        {
+          "before": {"insert": [{"id": 6, "score": 0}, {"id": 7, "score": 3}],
+                     "delete": [4]},
+          "limit": 2, "ids": [3, 7], "more": true
+        },
+        {"limit": 2, "ids": [5], "more": false}
+      ]
+    }
+  ],
+  "tokens": [
+    {"name": "a valid token round-trips", "edit": "none", "error": null},
+    {"name": "not base64url", "edit": "garbage", "error": "cursor.E001"},
+    {"name": "longer than 1 KiB", "edit": "oversize", "error": "cursor.E001"},
+    {"name": "cut short", "edit": "truncate", "error": "cursor.E001"},
+    {"name": "an unknown version", "edit": "version", "error": "cursor.E002"},
+    {"name": "another query's token", "edit": "fingerprint", "error": "cursor.E003"},
+    {"name": "a value too many", "edit": "extra_value", "error": "cursor.E004"},
+    {"name": "a value of the wrong type", "edit": "wrong_type", "error": "cursor.E004"}
+  ]
+}

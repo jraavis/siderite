@@ -366,11 +366,12 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   collisions; validate page/size and enforce a configurable maximum. Preserve
   existing ORM API and count-plus-fetch behavior; document concurrency limits.
 
-- [ ] **F02 — Specify cursor pagination semantics.**
+- [x] **F02 — Specify cursor pagination semantics.**
   Depends: F01. Scope: design and executable contract fixtures only.
   Done: define stable unique ordering, tie-breaker, nulls, filter binding,
   cursor validation/versioning, backend capabilities and query budgets.
   Implementation is a separate backlog after this design passes review.
+  Design: [CURSOR_PAGINATION.md](CURSOR_PAGINATION.md).
 
 - [ ] **F03 — Add opt-in liveness support.**
   Depends: none. Scope: health response and explicit route registration.
