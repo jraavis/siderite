@@ -1,6 +1,7 @@
 //! Layered configuration builder.
 
 use crate::error::ConfigError;
+use crate::explain::ConfigEntry;
 use crate::settings::{Settings, default_values};
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
@@ -122,6 +123,18 @@ impl ConfigBuilder {
         self.extract()
     }
 
+    /// Every resolved value with the source that set it (a default, a
+    /// file, an environment variable or an override), redacted, sorted by
+    /// key. It reads the same merged sources as [`Self::build`].
+    ///
+    /// # Errors
+    /// [`ConfigError::MissingFile`] for a missing required file.
+    pub fn explain(&self) -> Result<Vec<ConfigEntry>, ConfigError> {
+        self.ensure_required_files()?;
+        let merged = self.figment.clone().merge(self.overrides.clone());
+        Ok(crate::explain::entries(&merged, &self.overrides))
+    }
+
     fn ensure_required_files(&self) -> Result<(), ConfigError> {
         for path in &self.required_files {
             if !path.exists() {
@@ -132,15 +145,16 @@ impl ConfigBuilder {
     }
 }
 
+/// Unprefixed environment variables and the keys they set.
+pub(crate) const ALIASES: [(&str, &str); 2] = [
+    ("DATABASE_URL", "databases.default.url"),
+    ("ADDR", "server.addr"),
+];
+
 fn well_known_env() -> Env {
     Env::raw().filter_map(|key: &UncasedStr| {
-        if key == "database_url" {
-            Some("databases.default.url".into())
-        } else if key == "addr" {
-            Some("server.addr".into())
-        } else {
-            None
-        }
+        let alias = ALIASES.iter().find(|(var, _)| key == *var);
+        alias.map(|(_, path)| (*path).into())
     })
 }
 

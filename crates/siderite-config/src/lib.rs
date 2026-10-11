@@ -17,12 +17,15 @@
 
 mod builder;
 mod error;
+mod explain;
+pub mod redact;
 mod secret;
 mod settings;
 mod tracing_init;
 
 pub use builder::{ConfigBuilder, DEFAULT_CONFIG_FILE, DEFAULT_ENV_PREFIX, load};
 pub use error::{ConfigError, is_secret_key};
+pub use explain::{ConfigEntry, ConfigSource, SourceKind};
 pub use secret::Secret;
 pub use settings::{
     AppSettings, CacheSettings, DEFAULT_APP_NAME, DEFAULT_CACHE_MAX_ENTRIES, DEFAULT_LOG_LEVEL,
@@ -32,3 +35,5 @@ pub use tracing_init::init_tracing;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_explain;

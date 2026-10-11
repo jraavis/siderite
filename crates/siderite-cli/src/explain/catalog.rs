@@ -22,6 +22,7 @@ pub(crate) struct Explanation {
 }
 
 const CHECK: &str = "guides/production/cli#check";
+const CONFIG: &str = "guides/production/cli#configuration";
 const DOCTOR: &str = "guides/production/cli#doctor";
 const JSON: &str = "guides/production/cli#json-output";
 
@@ -173,6 +174,18 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite check",
         CHECK,
+    ),
+    entry(
+        "config.E004",
+        "Configuration does not load",
+        [
+            "siderite.toml, a SIDERITE_* variable or an alias \
+             (DATABASE_URL, ADDR) has a value the settings cannot take.",
+            "Fix the key named in the message; `siderite config show` \
+             names the source of each value.",
+        ],
+        "siderite config validate",
+        CONFIG,
     ),
     entry(
         "docs.W001",

@@ -8,6 +8,13 @@
 
 
 ### Added
+- **CLI:** `siderite config show [--redacted] [--json]` prints every
+  configuration value with the source that set it (default, file,
+  environment variable or override), always redacted;
+  `siderite config validate` loads the settings and checks database URLs
+  (`config.E004` for values the settings cannot take).
+  `ConfigBuilder::explain()` exposes the same explanation, and
+  configuration load errors now pass through the shared redaction.
 - **HTTP:** `App::spa(prefix, dir)` serves a single-page application:
   files, and `index.html` for HTML navigations (GET/HEAD, `text/html`,
   no extension) below the prefix. Explicit routes win; missing assets,

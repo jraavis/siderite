@@ -14,7 +14,7 @@
 //! Issue messages never contain database URLs.
 
 mod backend;
-mod config;
+pub(crate) mod config;
 mod migrations;
 mod models;
 mod openapi;

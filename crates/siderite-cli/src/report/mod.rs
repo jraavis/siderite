@@ -19,7 +19,6 @@
 pub mod build;
 pub mod channel;
 pub mod json;
-mod redact;
 pub mod snapshot;
 pub mod text;
 
@@ -28,7 +27,7 @@ mod tests;
 #[cfg(test)]
 mod tests_snapshot;
 
-pub use redact::{REDACTED, redact_field, redact_text};
+pub use siderite_config::redact::{REDACTED, redact_field, redact_text};
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};

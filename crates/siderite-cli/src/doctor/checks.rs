@@ -5,8 +5,8 @@ use super::{Findings, Probe};
 use crate::connect::{backend_kind, url_scheme};
 use crate::target::{self, Selected};
 use crate::workspace;
-use siderite_config::{ConfigBuilder, DEFAULT_CONFIG_FILE as FILE};
-use siderite_config::{DEFAULT_ENV_PREFIX, DEFAULT_SERVER_ADDR, Settings};
+use siderite_config::DEFAULT_CONFIG_FILE as FILE;
+use siderite_config::{DEFAULT_SERVER_ADDR, Settings};
 use siderite_orm::BackendKind;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -211,11 +211,7 @@ fn component(what: Component<'_>, output: Option<String>, f: &mut Findings) {
 /// project directory.
 pub(crate) fn config(p: &Probe, dir: &Path, f: Out<'_>) -> Option<Settings> {
     let file = dir.join(FILE);
-    let mut builder = ConfigBuilder::new().file_optional(&file);
-    if p.process_env {
-        builder = builder.env_prefix(DEFAULT_ENV_PREFIX);
-    }
-    match builder.build() {
+    match crate::config::builder(dir, p.process_env).build() {
         Ok(settings) => {
             let detail = if file.exists() {
                 format!("{} loads", file.display())

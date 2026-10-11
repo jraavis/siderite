@@ -1,11 +1,12 @@
-//! The single redaction helper for report fields.
+//! The single redaction helper: configuration errors, the configuration
+//! explanation and every CLI report use it.
 //!
-//! Secret-looking keys use `siderite_config::is_secret_key`, the same
-//! rule the configuration errors apply. Redaction errs toward hiding
+//! Secret-looking keys use [`is_secret_key`], the
+//! same rule the configuration errors apply. Redaction errs toward hiding
 //! too much: a false positive only hides part of a message, a false
 //! negative leaks a credential.
 
-use siderite_config::is_secret_key;
+use crate::error::is_secret_key;
 
 /// What a redacted value is replaced with.
 pub const REDACTED: &str = "***";

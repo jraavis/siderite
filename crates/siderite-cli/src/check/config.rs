@@ -24,7 +24,7 @@ pub(super) fn check(models: &[&'static ModelMeta], settings: &CliSettings) -> Ve
 }
 
 /// Check one URL. Messages name the alias and scheme, never the URL.
-fn check_url(alias: &str, url: &str) -> Option<CheckIssue> {
+pub(crate) fn check_url(alias: &str, url: &str) -> Option<CheckIssue> {
     let Some(scheme) = url_scheme(url) else {
         return Some(CheckIssue::error(
             "config.E002",

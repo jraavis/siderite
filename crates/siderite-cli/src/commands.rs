@@ -493,6 +493,28 @@ pub const COMMANDS: &[Command] = &[
         needs: Needs::Nothing,
         formats: TEXT_JSON,
         ..cmd(
+            "config show",
+            Group::Tool,
+            "config show [--redacted] [--json]",
+            "Show config values and their sources",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: TEXT_JSON,
+        ..cmd(
+            "config validate",
+            Group::Tool,
+            "config validate [--json]",
+            "Load config, check database URLs",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: TEXT_JSON,
+        ..cmd(
             "docs search",
             Group::Tool,
             "docs search QUERY... [--json] [--limit N]",
