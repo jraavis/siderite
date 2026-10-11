@@ -105,6 +105,18 @@ const B: f64 = 0.75;
 /// with BM25 over the section text plus a bonus for terms in the title.
 /// Ties are broken by id.
 pub(crate) fn search<'a>(index: &'a Index, terms: &[String]) -> Hits<'a> {
+    rank(index.entries.iter().collect(), terms)
+}
+
+impl Index {
+    /// [`search`] among the entries of one kind only.
+    pub(crate) fn search_kind(&self, terms: &Terms, kind: Kind) -> Hits<'_> {
+        let entries = self.entries.iter().filter(|e| e.kind == kind);
+        rank(entries.collect(), terms)
+    }
+}
+
+fn rank<'a>(entries: Vec<&'a Entry>, terms: &[String]) -> Hits<'a> {
     if terms.is_empty() {
         return Vec::new();
     }
@@ -113,17 +125,13 @@ pub(crate) fn search<'a>(index: &'a Index, terms: &[String]) -> Hits<'a> {
         .enumerate()
         .map(|(i, t)| (t.as_str(), i))
         .collect();
-    let counts: Vec<Counts> = index
-        .entries
-        .iter()
-        .map(|e| Counts::of(e, &slots))
-        .collect();
+    let count = |e: &&Entry| Counts::of(e, &slots);
+    let counts: Vec<Counts> = entries.iter().map(count).collect();
     let stats = Stats::new(&counts, terms.len());
     let all = |c: &Counts| (0..terms.len()).all(|t| c.matches(t));
     let require_all = counts.iter().any(all);
-    let mut hits: Hits = index
-        .entries
-        .iter()
+    let mut hits: Hits = entries
+        .into_iter()
         .zip(&counts)
         .filter(|(_, c)| if require_all { all(c) } else { c.any() })
         .map(|(entry, c)| Scored {
@@ -140,6 +148,7 @@ pub(crate) fn search<'a>(index: &'a Index, terms: &[String]) -> Hits<'a> {
 }
 
 type Hits<'a> = Vec<Scored<'a>>;
+type Terms = [String];
 /// Excerpt lines.
 pub(crate) type Lines = Vec<String>;
 /// Query term to its position.

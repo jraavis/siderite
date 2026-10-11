@@ -8,6 +8,12 @@
 
 
 ### Added
+- **CLI:** `siderite ai context --task TEXT [--budget BYTES]
+  [--include PATH]...` selects the matching models, routes, docs sections
+  and compiled examples, plus explicitly included project files (inside
+  the package, git ignore rules honored, secret-looking files refused),
+  within a byte budget with deterministic truncation. Each part names its
+  source and version; omissions and missing information are listed.
 - **CLI:** `siderite explain CODE [--json]` and `explain --list`: the
   cause, minimal fix and verification command of every siderite
   diagnostic code, for this version. Compiler codes and Clippy lints point

@@ -279,6 +279,13 @@ their fields, documented routes, and migration status (`unknown` unless
 redacted. It names the binary and its build time so stale context can be
 recognised.
 
+For one task, `siderite ai context --task "add a tag filter to posts"`
+picks the matching models and routes, the relevant documentation and
+examples for your siderite version, and any files you name with
+`--include`, within a byte budget (`--budget`, default 32768). It says
+what it left out and what it could not know. Included files must be in
+the app package; git-ignored and secret-looking files are skipped.
+
 ## JSON output
 
 `check`, `docs search`, `doctor`, `explain`, `routes`, `showmigrations` and `verify` accept `--json`, before or after the command

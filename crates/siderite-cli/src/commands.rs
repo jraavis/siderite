@@ -367,6 +367,16 @@ pub const COMMANDS: &[Command] = &[
         )
     },
     Command {
+        formats: &[Format::Markdown, Format::Json],
+        ..cmd(
+            "ai context",
+            Group::Ai,
+            "ai context --task TEXT [--budget N] [--include PATH]... \
+             [--json]",
+            "Context for one task, within a byte budget",
+        )
+    },
+    Command {
         mutates: &[Mutation::ProjectFiles],
         ..cmd(
             "ai init",

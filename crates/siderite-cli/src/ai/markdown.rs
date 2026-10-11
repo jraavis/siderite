@@ -4,7 +4,7 @@
 
 use super::Context;
 use crate::report::snapshot::{Section, Snapshot};
-use crate::report::{Diagnostic, Envelope};
+use crate::report::{Diagnostic, Envelope, ModelReport, RouteReport};
 use std::fmt::Write;
 
 /// Render `report` as Markdown.
@@ -90,28 +90,33 @@ fn models(out: &mut String, snap: &Snapshot) {
         return;
     }
     for model in &snap.models {
-        let managed = if model.managed { "" } else { ", unmanaged" };
+        self::model(out, model);
+    }
+}
+
+/// One model: a heading and its field table.
+pub(crate) fn model(out: &mut String, model: &ModelReport) {
+    let managed = if model.managed { "" } else { ", unmanaged" };
+    let _ = writeln!(
+        out,
+        "### {} (table `{}`{managed})\n",
+        cell(&model.name),
+        cell(&model.table)
+    );
+    let _ = writeln!(out, "| Field | Column | Type | Null | PK |");
+    let _ = writeln!(out, "|---|---|---|---|---|");
+    for f in &model.fields {
         let _ = writeln!(
             out,
-            "### {} (table `{}`{managed})\n",
-            cell(&model.name),
-            cell(&model.table)
+            "| {} | {} | {} | {} | {} |",
+            cell(&f.name),
+            cell(&f.column),
+            cell(&f.sql_type),
+            yes(f.nullable),
+            yes(f.pk)
         );
-        let _ = writeln!(out, "| Field | Column | Type | Null | PK |");
-        let _ = writeln!(out, "|---|---|---|---|---|");
-        for f in &model.fields {
-            let _ = writeln!(
-                out,
-                "| {} | {} | {} | {} | {} |",
-                cell(&f.name),
-                cell(&f.column),
-                cell(&f.sql_type),
-                yes(f.nullable),
-                yes(f.pk)
-            );
-        }
-        out.push('\n');
     }
+    out.push('\n');
 }
 
 fn routes(out: &mut String, snap: &Snapshot) {
@@ -121,9 +126,22 @@ fn routes(out: &mut String, snap: &Snapshot) {
         let _ = writeln!(out, "No documented routes.\n");
         return;
     }
+    route_table(out, snap.routes.iter());
+    let _ = writeln!(
+        out,
+        "\nHidden routes are not listed. The full OpenAPI document: \
+         `siderite openapi export`.\n"
+    );
+}
+
+/// A table of `routes`.
+pub(crate) fn route_table<'a, I>(out: &mut String, routes: I)
+where
+    I: Iterator<Item = &'a RouteReport>,
+{
     let _ = writeln!(out, "| Method | Path | Operation | Summary |");
     let _ = writeln!(out, "|---|---|---|---|");
-    for r in &snap.routes {
+    for r in routes {
         let id = r.operation_id.as_deref().unwrap_or("-");
         let summary = r.summary.as_deref().unwrap_or("");
         let _ = writeln!(
@@ -135,11 +153,6 @@ fn routes(out: &mut String, snap: &Snapshot) {
             cell(summary)
         );
     }
-    let _ = writeln!(
-        out,
-        "\nHidden routes are not listed. The full OpenAPI document: \
-         `siderite openapi export`.\n"
-    );
 }
 
 fn migrations(out: &mut String, ctx: &Context) {
@@ -200,6 +213,6 @@ fn yes(flag: bool) -> &'static str {
 }
 
 /// Text safe inside a table cell or heading: no pipes or line breaks.
-fn cell(text: &str) -> String {
+pub(crate) fn cell(text: &str) -> String {
     text.replace('|', "\\|").replace(['\n', '\r'], " ")
 }

@@ -156,7 +156,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   command, tied to supported versions. Unknown/compiler codes link or point
   to the appropriate source rather than invent framework explanations.
 
-- [ ] **X13 — Produce task-focused AI context.**
+- [x] **X13 — Produce task-focused AI context.**
   Depends: A02, X11. Scope: `ai context --task TEXT --budget N`.
   Done: select relevant public examples plus project metadata; use a stated
   budget unit and deterministic truncation; include source/version evidence
