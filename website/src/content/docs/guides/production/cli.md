@@ -228,7 +228,9 @@ siderite verify --live   # also the ignored (live-service) tests
 One report for the whole local verification: each step's status, time
 and, on failure, the redacted end of its output. A failed build skips the
 tests and the framework check; files are never reformatted and migrations
-are never applied. `--json` writes one `verify` envelope.
+are never applied. `--json` writes one `verify` envelope; compiler errors
+and Clippy findings appear there with their codes, file spans and rendered
+explanations.
 
 ## AI context
 

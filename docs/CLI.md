@@ -222,7 +222,9 @@ Probes do not change schema or data: the history table is only read, and SQLite 
 
 The default profile is offline. `--live` also runs the ignored tests (`cargo test --all-targets -- --include-ignored`), which is where tests that need running services belong. `verify` never formats files, never applies migrations and never connects to a database itself.
 
-Each step records its status (`passed`, `failed` or `skipped`), wall time, exit code and, for a failure, the last 30 lines of its output with credentials redacted. Text output is one line per step and a summary; `--json` writes one `verify` envelope whose `data` is `{profile, steps}` with a `verify.E001` diagnostic per failed step. The exit code is `1` when any step failed. Progress lines go to stderr.
+Each step records its status (`passed`, `failed` or `skipped`), wall time, exit code and, for a failure, the last 30 lines of its output with credentials redacted. Text output is one line per step, the rendered compiler errors and output of each failed step, and a summary; `--json` writes one `verify` envelope whose `data` is `{profile, diagnostic_format, test_results, steps}` with a `verify.E001` diagnostic per failed step. The exit code is `1` when any step failed. Progress lines go to stderr.
+
+`lint`, `build` and `test` run with Cargo's stable `--message-format=json`, so each step also lists its compiler diagnostics (rustc and Clippy) as `{level, code, message, spans, rendered}`: the error code (`E0308`, `clippy::needless_return`), every source span (`file`, lines, columns, `primary`, `label`) and the full explanation as rustc prints it. Duplicates (Cargo replays cached messages) are dropped, errors come first, and at most 50 are kept per step (`omitted_diagnostics` counts the rest). `diagnostic_format` (currently `1`) versions this shape. Individual test results need unstable libtest options, so `test_results` is `aggregate`: a test step reports whether `cargo test` passed as a whole, and its output tail holds the test binaries' own output; nothing is parsed from terminal text.
 
 ## `showmigrations --json`
 

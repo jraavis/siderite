@@ -102,7 +102,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   durations and failures. Offline is default; required live checks are an
   explicit profile. No automatic formatting edits or migrations.
 
-- [ ] **X05 — Normalize compiler and test reports for agents.**
+- [x] **X05 — Normalize compiler and test reports for agents.**
   Depends: C02, X04. Scope: Cargo structured diagnostics and test reporting.
   Done: preserve error codes, source spans and rendered explanations with
   explicit format versions. Use a supported stable test-report mechanism;
