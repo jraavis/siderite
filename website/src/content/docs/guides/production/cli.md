@@ -176,11 +176,15 @@ build and stops the app. This restarts the process; it is not hot reload.
 
 ```bash
 siderite add serde --features derive   # cargo add for the app package
+siderite add --preset postgres         # enable PostgreSQL support
+siderite add --preset mysql --dry-run  # show the change only
 siderite remove serde
 ```
 
 Cargo makes every manifest edit, so `workspace = true` and path or git
-sources stay as they are.
+sources stay as they are. A preset only adds a feature to the existing
+`siderite-cli` dependency. `remove --preset` changes nothing and tells you
+which feature to delete by hand, so features you added yourself survive.
 
 ## Setup
 

@@ -237,8 +237,8 @@ pub const COMMANDS: &[Command] = &[
         ..cmd(
             "add",
             Group::App,
-            "add CRATE... [--dry-run]",
-            "cargo add for the app package",
+            "add CRATE... | add --preset postgres|mysql [--dry-run]",
+            "cargo add for the app package, or a preset",
         )
     },
     Command {
