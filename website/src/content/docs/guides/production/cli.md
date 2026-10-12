@@ -470,6 +470,20 @@ removed, deprecated and security notes this CLI carries for the target;
 without notes, compatibility is reported as unknown. It ends with the
 commands that verify the upgrade, including an OpenAPI comparison.
 
+## MCP server
+
+```bash
+cargo install siderite-cli --features mcp
+siderite mcp      # Model Context Protocol on stdin/stdout
+```
+
+An optional, read-only Model Context Protocol server for editors and
+assistants, built on the official Rust SDK. It offers tools only, never
+writes files or runs commands, and has no network listener. Messages are
+limited to 1 MiB, each call to 30 seconds and a 256 KiB result, cancelled
+calls stop, and closing stdin ends it. Stdout carries protocol messages
+only.
+
 ## Comparing OpenAPI documents
 
 ```bash

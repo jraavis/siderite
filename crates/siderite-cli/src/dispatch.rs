@@ -93,6 +93,9 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
     if command == "explain" {
         return crate::explain::run(raw);
     }
+    if command == "mcp" {
+        return mcp(raw).await;
+    }
     if command == "upgrade" {
         return crate::upgrade::run(raw, cwd, &project);
     }
@@ -281,6 +284,19 @@ App commands run in your binary through `cargo run`; `siderite commands
 --json` lists every command with what it needs and may change.
 "
     );
+}
+
+#[cfg(feature = "mcp")]
+async fn mcp(raw: &[String]) -> Result<u8, CliError> {
+    crate::mcp::run(raw).await
+}
+
+#[cfg(not(feature = "mcp"))]
+async fn mcp(_raw: &[String]) -> Result<u8, CliError> {
+    Err(CliError::usage(
+        "this siderite was built without MCP support; install it with \
+         `cargo install siderite-cli --features mcp`",
+    ))
 }
 
 #[cfg(test)]

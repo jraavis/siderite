@@ -34,6 +34,8 @@ mod explain;
 mod fixtures;
 mod fsio;
 mod generate;
+#[cfg(feature = "mcp")]
+mod mcp;
 mod openapi;
 mod package;
 mod project;

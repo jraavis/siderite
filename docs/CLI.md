@@ -149,7 +149,7 @@ Structured reports share one additive envelope, described by [`docs/schemas/cli-
 
 ## Command contract
 
-Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, usage, summary, where it runs (`tool`: the `siderite` binary; `app`: your binary through `cargo run`; `app_or_standalone`: your binary, or JSON migration files without a package; `cargo`: a Cargo subcommand with arguments forwarded unchanged), what it needs (`nothing`, `package`, `app`), what it may change (`project_files`, `output_file`, `database`, `build_artifacts`, `runs_code`, `toolchain`, `containers`; empty means read-only), whether it touches live services (`never`, `opt_in`, `always`) and its output formats (`text`, `json`, `markdown`, `document`). Dispatch, both help texts and `--json` validation read this table.
+Every command is declared once in `siderite_cli::commands::COMMANDS`: its name, usage, summary, where it runs (`tool`: the `siderite` binary; `app`: your binary through `cargo run`; `app_or_standalone`: your binary, or JSON migration files without a package; `cargo`: a Cargo subcommand with arguments forwarded unchanged), what it needs (`nothing`, `package`, `app`), what it may change (`project_files`, `output_file`, `database`, `build_artifacts`, `runs_code`, `toolchain`, `containers`; empty means read-only), whether it touches live services (`never`, `opt_in`, `always`) and its output formats (`text`, `json`, `markdown`, `document`, `mcp`). Dispatch, both help texts and `--json` validation read this table.
 
 `siderite commands` prints it as a table; `siderite commands --json` writes a `commands` envelope (`data.version` 1, `data.siderite`, `data.commands`) for AI clients and scripts, described by the report schema.
 
@@ -326,6 +326,16 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 - **Verification.** The report lists the steps in order: export the OpenAPI document before editing, edit, `siderite build` (updates `Cargo.lock`), `siderite verify`, `siderite makemigrations --dry-run`, export again and `siderite openapi diff`.
 
 A package with no framework dependency gets `upgrade.W003`. Warnings do not change the exit status (`0`). `--json` writes an `upgrade` envelope whose `data` is `{from, to, dry_run, dependencies, compatibility, verify}`.
+
+## `mcp`
+
+`siderite mcp` (built with the `mcp` feature: `cargo install siderite-cli --features mcp`) is a Model Context Protocol server on stdin and stdout for editors and assistants. Without the feature the command is a usage error that says how to get it, and nothing MCP-related is compiled in.
+
+- **Protocol.** The transport and negotiation come from the official Rust SDK (`rmcp` 3.5). A client's `initialize` gets the version it asked for when the SDK knows it (`2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`), otherwise the newest version the server supports. The server advertises the `tools` capability only: no resources, prompts, sampling or logging.
+- **Boundary.** Stdout carries protocol messages only; the server's own messages go to stderr and are redacted. There is no network listener, and no tool runs commands, writes files or connects to a database. Every tool is annotated read-only and non-destructive, but annotations are hints, not the security boundary: the tool table itself is fixed and read-only.
+- **Limits.** One message is at most 1 MiB; a longer line ends the session (exit `1`). Each tool call has 30 seconds and a 256 KiB JSON result; past either, the call returns a tool error rather than hanging or flooding the client. A call the client cancels (`notifications/cancelled`) is stopped and gets no answer. Malformed JSON and unknown methods are answered or ignored without ending the session.
+- **Shutdown.** Closing stdin ends the session with exit `0`.
+- **Tools.** `about` (the version this server describes and its limits).
 
 ## `openapi diff`
 

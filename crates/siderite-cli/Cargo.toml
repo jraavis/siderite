@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 notify.workspace = true
+rmcp = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -40,6 +41,8 @@ tracing.workspace = true
 [features]
 default = []
 postgres = ["siderite-backends/postgres"]
+# `siderite mcp`: a read-only Model Context Protocol server on stdio.
+mcp = ["dep:rmcp"]
 mysql = ["siderite-backends/mysql"]
 
 [[bin]]
