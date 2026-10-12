@@ -482,7 +482,9 @@ assistants, built on the official Rust SDK. It offers tools only, never
 writes files or runs commands, and has no network listener. Messages are
 limited to 1 MiB, each call to 30 seconds and a 256 KiB result, cancelled
 calls stop, and closing stdin ends it. Stdout carries protocol messages
-only.
+only. Its tools search this version's docs, explain diagnostic codes and
+list the commands, with the same results as `docs search --json`,
+`explain --json` and `commands --json`.
 
 `siderite mcp --app` also offers the selected application's summary,
 documented routes, models and OpenAPI document. The app is built and run

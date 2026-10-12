@@ -8,6 +8,10 @@
 
 
 ### Added
+- **CLI:** the MCP server offers `search_docs`, `explain_diagnostic` and
+  `list_commands`, returning exactly the versioned `docs search`,
+  `explain` and `commands` JSON reports, bounded in size and time like
+  every tool; running commands such as `verify` stays outside MCP.
 - **CLI:** `siderite mcp --app` offers `project_check` (the framework
   checks, presented as such rather than as lint), and
   `--live --database ALIAS` adds read-only `migration_status` for the
