@@ -327,6 +327,10 @@ siderite openapi export --output openapi.json --force  # replaces atomically
 
 A package with no framework dependency gets `upgrade.W003`. Warnings do not change the exit status (`0`). `--json` writes an `upgrade` envelope whose `data` is `{from, to, dry_run, dependencies, compatibility, verify}`.
 
+## The Cargo-free journey
+
+[JOURNEY.md](JOURNEY.md) lists the end-to-end developer journey that needs no direct Cargo command (setup, scaffold, dev, a resource, migrations, generated tests, AI context, verify, package), the test that runs it, and the remaining product gaps.
+
 ## `mcp`
 
 `siderite mcp` (built with the `mcp` feature: `cargo install siderite-cli --features mcp`) is a Model Context Protocol server on stdin and stdout for editors and assistants. Without the feature the command is a usage error that says how to get it, and nothing MCP-related is compiled in.

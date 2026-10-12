@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** an end-to-end acceptance test runs the whole developer journey
+  (setup, new, dev, a resource and its migration, generated tests, AI
+  context, verify, package) with `siderite` commands only; remaining gaps
+  are recorded in `docs/JOURNEY.md`. Model registration instructions now
+  print an expression that compiles as pasted into `src/main.rs`.
 - **CLI:** the MCP server offers `search_docs`, `explain_diagnostic` and
   `list_commands`, returning exactly the versioned `docs search`,
   `explain` and `commands` JSON reports, bounded in size and time like

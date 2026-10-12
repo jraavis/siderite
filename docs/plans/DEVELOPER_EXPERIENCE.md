@@ -206,7 +206,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   without writing files. Handle git/path/workspace sources explicitly; unknown
   compatibility is reported. Automatic source rewriting is separate scope.
 
-- [ ] **X20 — Verify the Cargo-free user journey.**
+- [x] **X20 — Verify the Cargo-free user journey.**
   Depends: X02, X04, X06, X10, X14, X17, D02, D10, A03.
   Scope: documented end-to-end acceptance fixture.
   Done: install CLI, diagnose prerequisites, scaffold, run dev, add a resource,
