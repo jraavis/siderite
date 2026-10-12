@@ -18,6 +18,8 @@ pub(crate) struct Limits {
     pub call_timeout: Duration,
     /// Largest tool result returned, in bytes of JSON.
     pub max_result: usize,
+    /// Longest a project tool may take, building the app included.
+    pub build_timeout: Duration,
 }
 
 impl Default for Limits {
@@ -26,6 +28,7 @@ impl Default for Limits {
             max_message: 1 << 20,
             call_timeout: Duration::from_secs(30),
             max_result: 256 << 10,
+            build_timeout: Duration::from_secs(600),
         }
     }
 }

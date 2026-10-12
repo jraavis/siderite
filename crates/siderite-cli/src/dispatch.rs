@@ -10,6 +10,8 @@ use crate::report::{Envelope, channel};
 use crate::scaffold;
 use crate::standalone;
 use crate::target::{self, ProjectArgs, Selected, split_project};
+
+type Code = Result<u8, CliError>;
 use std::env;
 use std::path::Path;
 
@@ -94,7 +96,7 @@ async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError>
         return crate::explain::run(raw);
     }
     if command == "mcp" {
-        return mcp(raw).await;
+        return mcp(raw, cwd, &project).await;
     }
     if command == "upgrade" {
         return crate::upgrade::run(raw, cwd, &project);
@@ -287,12 +289,12 @@ App commands run in your binary through `cargo run`; `siderite commands
 }
 
 #[cfg(feature = "mcp")]
-async fn mcp(raw: &[String]) -> Result<u8, CliError> {
-    crate::mcp::run(raw).await
+async fn mcp(raw: &[String], cwd: &Path, p: &ProjectArgs) -> Code {
+    crate::mcp::run(raw, cwd, p).await
 }
 
 #[cfg(not(feature = "mcp"))]
-async fn mcp(_raw: &[String]) -> Result<u8, CliError> {
+async fn mcp(_: &[String], _: &Path, _: &ProjectArgs) -> Code {
     Err(CliError::usage(
         "this siderite was built without MCP support; install it with \
          `cargo install siderite-cli --features mcp`",

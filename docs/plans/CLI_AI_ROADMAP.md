@@ -344,7 +344,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   messages, cancellation, size/time limits and shutdown. Stdout is protocol
   only; redact logs. No network listener or arbitrary shell/filesystem tool.
 
-- [ ] **A06 — Expose read-only metadata tools.**
+- [x] **A06 — Expose read-only metadata tools.**
   Depends: A02, A05. Scope: summary, documented routes, models and OpenAPI.
   Done: reuse typed reports via a bounded app bridge; identify stale snapshots;
   initialization alone does not execute a project build. Project execution

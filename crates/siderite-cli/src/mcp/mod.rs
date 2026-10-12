@@ -13,20 +13,25 @@
 
 use crate::error::CliError;
 
+pub(crate) mod bridge;
 pub(crate) mod limits;
 pub(crate) mod server;
 #[cfg(test)]
 mod tests;
 pub(crate) mod tools;
 
+use bridge::Bridge;
 use limits::{Limits, LineLimit};
 use rmcp::ServiceExt;
 use server::Server;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// The server with the standard tools and limits.
-pub(crate) fn standard() -> Server {
-    Server::new(tools::all(), Limits::default())
+/// The server with the standard tools and limits; the project tools
+/// only for an `app`.
+pub(crate) fn standard(app: Option<Arc<Bridge>>) -> Server {
+    let limits = Limits::default();
+    Server::new(tools::all(app, limits), limits)
 }
 
 /// Serve `server` over `input` and `output` until the client closes the
@@ -62,17 +67,37 @@ fn failed(why: &str) -> CliError {
     CliError::Io(format!("mcp session ended: {why}"))
 }
 
-/// `siderite mcp`.
+const USAGE: &str = "usage: mcp [--app]";
+
+/// `siderite mcp [--app]` from `cwd`: with `--app`, the selected
+/// application package (project flags apply) answers the project tools.
 ///
 /// Errors:
-///   A usage error for any argument, or a session that fails.
-pub(crate) async fn run(raw: &[String]) -> Result<u8, CliError> {
-    let rest = raw.iter().skip_while(|a| *a != "mcp").skip(1);
-    if let Some(arg) = rest.into_iter().next() {
-        let msg = format!("unexpected argument `{arg}`; usage: mcp");
-        return Err(CliError::usage(msg));
+///   A usage error for another argument or no application to select,
+///   or a session that fails.
+pub(crate) async fn run(
+    raw: &[String],
+    cwd: &std::path::Path,
+    project: &crate::target::ProjectArgs,
+) -> Result<u8, CliError> {
+    let mut app = false;
+    for arg in raw.iter().skip_while(|a| *a != "mcp").skip(1) {
+        if arg != "--app" {
+            let msg = format!("unexpected argument `{arg}`; {USAGE}");
+            return Err(CliError::usage(msg));
+        }
+        app = true;
     }
+    let bridge = if app {
+        let found = crate::target::locate("cargo", cwd, project, true)?;
+        let missing = || CliError::usage("--app needs an application package");
+        let found = found.ok_or_else(missing)?;
+        let bin = found.bin.or(found.default_run);
+        Some(Arc::new(Bridge::new(found.dir, bin)))
+    } else {
+        None
+    };
     let (input, output) = (tokio::io::stdin(), tokio::io::stdout());
-    serve(standard(), input, output, Limits::default()).await?;
+    serve(standard(bridge), input, output, Limits::default()).await?;
     Ok(0)
 }

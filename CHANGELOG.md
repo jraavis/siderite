@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite mcp --app` adds read-only project tools (summary,
+  documented routes, models, OpenAPI) answered by the selected
+  application's own `ai dump-context`, built only on first use, cached
+  against the project's files and labelled `cached`, `rebuilt` or
+  `stale`; the app's output never reaches the protocol stream.
 - **CLI:** `siderite mcp` (behind the optional `mcp` feature) serves
   read-only Model Context Protocol tools on stdio through the official
   Rust SDK: protocol-only stdout, no listener or command tools, bounded

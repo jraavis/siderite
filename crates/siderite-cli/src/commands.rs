@@ -389,7 +389,7 @@ pub const COMMANDS: &[Command] = &[
         ..cmd(
             "mcp",
             Group::Ai,
-            "mcp",
+            "mcp [--app]",
             "Read-only MCP tools on stdio (`mcp` feature)",
         )
     },
