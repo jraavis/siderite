@@ -126,6 +126,21 @@ jobs:
       - if: always()
         run: rm -rf target/tests
 
+  # The Cargo-free developer journey (docs/JOURNEY.md), end to end.
+  journey:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo test -p siderite-cli --test journey --test package_release
+          --test templates_verify -- --ignored
+      - if: always()
+        run: rm -rf target/tests
+
   msrv:
     runs-on: ubuntu-latest
     steps:

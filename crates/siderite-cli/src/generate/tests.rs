@@ -200,9 +200,13 @@ mod model_generator {
         let options = parse(&words(&["book"])).unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/lib.rs"), "").unwrap();
+        let toml = "[package]\nname = \"my-shop\"\n";
+        std::fs::write(dir.join("Cargo.toml"), toml).unwrap();
         let text = instructions(dir, &options);
         assert!(text.contains("pub mod book; }` to src/lib.rs"), "{text}");
-        assert!(text.contains("`models::book::Book::META`"), "{text}");
+        let meta = "`<my_shop::models::book::Book as siderite::orm::Model>\
+                    ::META`";
+        assert!(text.contains(meta), "{text}");
         assert!(text.contains("siderite makemigrations"), "{text}");
     }
 }
@@ -243,7 +247,8 @@ mod resource_generator {
     fn instructions_cover_model_and_routes() {
         let scratch = ScratchDir::new("resource-steps");
         let text = instructions(scratch.path(), &options());
-        assert!(text.contains("`models::book::Book::META`"), "{text}");
+        let meta = "`<models::book::Book as siderite::orm::Model>::META`";
+        assert!(text.contains(meta), "{text}");
         assert!(text.contains(".routes(routes::book::routes())"), "{text}");
         assert!(text.contains("siderite migrate"), "{text}");
     }

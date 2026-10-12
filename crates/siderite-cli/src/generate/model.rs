@@ -176,6 +176,35 @@ pub struct {ty} {{
 }
 
 /// The registration steps, which siderite leaves to the user.
+/// The `META` expression for `path` (`models::book::Book`) as written in
+/// `src/main.rs`, where `AppCli` is built: through the library crate when
+/// there is one, and with the `Model` trait named, so it compiles as
+/// pasted.
+fn meta(dir: &Path, path: &str) -> String {
+    let lib = dir.join("src/lib.rs").is_file();
+    let krate = package_name(dir).filter(|_| lib);
+    let full = match krate {
+        Some(krate) => format!("{}::{path}", krate.replace('-', "_")),
+        None => path.to_owned(),
+    };
+    format!("<{full} as siderite::orm::Model>::META")
+}
+
+/// `name` of the package's `[package]` table.
+fn package_name(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("Cargo.toml")).ok()?;
+    let mut in_package = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package && let Some(rest) = line.strip_prefix("name") {
+            let value = rest.trim_start().strip_prefix('=')?.trim();
+            return Some(value.trim_matches('"').to_owned());
+        }
+    }
+    None
+}
+
 pub(crate) fn instructions(dir: &Path, options: &ModelOptions) -> String {
     let name = &options.name;
     let ty = pascal(name);
@@ -194,7 +223,7 @@ pub(crate) fn instructions(dir: &Path, options: &ModelOptions) -> String {
             format!("add `{module}` to {root}")
         }
     };
-    let meta = format!("models::{name}::{ty}::META");
+    let meta = meta(dir, &format!("models::{name}::{ty}"));
     format!(
         "Register it (siderite does not edit your code):\n  1. {declare}\n  \
          2. add `{meta}` to `AppCli::models(&[...])`\n\
