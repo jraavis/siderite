@@ -106,7 +106,7 @@ impl Session {
 
 #[tokio::test]
 async fn initialization_capabilities_and_tools() {
-    let mut s = Session::start(standard(), Limits::default());
+    let mut s = Session::start(standard(None), Limits::default());
     let init = s.initialize("2025-11-25").await;
     let result = &init["result"];
     assert_eq!(result["protocolVersion"], "2025-11-25");
@@ -136,7 +136,7 @@ async fn versions_are_negotiated() {
         ("2025-06-18", Some("2025-06-18")),
         ("1999-01-01", None),
     ] {
-        let mut s = Session::start(standard(), Limits::default());
+        let mut s = Session::start(standard(None), Limits::default());
         let init = s.initialize(asked).await;
         let version = init["result"]["protocolVersion"].as_str().unwrap();
         match answered {
@@ -150,7 +150,7 @@ async fn versions_are_negotiated() {
 
 #[tokio::test]
 async fn malformed_messages_do_not_end_the_session() {
-    let mut s = Session::start(standard(), Limits::default());
+    let mut s = Session::start(standard(None), Limits::default());
     s.initialize("2025-11-25").await;
     s.raw("{not json").await;
     s.raw("[]").await;
@@ -169,7 +169,7 @@ async fn an_oversized_message_ends_the_session() {
         max_message: 512,
         ..Limits::default()
     };
-    let mut s = Session::start(standard(), limits);
+    let mut s = Session::start(standard(None), limits);
     s.initialize("2025-11-25").await;
     let big = "x".repeat(4096);
     s.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": big }))
@@ -239,4 +239,109 @@ async fn a_cancelled_call_gets_no_answer() {
     }
     // Closing stdin ends the session cleanly, the cancelled call included.
     s.close().await.unwrap();
+}
+
+mod project {
+    use super::*;
+    use crate::fixtures::ScratchDir;
+    use crate::mcp::bridge::{Bridge, fingerprint};
+    use std::sync::Arc;
+
+    /// A `cargo` that writes a fixed context as the app would, prints
+    /// noise to stdout, and counts its runs.
+    #[cfg(unix)]
+    fn fake_cargo(dir: &std::path::Path) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let context = json!({ "data": {
+            "snapshot": {
+                "framework": { "name": "siderite", "version": "9.9.9" },
+                "app": { "title": "Shop" },
+                "routes": [{ "method": "GET", "path": "/items" }],
+                "models": [],
+                "openapi": { "openapi": "3.1.0" },
+            },
+            "migrations": { "state": "unknown" },
+        }});
+        let script = format!(
+            "#!/bin/sh\necho run >> '{}/runs'\necho 'factory noise'\n\
+             printf '%s' '{context}' > \"$SIDERITE_REPORT_PATH\"\n",
+            dir.display()
+        );
+        let path = dir.join("cargo");
+        std::fs::write(&path, script).unwrap();
+        let mode = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&path, mode).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn project_tools_build_once_and_rebuild_after_changes() {
+        let tools = ScratchDir::new("mcp-cargo");
+        let app = ScratchDir::new("mcp-app");
+        std::fs::create_dir(app.path().join("src")).unwrap();
+        let main = app.path().join("src/main.rs");
+        std::fs::write(&main, "fn main() {}").unwrap();
+        let cargo = fake_cargo(tools.path());
+        let bridge = Bridge::new(app.path().to_path_buf(), None);
+        let bridge = Arc::new(bridge.with_cargo(cargo));
+        let server = standard(Some(bridge));
+        let mut s = Session::start(server, Limits::default());
+        s.initialize("2025-11-25").await;
+        s.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
+            .await;
+        let list = s.response(&json!(1)).await;
+        let names: Vec<&str> = list["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        let want = [
+            "about",
+            "project_summary",
+            "project_routes",
+            "project_models",
+            "project_openapi",
+        ];
+        assert_eq!(names, want);
+        let routes = s.call(2, "project_routes").await;
+        let routes = &routes["result"]["structuredContent"];
+        assert_eq!(routes["snapshot"], "rebuilt", "{routes}");
+        assert_eq!(routes["data"][0]["path"], "/items");
+        let summary = s.call(3, "project_summary").await;
+        let summary = &summary["result"]["structuredContent"];
+        assert_eq!(summary["snapshot"], "cached");
+        assert_eq!(summary["data"]["routes"], 1);
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::write(&main, "fn main() { () }").unwrap();
+        let again = s.call(4, "project_openapi").await;
+        let again = &again["result"]["structuredContent"];
+        assert_eq!(again["snapshot"], "rebuilt");
+        let runs = std::fs::read_to_string(tools.path().join("runs"));
+        assert_eq!(runs.unwrap().lines().count(), 2);
+        s.close().await.unwrap();
+    }
+
+    #[test]
+    fn the_fingerprint_follows_sources_and_ignores_build_output() {
+        let app = ScratchDir::new("mcp-print");
+        std::fs::create_dir_all(app.path().join("target/debug")).unwrap();
+        std::fs::write(app.path().join("Cargo.toml"), "[package]").unwrap();
+        let first = fingerprint(app.path());
+        let build = app.path().join("target/debug/out");
+        std::fs::write(build, "binary").unwrap();
+        assert_eq!(fingerprint(app.path()), first);
+        std::fs::write(app.path().join("Cargo.toml"), "[package]\n").unwrap();
+        assert_ne!(fingerprint(app.path()), first);
+    }
+
+    #[tokio::test]
+    async fn without_an_app_there_are_no_project_tools() {
+        let mut s = Session::start(standard(None), Limits::default());
+        s.initialize("2025-11-25").await;
+        let call = s.call(1, "project_routes").await;
+        assert_eq!(call["error"]["code"], -32602, "{call}");
+        s.close().await.unwrap();
+    }
 }

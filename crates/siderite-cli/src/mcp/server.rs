@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// What a tool returns: a JSON value, or a message for the client.
 pub(crate) type Outcome = Result<Value, String>;
@@ -33,6 +34,8 @@ pub(crate) struct ToolSpec {
     pub description: &'static str,
     /// The JSON Schema of its arguments (an object schema).
     pub input: Value,
+    /// Its own time bound, instead of the server's call timeout.
+    pub timeout: Option<Duration>,
     run: Run,
 }
 
@@ -53,8 +56,16 @@ impl ToolSpec {
             name,
             description,
             input,
+            timeout: None,
             run,
         }
+    }
+
+    /// The same tool, bounded by `timeout` instead of the call timeout.
+    #[must_use]
+    pub(crate) fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
     }
 
     fn describe(&self) -> Tool {
@@ -91,7 +102,7 @@ impl Server {
 
     /// Run `tool` with `args`, bounded in time and result size.
     async fn bounded(&self, tool: &ToolSpec, args: Args) -> CallToolResult {
-        let timeout = self.limits.call_timeout;
+        let timeout = tool.timeout.unwrap_or(self.limits.call_timeout);
         let outcome = tokio::time::timeout(timeout, (tool.run)(args)).await;
         let value = match outcome {
             Ok(Ok(value)) => value,

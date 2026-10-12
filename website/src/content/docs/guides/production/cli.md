@@ -484,6 +484,12 @@ limited to 1 MiB, each call to 30 seconds and a 256 KiB result, cancelled
 calls stop, and closing stdin ends it. Stdout carries protocol messages
 only.
 
+`siderite mcp --app` also offers the selected application's summary,
+documented routes, models and OpenAPI document. The app is built and run
+only when one of these tools is first called; answers are cached until
+the project's files change and say whether they are `cached`, `rebuilt`
+or `stale`.
+
 ## Comparing OpenAPI documents
 
 ```bash
