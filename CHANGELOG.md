@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite mcp` (behind the optional `mcp` feature) serves
+  read-only Model Context Protocol tools on stdio through the official
+  Rust SDK: protocol-only stdout, no listener or command tools, bounded
+  message size, call time and result size, cancellation, and clean
+  shutdown on end of input.
 - **CLI:** `siderite ai init --link FILE` keeps a small managed block in
   an instruction file you name (such as `AGENTS.md`) pointing at
   `.siderite/context.md`. Only named files are touched, text outside the

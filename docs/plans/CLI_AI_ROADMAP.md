@@ -337,7 +337,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   no default replacement or hierarchy-changing instructions; repeated runs
   are idempotent and conflicting blocks stop with a useful diagnostic.
 
-- [ ] **A05 — Specify and test the MCP transport boundary.**
+- [x] **A05 — Specify and test the MCP transport boundary.**
   Depends: A01. Scope: optional feature/dependency and supported protocol.
   Done: verify official protocol/SDK compatibility at implementation time;
   fixtures cover initialization, version negotiation, capabilities, malformed

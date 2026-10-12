@@ -90,6 +90,8 @@ pub enum Format {
     Markdown,
     /// A raw document (the OpenAPI JSON).
     Document,
+    /// Model Context Protocol messages on stdin and stdout.
+    Mcp,
 }
 
 /// Help section of a command.
@@ -378,6 +380,17 @@ pub const COMMANDS: &[Command] = &[
             Group::App,
             "openapi export [--output PATH] [--force]",
             "Write the OpenAPI document (stdout or PATH)",
+        )
+    },
+    Command {
+        runner: Runner::Tool,
+        needs: Needs::Nothing,
+        formats: &[Format::Mcp],
+        ..cmd(
+            "mcp",
+            Group::Ai,
+            "mcp",
+            "Read-only MCP tools on stdio (`mcp` feature)",
         )
     },
     Command {

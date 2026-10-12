@@ -1006,7 +1006,7 @@
               "live": { "enum": ["never", "opt_in", "always"] },
               "formats": {
                 "type": "array",
-                "items": { "enum": ["text", "json", "markdown", "document"] }
+                "items": { "enum": ["text", "json", "markdown", "document", "mcp"] }
               }
             }
           }
