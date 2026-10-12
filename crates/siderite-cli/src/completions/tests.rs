@@ -84,7 +84,8 @@ fn every_shell_completes_commands_subcommands_and_flags() {
             "{shell}"
         );
         let init = offered(shell, &script, "siderite ai init --");
-        assert_eq!(init, ["--check", "--dry-run", "--force"], "{shell}");
+        let want = ["--check", "--dry-run", "--force", "--link"];
+        assert_eq!(init, want, "{shell}");
         let export = offered(
             shell,
             &script,

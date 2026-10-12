@@ -364,7 +364,11 @@ commands, conventions, this project's models and routes, and examples
 compiled against your siderite version. Rerun it after changes (`--check`
 tells CI when it is stale). Only the block between its markers is
 generated; your notes around it are kept, and a hand-edited block is
-left alone unless you pass `--force`.
+left alone unless you pass `--force`. `--link AGENTS.md` (or any
+instruction file, relative to the repository root) adds a short block
+there pointing at the context file; nothing else in that file changes,
+reruns are idempotent, and a file with broken or repeated blocks stops
+with `ai.E002`.
 
 `ai dump-context` describes the app from its compiled metadata: framework
 version, database aliases and backend kinds (never URLs), models and

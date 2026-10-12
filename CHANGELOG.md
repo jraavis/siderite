@@ -8,6 +8,11 @@
 
 
 ### Added
+- **CLI:** `siderite ai init --link FILE` keeps a small managed block in
+  an instruction file you name (such as `AGENTS.md`) pointing at
+  `.siderite/context.md`. Only named files are touched, text outside the
+  block is kept byte for byte, reruns are idempotent, and broken or
+  repeated blocks stop with `ai.E002`.
 - **CLI:** `siderite upgrade --to VERSION --dry-run` previews a framework
   upgrade without writing files: per-dependency changes for registry, git,
   path and workspace-inherited sources, semver compatibility, the

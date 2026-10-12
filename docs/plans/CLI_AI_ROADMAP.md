@@ -331,7 +331,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   Done: examples compile; reruns detect stale versions and show a diff;
   preserve user edits. Do not copy entire source trees or fetch external text.
 
-- [ ] **A04 — Add optional editor instruction links.**
+- [x] **A04 — Add optional editor instruction links.**
   Depends: A03. Scope: explicit AGENTS/CLAUDE/editor integration options.
   Done: preserve existing content byte-for-byte outside a managed block;
   no default replacement or hierarchy-changing instructions; repeated runs
