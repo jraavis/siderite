@@ -507,7 +507,7 @@ pub const COMMANDS: &[Command] = &[
         ..cmd(
             "ai init",
             Group::Ai,
-            "ai init [--check] [--dry-run] [--force]",
+            "ai init [--check] [--dry-run] [--force] [--link FILE]",
             "Write or refresh .siderite/context.md",
         )
     },

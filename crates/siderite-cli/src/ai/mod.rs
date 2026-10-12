@@ -9,6 +9,7 @@
 
 mod files;
 pub(crate) mod init;
+mod links;
 mod markdown;
 pub(crate) mod task;
 pub(crate) mod validate;

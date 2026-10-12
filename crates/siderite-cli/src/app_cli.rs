@@ -483,7 +483,7 @@ impl AppCli {
         let snap = snapshot::snapshot(&app, models, &self.settings, limits);
         let dir = std::env::current_dir()
             .map_err(|err| CliError::Io(format!("cannot read cwd: {err}")))?;
-        init::run(&dir, &snap.data, options)
+        init::run(&dir, &snap.data, &options)
     }
 
     /// `json` is the environment of a `--json` run, `None` for text.

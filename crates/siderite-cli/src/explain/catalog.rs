@@ -65,6 +65,18 @@ pub(crate) const CATALOG: &[Explanation] = &[
         "guides/production/cli#ai-context",
     ),
     entry(
+        "ai.E002",
+        "Instruction file markers cannot be updated",
+        [
+            "A file named with `ai init --link` has more than one \
+             siderite link block, or a begin marker without its end.",
+            "Leave exactly one block (or none) in the file; text outside \
+             the markers is never changed.",
+        ],
+        "siderite ai init --check --link FILE",
+        "guides/production/cli#ai-context",
+    ),
+    entry(
         "backend.E001",
         "Models on a key/value store",
         [

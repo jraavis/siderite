@@ -11,7 +11,7 @@
 //! block was edited by hand (left alone unless `--force`). Nothing is
 //! fetched from the network and no source files are copied.
 
-use super::markdown;
+use super::{links, markdown};
 use crate::error::CliError;
 use crate::generate::diff::unified;
 use crate::generate::{Plan, preview, summary};
@@ -45,6 +45,15 @@ pub(crate) struct InitOptions {
     pub force: bool,
 }
 
+/// `ai init` arguments: the flags and the `--link` files.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Init {
+    /// The flags.
+    pub options: InitOptions,
+    /// Instruction files to link, relative to the repository root.
+    pub links: Vec<String>,
+}
+
 /// The state of the context file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum State {
@@ -62,23 +71,30 @@ pub(crate) enum State {
 ///
 /// Errors:
 ///   A usage error for anything else.
-pub(crate) fn parse(rest: &[String]) -> Result<InitOptions, CliError> {
-    let mut options = InitOptions::default();
-    for arg in &rest[2..] {
+pub(crate) fn parse(rest: &[String]) -> Result<Init, CliError> {
+    let mut init = Init::default();
+    let options = &mut init.options;
+    let mut args = rest[2..].iter();
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--check" => options.check = true,
             "--dry-run" => options.dry_run = true,
             "--force" => options.force = true,
-            other => {
-                let msg = format!(
-                    "unexpected argument `{other}`; usage: ai init \
-                     [--check] [--dry-run] [--force]"
-                );
-                return Err(CliError::usage(msg));
+            "--link" => {
+                let file = args.next().ok_or_else(|| usage(arg))?;
+                init.links.push(links::checked(file)?);
             }
+            other => return Err(usage(other)),
         }
     }
-    Ok(options)
+    Ok(init)
+}
+
+fn usage(arg: &str) -> CliError {
+    CliError::usage(format!(
+        "unexpected argument `{arg}`; usage: ai init [--check] \
+         [--dry-run] [--force] [--link FILE]..."
+    ))
 }
 
 /// Create or refresh the context file under `dir` for `snap`.
@@ -90,7 +106,8 @@ pub(crate) fn parse(rest: &[String]) -> Result<InitOptions, CliError> {
 /// Errors:
 ///   [`CliError::Conflict`] when the file is not ours or its block was
 ///   edited (without `--force`), or a write error.
-pub(crate) fn run(dir: &Path, snap: &Snapshot, o: InitOptions) -> Code {
+pub(crate) fn run(dir: &Path, snap: &Snapshot, init: &Init) -> Code {
+    let o = init.options;
     let body = block(snap);
     let existing = std::fs::read_to_string(dir.join(PATH)).ok();
     let parts = existing.as_deref().map(split).transpose()?;
@@ -110,17 +127,57 @@ pub(crate) fn run(dir: &Path, snap: &Snapshot, o: InitOptions) -> Code {
     }
     let mut plan = Plan::new(dir);
     plan.add_owned(PATH, text)?;
+    let (links, stale_links) = link_plan(dir, &init.links)?;
     report(&state);
     if o.check {
-        return Ok(u8::from(state != State::Current));
+        let stale = state != State::Current || stale_links;
+        return Ok(u8::from(stale));
     }
     if o.dry_run {
         print!("{}", preview(&plan.check()?));
+        print!("{}", preview(&links.check()?));
         return Ok(0);
     }
-    let changes = plan.apply()?;
+    let mut changes = plan.apply()?;
+    changes.extend(links.apply()?);
     print!("{}", summary(&changes));
     Ok(0)
+}
+
+/// The link blocks for `files` (relative to the repository root), and
+/// whether any of them would change.
+///
+/// Errors:
+///   `ai.E002` for a file whose markers cannot be updated safely.
+fn link_plan(dir: &Path, files: &[String]) -> Result<(Plan, bool), CliError> {
+    let repo = crate::generate::ci::repository(dir);
+    let canonical = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.into());
+    let package = canonical(dir);
+    let rel = package
+        .strip_prefix(canonical(&repo))
+        .unwrap_or(Path::new(""));
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    let context = if rel.is_empty() {
+        PATH.to_owned()
+    } else {
+        format!("{rel}/{PATH}")
+    };
+    let mut plan = Plan::new(&repo);
+    let mut stale = false;
+    for file in files {
+        let existing = std::fs::read_to_string(repo.join(file)).ok();
+        let block = links::block(file, &context);
+        let merged = links::merge(file, existing.as_deref(), &block)?;
+        stale |= existing.as_deref() != Some(merged.as_str());
+        let state = if stale {
+            "will be updated"
+        } else {
+            "up to date"
+        };
+        eprintln!("{file}: link {state}");
+        plan.add_owned(file, merged)?;
+    }
+    Ok((plan, stale))
 }
 
 const NOTES: &str = "\
