@@ -29,7 +29,7 @@ use std::sync::atomic::Ordering;
 
 /// The server with the standard tools and limits; the project tools
 /// only for an `app`.
-pub(crate) fn standard(app: Option<Arc<Bridge>>) -> Server {
+pub(crate) fn standard(app: Option<&tools::App>) -> Server {
     let limits = Limits::default();
     Server::new(tools::all(app, limits), limits)
 }
@@ -67,7 +67,50 @@ fn failed(why: &str) -> CliError {
     CliError::Io(format!("mcp session ended: {why}"))
 }
 
-const USAGE: &str = "usage: mcp [--app]";
+const USAGE: &str = "usage: mcp [--app [--live --database ALIAS...]]";
+
+/// Parsed `mcp` arguments.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Options {
+    /// `--app`: run the selected application for project tools.
+    pub app: bool,
+    /// `--live` with its `--database` aliases.
+    pub live: Vec<String>,
+}
+
+/// Parse the arguments after `mcp`.
+///
+/// Errors:
+///   A usage error for an unknown argument, `--live` without `--app` or
+///   without an alias, or an alias without `--live`.
+pub(crate) fn parse(raw: &[String]) -> Result<Options, CliError> {
+    let mut options = Options::default();
+    let (mut live, mut aliases) = (false, Vec::new());
+    let mut args = raw.iter().skip_while(|a| *a != "mcp").skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--app" => options.app = true,
+            "--live" => live = true,
+            "--database" => {
+                let usage = || CliError::usage(USAGE);
+                aliases.push(args.next().ok_or_else(usage)?.clone());
+            }
+            other => {
+                let msg = format!("unexpected argument `{other}`; {USAGE}");
+                return Err(CliError::usage(msg));
+            }
+        }
+    }
+    if live != !aliases.is_empty() || (live && !options.app) {
+        let msg = format!(
+            "live tools need --app, --live and at least one --database \
+             ALIAS together; {USAGE}"
+        );
+        return Err(CliError::usage(msg));
+    }
+    options.live = aliases;
+    Ok(options)
+}
 
 /// `siderite mcp [--app]` from `cwd`: with `--app`, the selected
 /// application package (project flags apply) answers the project tools.
@@ -80,24 +123,22 @@ pub(crate) async fn run(
     cwd: &std::path::Path,
     project: &crate::target::ProjectArgs,
 ) -> Result<u8, CliError> {
-    let mut app = false;
-    for arg in raw.iter().skip_while(|a| *a != "mcp").skip(1) {
-        if arg != "--app" {
-            let msg = format!("unexpected argument `{arg}`; {USAGE}");
-            return Err(CliError::usage(msg));
-        }
-        app = true;
-    }
-    let bridge = if app {
+    let options = parse(raw)?;
+    let app = if options.app {
         let found = crate::target::locate("cargo", cwd, project, true)?;
         let missing = || CliError::usage("--app needs an application package");
         let found = found.ok_or_else(missing)?;
         let bin = found.bin.or(found.default_run);
-        Some(Arc::new(Bridge::new(found.dir, bin)))
+        let bridge = Arc::new(Bridge::new(found.dir, bin));
+        Some(tools::App {
+            bridge,
+            live: options.live,
+        })
     } else {
         None
     };
     let (input, output) = (tokio::io::stdin(), tokio::io::stdout());
-    serve(standard(bridge), input, output, Limits::default()).await?;
+    let server = standard(app.as_ref());
+    serve(server, input, output, Limits::default()).await?;
     Ok(0)
 }

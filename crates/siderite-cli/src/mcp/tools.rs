@@ -6,14 +6,83 @@ use super::server::{Outcome, ToolSpec};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// The application the server may run, and the database aliases its
+/// live tools may read.
+pub(crate) struct App {
+    /// The selected application.
+    pub bridge: Arc<Bridge>,
+    /// Aliases named with `--live --database ALIAS`; empty without
+    /// `--live`.
+    pub live: Vec<String>,
+}
+
 /// Every tool, in the order clients list them: the project tools only
-/// when an application was selected (`--app`).
-pub(crate) fn all(app: Option<Arc<Bridge>>, limits: Limits) -> Vec<ToolSpec> {
+/// when an application was selected (`--app`), the live tool only for
+/// aliases named with `--live`. None applies migrations or writes code.
+pub(crate) fn all(app: Option<&App>, limits: Limits) -> Vec<ToolSpec> {
     let mut tools = vec![about()];
-    if let Some(bridge) = app {
-        tools.extend(project(&bridge, limits));
+    if let Some(app) = app {
+        tools.extend(project(&app.bridge, limits));
+        tools.push(check(&app.bridge, limits));
+        if !app.live.is_empty() {
+            tools.push(status(app, limits));
+        }
     }
     tools
+}
+
+/// `project_check`: the framework checks of `siderite check`.
+fn check(bridge: &Arc<Bridge>, limits: Limits) -> ToolSpec {
+    let input = json!({ "type": "object", "properties": {} });
+    let bridge = Arc::clone(bridge);
+    let run = move |_| {
+        let bridge = Arc::clone(&bridge);
+        async move {
+            let report = bridge.report(&["--json", "check"]).await?;
+            Ok(json!({
+                "ok": report["ok"],
+                "summary": report["data"],
+                "diagnostics": report["diagnostics"],
+            }))
+        }
+    };
+    let description = "siderite's framework checks (models, migrations, \
+         routes, OpenAPI, backend), as `siderite check` runs them. These \
+         are not Rust lints: `siderite lint` (Clippy) is separate.";
+    let tool = ToolSpec::new("project_check", description, input, run);
+    tool.with_timeout(limits.build_timeout)
+}
+
+/// `migration_status`: applied and pending migrations of one of the
+/// aliases the server was started with, read from the live database.
+fn status(app: &App, limits: Limits) -> ToolSpec {
+    let aliases = app.live.clone();
+    let input = json!({
+        "type": "object",
+        "properties": { "database": { "type": "string", "enum": aliases } },
+        "required": ["database"],
+    });
+    let bridge = Arc::clone(&app.bridge);
+    let run = move |args: rmcp::model::JsonObject| {
+        let bridge = Arc::clone(&bridge);
+        let aliases = aliases.clone();
+        async move {
+            let alias = args.get("database").and_then(Value::as_str);
+            let alias = alias.filter(|a| aliases.iter().any(|x| x == a));
+            let Some(alias) = alias else {
+                let allowed = aliases.join(", ");
+                return Err(format!("`database` must be one of: {allowed}"));
+            };
+            let args = ["--database", alias, "--json", "showmigrations"];
+            let report = bridge.report(&args).await?;
+            Ok(json!({ "database": alias, "report": report }))
+        }
+    };
+    let description = "Applied and pending migrations of a database alias \
+         the server was started with (`--live --database`), read from the \
+         live database. It never applies or rolls back migrations.";
+    let tool = ToolSpec::new("migration_status", description, input, run);
+    tool.with_timeout(limits.build_timeout)
 }
 
 /// What each project tool returns from the app's context.

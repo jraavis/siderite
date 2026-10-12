@@ -96,6 +96,19 @@ impl Bridge {
     }
 
     async fn dump(&self) -> Result<Value, String> {
+        let args = ["ai", "dump-context", "--format", "json"];
+        let envelope = self.report(&args).await?;
+        envelope
+            .get("data")
+            .cloned()
+            .ok_or_else(|| "the app's report has no data".to_owned())
+    }
+
+    /// Run the app with `args` and return the JSON report it writes.
+    ///
+    /// Errors:
+    ///   Why the app wrote no report (build failure, crash).
+    pub(crate) async fn report(&self, args: &[&str]) -> Result<Value, String> {
         let report = ReportFile::new().map_err(|e| e.to_string())?;
         let mut command = tokio::process::Command::new(&self.cargo);
         command.arg("run").arg("--quiet").current_dir(&self.dir);
@@ -103,7 +116,8 @@ impl Bridge {
             command.arg("--bin").arg(bin);
         }
         command
-            .args(["--", "ai", "dump-context", "--format", "json"])
+            .arg("--")
+            .args(args)
             .env(REPORT_PATH_ENV, report.path())
             .stdin(Stdio::null())
             .stdout(Stdio::from(std::io::stderr()))
@@ -113,16 +127,12 @@ impl Bridge {
         let status = status.map_err(|e| format!("cannot run cargo: {e}"))?;
         let Some(text) = report.read(true) else {
             return Err(format!(
-                "the app exited with {status} without its metadata (build \
+                "the app exited with {status} without its report (build \
                  errors are on the server's stderr)"
             ));
         };
         let envelope = serde_json::from_str::<Value>(&text);
-        let envelope = envelope.map_err(|e| e.to_string())?;
-        envelope
-            .get("data")
-            .cloned()
-            .ok_or_else(|| "the app's report has no data".to_owned())
+        envelope.map_err(|e| e.to_string())
     }
 }
 
