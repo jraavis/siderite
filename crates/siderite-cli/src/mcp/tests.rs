@@ -118,9 +118,19 @@ async fn initialization_capabilities_and_tools() {
     s.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
         .await;
     let list = s.response(&json!(1)).await;
-    let tool = &list["result"]["tools"][0];
-    assert_eq!(tool["name"], "about");
-    assert_eq!(tool["annotations"]["readOnlyHint"], true);
+    let tools = list["result"]["tools"].as_array().unwrap();
+    let names = tools.iter().filter_map(|t| t["name"].as_str());
+    let names: Vec<&str> = names.collect();
+    let want = [
+        "about",
+        "search_docs",
+        "explain_diagnostic",
+        "list_commands",
+    ];
+    assert_eq!(names, want);
+    for tool in tools {
+        assert_eq!(tool["annotations"]["readOnlyHint"], true, "{tool}");
+    }
     let about = s.call(2, "about").await;
     let content = &about["result"]["structuredContent"];
     assert_eq!(content["siderite"], env!("CARGO_PKG_VERSION"));
@@ -303,6 +313,9 @@ mod project {
             .collect();
         let want = [
             "about",
+            "search_docs",
+            "explain_diagnostic",
+            "list_commands",
             "project_summary",
             "project_routes",
             "project_models",
@@ -500,5 +513,67 @@ mod checks_and_live {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         panic!("timed out waiting");
+    }
+}
+
+mod docs_and_diagnostics {
+    use super::*;
+
+    async fn call_with(s: &mut Session, id: u64, t: &str, a: Value) -> Value {
+        s.send(&json!({
+            "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": t, "arguments": a }
+        }))
+        .await;
+        let answer = s.response(&json!(id)).await;
+        answer["result"].clone()
+    }
+
+    #[tokio::test]
+    async fn results_match_the_cli_reports() {
+        let mut s = Session::start(standard(None), Limits::default());
+        s.initialize("2025-11-25").await;
+        let args = json!({ "query": "transaction", "limit": 2 });
+        let found = call_with(&mut s, 1, "search_docs", args).await;
+        let found = &found["structuredContent"];
+        assert_eq!(found["command"], "docs search");
+        assert_eq!(found["data"]["docs_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(found["data"]["results"].as_array().unwrap().len(), 2);
+        let options = crate::docs::Options {
+            query: "transaction".to_owned(),
+            json: true,
+            limit: 2,
+        };
+        let index = crate::docs::index::packaged().unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let cli = crate::docs::report(&index, &options, &cwd);
+        assert_eq!(found, &serde_json::to_value(&cli).unwrap());
+
+        let code = json!({ "code": "models.E003" });
+        let explained = call_with(&mut s, 2, "explain_diagnostic", code).await;
+        let entry = &explained["structuredContent"]["data"]["entries"][0];
+        assert_eq!(entry["code"], "models.E003", "{explained}");
+        let unknown = json!({ "code": "nope.E999" });
+        let tool = "explain_diagnostic";
+        let unknown = call_with(&mut s, 3, tool, unknown).await;
+        let diags = &unknown["structuredContent"]["diagnostics"];
+        assert_eq!(diags[0]["code"], "explain.E001", "{unknown}");
+
+        let listed = call_with(&mut s, 4, "list_commands", json!({})).await;
+        let commands = &listed["structuredContent"]["data"]["commands"];
+        let names: Vec<&str> = commands
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|c| c["name"].as_str())
+            .collect();
+        assert!(names.contains(&"verify") && names.contains(&"mcp"));
+
+        let empty = call_with(&mut s, 5, "search_docs", json!({})).await;
+        assert_eq!(empty["isError"], true, "{empty}");
+        let symbols = json!({ "query": "!!" });
+        let symbols = call_with(&mut s, 6, "search_docs", symbols).await;
+        assert_eq!(symbols["isError"], true, "{symbols}");
+        s.close().await.unwrap();
     }
 }

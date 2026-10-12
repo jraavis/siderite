@@ -172,7 +172,7 @@ checkbox is a separate reviewable change. All tasks are currently open.
   correctness.
   Changes to application logic still need task-specific acceptance tests.
 
-- [ ] **X15 — Expose docs and diagnostics through MCP.**
+- [x] **X15 — Expose docs and diagnostics through MCP.**
   Depends: A06, X11, X12. Scope: read-only search_docs and explain_diagnostic.
   Done: return the same versioned results as CLI commands, bounded by size and
   cancellation limits. Add command-discovery metadata from X01. Running verify

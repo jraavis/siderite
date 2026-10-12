@@ -3,6 +3,7 @@
 use super::bridge::Bridge;
 use super::limits::Limits;
 use super::server::{Outcome, ToolSpec};
+use rmcp::model::JsonObject;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ pub(crate) struct App {
 /// when an application was selected (`--app`), the live tool only for
 /// aliases named with `--live`. None applies migrations or writes code.
 pub(crate) fn all(app: Option<&App>, limits: Limits) -> Vec<ToolSpec> {
-    let mut tools = vec![about()];
+    let mut tools = vec![about(), search_docs(), explain(), commands()];
     if let Some(app) = app {
         tools.extend(project(&app.bridge, limits));
         tools.push(check(&app.bridge, limits));
@@ -29,6 +30,96 @@ pub(crate) fn all(app: Option<&App>, limits: Limits) -> Vec<ToolSpec> {
         }
     }
     tools
+}
+
+/// The docs index packaged with this CLI, loaded once.
+fn index() -> Result<&'static crate::docs::index::Index, String> {
+    use crate::docs::index::{Index, packaged};
+    use std::sync::OnceLock;
+    static INDEX: OnceLock<Result<Index, String>> = OnceLock::new();
+    INDEX.get_or_init(packaged).as_ref().map_err(Clone::clone)
+}
+
+fn text(args: &JsonObject, key: &str) -> Result<String, String> {
+    let found = args.get(key).and_then(Value::as_str);
+    let found = found.map(str::trim).filter(|t| !t.is_empty());
+    found
+        .map(str::to_owned)
+        .ok_or_else(|| format!("`{key}` is required"))
+}
+
+fn envelope<T: serde::Serialize>(report: &T) -> Outcome {
+    serde_json::to_value(report).map_err(|e| e.to_string())
+}
+
+/// `search_docs`: `siderite docs search --json`, offline.
+fn search_docs() -> ToolSpec {
+    let input = json!({
+        "type": "object",
+        "properties": {
+            "query": { "type": "string", "minLength": 1 },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 50 },
+        },
+        "required": ["query"],
+    });
+    let description = "Search the documentation of this siderite version \
+         offline (the `docs search --json` report: source files, lines, \
+         links at the release tag, required features).";
+    ToolSpec::new("search_docs", description, input, |args| async move {
+        use crate::docs::{Options, index::terms, report};
+        let query = text(&args, "query")?;
+        if terms(&query).is_empty() {
+            return Err("the query has no searchable words".to_owned());
+        }
+        let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(5);
+        let limit = usize::try_from(limit.clamp(1, 50)).unwrap_or(5);
+        let options = Options {
+            query,
+            json: true,
+            limit,
+        };
+        let cwd = std::env::current_dir().unwrap_or_default();
+        envelope(&report(index()?, &options, &cwd))
+    })
+}
+
+/// `explain_diagnostic`: `siderite explain CODE --json`.
+fn explain() -> ToolSpec {
+    let input = json!({
+        "type": "object",
+        "properties": { "code": { "type": "string", "minLength": 1 } },
+        "required": ["code"],
+    });
+    let description = "Explain a diagnostic code (`models.E003`, \
+         `E0308`, `clippy::needless_return`): cause, fix and the command \
+         that verifies it, for this siderite version.";
+    ToolSpec::new(
+        "explain_diagnostic",
+        description,
+        input,
+        |args| async move {
+            use crate::explain::{Options, report};
+            let code = text(&args, "code")?;
+            let options = Options {
+                code: Some(code),
+                json: true,
+            };
+            envelope(&report(&options))
+        },
+    )
+}
+
+/// `list_commands`: the command contract (`siderite commands --json`).
+fn commands() -> ToolSpec {
+    let input = json!({ "type": "object", "properties": {} });
+    let description = "Every siderite command: usage, what it needs, what \
+         it may change, live-service access and output formats. Running \
+         commands (verify included) is not offered here.";
+    ToolSpec::new("list_commands", description, input, |_| async {
+        let list = crate::commands::list();
+        let report = crate::report::Envelope::new("commands", list, vec![]);
+        envelope(&report)
+    })
 }
 
 /// `project_check`: the framework checks of `siderite check`.
