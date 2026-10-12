@@ -488,7 +488,9 @@ only.
 documented routes, models and OpenAPI document. The app is built and run
 only when one of these tools is first called; answers are cached until
 the project's files change and say whether they are `cached`, `rebuilt`
-or `stale`.
+or `stale`. It adds `project_check` (framework checks, not lint), and
+`--live --database ALIAS` adds read-only migration status for the named
+aliases only. Migrations are never applied through MCP.
 
 ## Comparing OpenAPI documents
 

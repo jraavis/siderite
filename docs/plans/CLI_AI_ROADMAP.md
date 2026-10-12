@@ -352,7 +352,7 @@ public API documentation, no unsafe code and no library unwrap/expect calls.
   output.
   One supported MCP client smoke test verifies enumeration and tool results.
 
-- [ ] **A07 — Expose checks and opt-in migration status.**
+- [x] **A07 — Expose checks and opt-in migration status.**
   Depends: A06, C03, C05. Scope: framework checks and live read diagnostics.
   Done: checks are not presented as lint; live tools require explicit server
   configuration and selected aliases. Cancellation terminates owned work;

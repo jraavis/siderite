@@ -285,7 +285,11 @@ mod project {
         let cargo = fake_cargo(tools.path());
         let bridge = Bridge::new(app.path().to_path_buf(), None);
         let bridge = Arc::new(bridge.with_cargo(cargo));
-        let server = standard(Some(bridge));
+        let app = crate::mcp::tools::App {
+            bridge,
+            live: Vec::new(),
+        };
+        let server = standard(Some(&app));
         let mut s = Session::start(server, Limits::default());
         s.initialize("2025-11-25").await;
         s.send(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
@@ -303,6 +307,7 @@ mod project {
             "project_routes",
             "project_models",
             "project_openapi",
+            "project_check",
         ];
         assert_eq!(names, want);
         let routes = s.call(2, "project_routes").await;
@@ -343,5 +348,157 @@ mod project {
         let call = s.call(1, "project_routes").await;
         assert_eq!(call["error"]["code"], -32602, "{call}");
         s.close().await.unwrap();
+    }
+}
+
+mod checks_and_live {
+    use super::*;
+    use crate::fixtures::ScratchDir;
+    use crate::mcp::bridge::Bridge;
+    use crate::mcp::parse;
+    use crate::mcp::tools::App;
+    use std::path::Path;
+    use std::sync::Arc;
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    #[test]
+    fn live_tools_need_the_app_live_and_aliases_together() {
+        let live = ["mcp", "--app", "--live", "--database", "default"];
+        let options = parse(&words(&live)).unwrap();
+        assert!(options.app);
+        assert_eq!(options.live, ["default"]);
+        assert!(parse(&words(&["mcp"])).unwrap().live.is_empty());
+        for bad in [
+            &["mcp", "--live"][..],
+            &["mcp", "--app", "--live"],
+            &["mcp", "--app", "--database", "x"],
+            &["mcp", "--live", "--database", "x"],
+            &["mcp", "--write"],
+        ] {
+            assert!(parse(&words(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    /// A `cargo` that records its arguments and writes a report, or,
+    /// when a `slow` file exists, records its pid and sleeps.
+    #[cfg(unix)]
+    fn recording_cargo(dir: &Path) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir.display();
+        let script = format!(
+            "#!/bin/sh\necho \"$*\" >> '{d}/args'\n\
+             [ -f '{d}/slow' ] && {{ echo $$ > '{d}/pid'; exec sleep 30; }}\n\
+             printf '%s' '{{\"ok\":true,\"data\":{{\"errors\":0}},\
+             \"diagnostics\":[]}}' > \"$SIDERITE_REPORT_PATH\"\n"
+        );
+        let path = dir.join("cargo");
+        std::fs::write(&path, script).unwrap();
+        let mode = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&path, mode).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn session(dir: &Path, live: &[&str]) -> Session {
+        let cargo = recording_cargo(dir);
+        let bridge = Bridge::new(dir.to_path_buf(), None).with_cargo(cargo);
+        let app = App {
+            bridge: Arc::new(bridge),
+            live: live.iter().map(|a| (*a).to_owned()).collect(),
+        };
+        Session::start(standard(Some(&app)), Limits::default())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn checks_and_status_run_exactly_the_read_commands() {
+        let dir = ScratchDir::new("mcp-live");
+        let mut s = session(dir.path(), &["default"]);
+        s.initialize("2025-11-25").await;
+        let check = s.call(1, "project_check").await;
+        let check = &check["result"]["structuredContent"];
+        assert_eq!(check["ok"], true, "{check}");
+        s.send(&json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "migration_status",
+                "arguments": { "database": "default" } }
+        }))
+        .await;
+        let status = s.response(&json!(2)).await;
+        let status = &status["result"]["structuredContent"];
+        assert_eq!(status["database"], "default", "{status}");
+        s.send(&json!({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": { "name": "migration_status",
+                "arguments": { "database": "replica" } }
+        }))
+        .await;
+        let refused = s.response(&json!(3)).await;
+        assert_eq!(refused["result"]["isError"], true, "{refused}");
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        let lines: Vec<&str> = args.lines().collect();
+        assert_eq!(
+            lines,
+            [
+                "run --quiet -- --json check",
+                "run --quiet -- --database default --json showmigrations",
+            ]
+        );
+        s.close().await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn without_live_there_is_no_status_tool_and_cancel_kills_work() {
+        let dir = ScratchDir::new("mcp-cancel");
+        let mut s = session(dir.path(), &[]);
+        s.initialize("2025-11-25").await;
+        let status = s.call(1, "migration_status").await;
+        assert_eq!(status["error"]["code"], -32602, "{status}");
+        // A slow check (the fake sleeps): cancel it and its process ends.
+        std::fs::write(dir.path().join("slow"), "").unwrap();
+        s.send(&json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "project_check", "arguments": {} }
+        }))
+        .await;
+        let pid_file = dir.path().join("pid");
+        let pid = poll(|| std::fs::read_to_string(&pid_file).ok()).await;
+        let pid = pid.trim().to_owned();
+        assert!(alive(&pid), "the build runs");
+        s.send(&json!({
+            "jsonrpc": "2.0", "method": "notifications/cancelled",
+            "params": { "requestId": 2 }
+        }))
+        .await;
+        poll(|| (!alive(&pid)).then_some(())).await;
+        s.close().await.unwrap();
+    }
+
+    /// Whether process `pid` runs (a zombie does not count).
+    #[cfg(unix)]
+    fn alive(pid: &str) -> bool {
+        let out = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", pid])
+            .output()
+            .unwrap();
+        let stat = String::from_utf8_lossy(&out.stdout);
+        let stat = stat.trim();
+        !stat.is_empty() && !stat.starts_with('Z')
+    }
+
+    /// `check()`'s first `Some`, polling for up to ten seconds.
+    #[cfg(unix)]
+    async fn poll<T>(mut check: impl FnMut() -> Option<T>) -> T {
+        for _ in 0..200 {
+            if let Some(found) = check() {
+                return found;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("timed out waiting");
     }
 }

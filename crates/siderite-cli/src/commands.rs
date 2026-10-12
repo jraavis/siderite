@@ -385,11 +385,13 @@ pub const COMMANDS: &[Command] = &[
     Command {
         runner: Runner::Tool,
         needs: Needs::Nothing,
+        mutates: &[Mutation::BuildArtifacts, Mutation::RunsCode],
+        live: Live::OptIn,
         formats: &[Format::Mcp],
         ..cmd(
             "mcp",
             Group::Ai,
-            "mcp [--app]",
+            "mcp [--app] [--live --database ALIAS]",
             "Read-only MCP tools on stdio (`mcp` feature)",
         )
     },
