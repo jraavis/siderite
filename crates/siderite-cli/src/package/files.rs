@@ -25,9 +25,6 @@ const EXCLUDED: [&str; 10] = [
     ".siderite",
 ];
 
-/// Text files up to this size are checked for credentials.
-const SCANNED_BYTES: u64 = 1024 * 1024;
-
 fn excluded(name: &str) -> bool {
     is_secret_name(name) || EXCLUDED.iter().any(|p| matches(p, name))
 }
@@ -132,17 +129,26 @@ fn walk(path: &Path, rel: &str, out: &mut Selection) -> Result<(), CliError> {
     Ok(())
 }
 
-/// The first selected text file that holds something that looks like a
-/// credential (a URL password, a secret-looking `key=value`).
-pub(crate) fn credentials(files: &[Source]) -> Option<String> {
-    files.iter().find_map(|file| {
-        let size = std::fs::metadata(&file.path).map(|m| m.len());
-        if size.map_or(true, |n| n > SCANNED_BYTES) {
-            return None;
+type Scanned = Result<Option<String>, CliError>;
+
+/// The first selected file that holds something that looks like a
+/// credential (a URL password, a secret-looking `key=value`). Every
+/// file is scanned whole, whatever its size or encoding (invalid UTF-8
+/// is replaced, not skipped).
+///
+/// Errors:
+///   An IO error for a file that cannot be read, so an unchecked file
+///   never ships.
+pub(crate) fn credentials(files: &[Source]) -> Scanned {
+    for file in files {
+        let bytes = std::fs::read(&file.path);
+        let bytes = bytes.map_err(|err| io_error("read", &file.path, &err))?;
+        let text = String::from_utf8_lossy(&bytes);
+        if redact_text(&text) != text {
+            return Ok(Some(file.rel.clone()));
         }
-        let text = std::fs::read_to_string(&file.path).ok()?;
-        (redact_text(&text) != text).then(|| file.rel.clone())
-    })
+    }
+    Ok(None)
 }
 
 /// One packaged file in the manifest.

@@ -16,10 +16,10 @@
 //! Credentials, databases, build caches and VCS data never ship: `.env*`,
 //! `*.db`, `*.sqlite*`, keys (`*.pem`, `*.key`, SSH `id_*`), `.git*`,
 //! `target` and `.siderite` are left out wherever they appear, and a
-//! selected text file that holds a credential stops packaging. The
-//! packaged binary is then run once (`routes`) with an empty `PATH`, so
-//! it is known to work without Cargo.
-//! Packaging never deploys and never applies migrations.
+//! selected file that holds a credential, or that cannot be read to
+//! check, stops packaging. The packaged binary is then run once
+//! (`routes`) with an empty `PATH`, so it is known to work without
+//! Cargo. Packaging never deploys and never applies migrations.
 
 use crate::dev::build::{BuildSpec, Built, build};
 use crate::error::CliError;
@@ -260,7 +260,7 @@ async fn assemble(app: &target::Selected, options: &Options) -> Report {
     let (pkg, target_dir) = package(&app.dir)?;
     let paths = declared(&pkg.siderite, &app.dir)?;
     let selection = files::select(&app.dir, &paths)?;
-    if let Some(file) = files::credentials(&selection.files) {
+    if let Some(file) = files::credentials(&selection.files)? {
         return Err(CliError::usage(format!(
             "{CREDENTIAL}: `{file}` looks like it holds a credential; \
              remove it or leave it out of the declared assets"
