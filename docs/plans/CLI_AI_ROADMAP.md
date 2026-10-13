@@ -1,8 +1,8 @@
 # Framework reliability, CLI and AI tooling roadmap
 
 Reviewed: 2026-10-05. Source baseline: `0f30c32` plus the local gap plan.
-Status: in progress; checked tasks are implemented on the
-`roadmap-implementation` branch, the rest remain open.
+Status: complete; all 46 tasks are implemented on `master`. F02 and F08
+remain design documents, and section 5 lists the deferred scope.
 
 The [developer experience expansion](DEVELOPER_EXPERIENCE.md) adds the
 complete Siderite-only daily workflow, 20 additional tasks and AI-focused

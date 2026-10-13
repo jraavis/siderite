@@ -198,41 +198,50 @@ validation and serialization, ORM and migrations, database adapters, and
 production tooling. MongoDB supports a QuerySet subset; Redis is a typed
 client. Reliability and compatibility work continues beyond these milestones.
 
-The next goal is **daily application development through `siderite` commands,
-without invoking Cargo directly**. Rust and Cargo remain the underlying build
-toolchain; setup, development, validation and packaging get one CLI workflow.
+Daily application development now runs through `siderite` commands,
+without invoking Cargo directly. Rust and Cargo remain the underlying build
+toolchain; setup, development, validation and packaging share one CLI
+workflow. An acceptance test exercises the whole journey; the steps that
+still need Cargo, rustup or manual edits are listed in
+[docs/JOURNEY.md](docs/JOURNEY.md).
 
-Planned work, not yet implemented:
+Implemented from the roadmap:
 
-- [ ] **Reliability:** bounded Redis cache-generation metadata, remaining
-  migration crash/disconnect tests, and enforced module-size limits.
-- [ ] **Complete CLI workflow:** setup/doctor, watch and restart with `dev`,
+- [x] **Reliability:** bounded Redis cache-generation metadata, migration
+  crash/disconnect tests, and enforced module-size limits.
+- [x] **Complete CLI workflow:** setup/doctor, watch and restart with `dev`,
   dependency management, route/model/CRUD generation, formatting, linting,
   unified `verify`, and OpenAPI export.
-- [ ] **AI-assisted development:** version-matched local documentation,
+- [x] **AI-assisted development:** version-matched local documentation,
   structured diagnostics, bounded task-focused context, safe instruction-file
   integration, validation reports, and an optional read-only MCP server.
-- [ ] **Application productivity:** verified templates, local service fixtures,
-  seed datasets, generated tests, and effective configuration inspection.
-- [ ] **Framework additions:** HTTP pagination integration, health/readiness,
-  SSE, and scoped SPA fallback. Cursor pagination and session/CSRF support
-  begin with explicit design contracts.
-- [ ] **Delivery and compatibility:** OpenAPI comparison, CI templates,
+- [x] **Application productivity:** verified templates, local service
+  fixtures, seed datasets, generated tests, and effective configuration
+  inspection.
+- [x] **Framework additions:** HTTP pagination integration,
+  health/readiness, SSE, and scoped SPA fallback.
+- [x] **Delivery and compatibility:** OpenAPI comparison, CI templates,
   reproducible release packaging, and framework upgrade previews.
 
-The detailed plans contain **66 small tasks**, with dependencies, acceptance
-criteria and release gates:
+All **66 tasks** in the detailed plans are complete:
 
-- [Core roadmap and 46 tasks](docs/plans/CLI_AI_ROADMAP.md)
+- [Core roadmap: 46 tasks](docs/plans/CLI_AI_ROADMAP.md)
 - [Developer workflow: 20 tasks](docs/plans/DEVELOPER_EXPERIENCE.md)
 
-First deliver structured checks/OpenAPI export, reliable development reload,
-unified verification and version-correct AI context. Keep reliability fixes
-independently releasable. The final workflow acceptance test must create,
-change, test and package an application using only `siderite` commands.
+Still open:
 
-Custom SDK generation, Studio, storage adapters, durable queues and
-multi-tenancy remain future design scope, not current release commitments.
+- [ ] **Cursor pagination:** semantics and contract tests only; see
+  [docs/plans/CURSOR_PAGINATION.md](docs/plans/CURSOR_PAGINATION.md).
+- [ ] **Sessions and CSRF:** a scope decision, no implementation; see
+  [docs/plans/SESSIONS_CSRF.md](docs/plans/SESSIONS_CSRF.md).
+- [ ] **Distribution:** no prebuilt CLI binaries, and no operating system is
+  advertised as supported yet (CI exercises Linux only).
+- [ ] **Baselines:** first run, edit-to-restart latency, context size and
+  verification duration are not yet measured on documented fixtures.
+
+YAML export, client SDK generation, MCP write tools, Studio, storage
+adapters, durable queues and multi-tenancy remain deferred design scope,
+not current release commitments.
 
 ## License
 

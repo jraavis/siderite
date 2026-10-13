@@ -1,6 +1,6 @@
 # Siderite developer experience: one CLI and AI-ready applications
 
-Updated: 2026-10-05. Status: proposed features, not implemented commands.
+Updated: 2026-10-13. Status: complete; all 20 tasks are implemented.
 Parent: [reviewed roadmap](CLI_AI_ROADMAP.md).
 
 ## Product goal
@@ -74,7 +74,7 @@ points. Do not require developers to relearn working migration commands.
 ## Recommended additions and small tasks
 
 Dependencies refer to task IDs in the parent roadmap or this document. Each
-checkbox is a separate reviewable change. All tasks are currently open.
+checkbox is a separate reviewable change. All tasks are implemented.
 
 ### Make the CLI sufficient for daily work
 
@@ -253,5 +253,7 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 - Measure first successful run, edit-to-restart latency, context size and
   verification duration on documented fixtures before setting numeric targets.
 
-This document adds 20 proposed tasks to the parent's 46. No new command or
-feature has been implemented by this planning update.
+This document adds 20 tasks to the parent's 46; all are implemented. The
+remaining Cargo, rustup and platform gaps are recorded in
+[JOURNEY.md](../JOURNEY.md). The success measures above have no recorded
+baselines yet.
