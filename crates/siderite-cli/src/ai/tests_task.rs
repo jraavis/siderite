@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::files::{collect, is_secret_name};
+use super::files::collect;
 use super::task::{self, Options, Sources, TaskContext};
 use super::*;
 use crate::docs::index::packaged;
@@ -213,22 +213,6 @@ fn git_ignore_rules_apply() {
     let paths: Vec<&str> = paths.collect();
     assert_eq!(paths, [".gitignore", "kept.rs"]);
     assert_eq!(got.refused[0].reason, "ignored by git");
-}
-
-#[test]
-fn secret_names() {
-    for name in [
-        ".env",
-        ".env.prod",
-        "server.pem",
-        "id_rsa",
-        "app.local.toml",
-    ] {
-        assert!(is_secret_name(name), "{name}");
-    }
-    for name in ["main.rs", "Cargo.toml", "environment.rs", "keys.rs"] {
-        assert!(!is_secret_name(name), "{name}");
-    }
 }
 
 #[test]

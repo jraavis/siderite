@@ -14,10 +14,11 @@
 //! ```
 //!
 //! Credentials, databases, build caches and VCS data never ship: `.env*`,
-//! `*.db`, `*.sqlite*`, keys, `.git*`, `target` and `.siderite` are left
-//! out wherever they appear, and a selected text file that holds a
-//! credential stops packaging. The packaged binary is then run once
-//! (`routes`) with an empty `PATH`, so it is known to work without Cargo.
+//! `*.db`, `*.sqlite*`, keys (`*.pem`, `*.key`, SSH `id_*`), `.git*`,
+//! `target` and `.siderite` are left out wherever they appear, and a
+//! selected text file that holds a credential stops packaging. The
+//! packaged binary is then run once (`routes`) with an empty `PATH`, so
+//! it is known to work without Cargo.
 //! Packaging never deploys and never applies migrations.
 
 use crate::dev::build::{BuildSpec, Built, build};
