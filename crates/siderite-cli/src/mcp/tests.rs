@@ -369,7 +369,7 @@ mod checks_and_live {
     use crate::fixtures::ScratchDir;
     use crate::mcp::bridge::Bridge;
     use crate::mcp::parse;
-    use crate::mcp::tools::App;
+    use crate::mcp::tools::{self, App};
     use std::path::Path;
     use std::sync::Arc;
 
@@ -396,14 +396,16 @@ mod checks_and_live {
     }
 
     /// A `cargo` that records its arguments and writes a report, or,
-    /// when a `slow` file exists, records its pid and sleeps.
+    /// when a `slow` file exists, starts a child (as cargo starts rustc
+    /// and the app), records the child's pid and waits for it.
     #[cfg(unix)]
     fn recording_cargo(dir: &Path) -> std::path::PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let d = dir.display();
         let script = format!(
             "#!/bin/sh\necho \"$*\" >> '{d}/args'\n\
-             [ -f '{d}/slow' ] && {{ echo $$ > '{d}/pid'; exec sleep 30; }}\n\
+             [ -f '{d}/slow' ] && {{ sleep 30 & \
+             echo $! > '{d}/pid'; wait; }}\n\
              printf '%s' '{{\"ok\":true,\"data\":{{\"errors\":0}},\
              \"diagnostics\":[]}}' > \"$SIDERITE_REPORT_PATH\"\n"
         );
@@ -416,13 +418,19 @@ mod checks_and_live {
 
     #[cfg(unix)]
     fn session(dir: &Path, live: &[&str]) -> Session {
+        session_with(dir, live, Limits::default())
+    }
+
+    #[cfg(unix)]
+    fn session_with(dir: &Path, live: &[&str], limits: Limits) -> Session {
         let cargo = recording_cargo(dir);
         let bridge = Bridge::new(dir.to_path_buf(), None).with_cargo(cargo);
         let app = App {
             bridge: Arc::new(bridge),
             live: live.iter().map(|a| (*a).to_owned()).collect(),
         };
-        Session::start(standard(Some(&app)), Limits::default())
+        let server = Server::new(tools::all(Some(&app), limits), limits);
+        Session::start(server, limits)
     }
 
     #[cfg(unix)]
@@ -471,7 +479,8 @@ mod checks_and_live {
         s.initialize("2025-11-25").await;
         let status = s.call(1, "migration_status").await;
         assert_eq!(status["error"]["code"], -32602, "{status}");
-        // A slow check (the fake sleeps): cancel it and its process ends.
+        // A slow check (the fake's child sleeps): cancel it and the
+        // child ends with cargo.
         std::fs::write(dir.path().join("slow"), "").unwrap();
         s.send(&json!({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
@@ -487,6 +496,25 @@ mod checks_and_live {
             "params": { "requestId": 2 }
         }))
         .await;
+        poll(|| (!alive(&pid)).then_some(())).await;
+        s.close().await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_timed_out_build_leaves_nothing_running() {
+        let dir = ScratchDir::new("mcp-timeout");
+        let limits = Limits {
+            build_timeout: Duration::from_secs(1),
+            ..Limits::default()
+        };
+        let mut s = session_with(dir.path(), &[], limits);
+        s.initialize("2025-11-25").await;
+        std::fs::write(dir.path().join("slow"), "").unwrap();
+        let check = s.call(1, "project_check").await;
+        assert_eq!(check["result"]["isError"], true, "{check}");
+        let pid = std::fs::read_to_string(dir.path().join("pid")).unwrap();
+        let pid = pid.trim().to_owned();
         poll(|| (!alive(&pid)).then_some(())).await;
         s.close().await.unwrap();
     }

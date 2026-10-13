@@ -10,6 +10,7 @@
 
 use super::*;
 use crate::fixtures::{ScratchDir, block_on};
+use crate::process;
 use std::path::Path;
 use tokio::sync::mpsc;
 

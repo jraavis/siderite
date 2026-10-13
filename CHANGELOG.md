@@ -20,8 +20,9 @@
 - **CLI:** `siderite mcp --app` offers `project_check` (the framework
   checks, presented as such rather than as lint), and
   `--live --database ALIAS` adds read-only `migration_status` for the
-  named aliases only. Cancelling a call kills the app process it started;
-  migrations are never applied and code is never generated over MCP.
+  named aliases only. A cancelled or timed-out call kills cargo's whole
+  process group, rustc and the app included; migrations are never
+  applied and code is never generated over MCP.
 - **CLI:** `siderite mcp --app` adds read-only project tools (summary,
   documented routes, models, OpenAPI) answered by the selected
   application's own `ai dump-context`, built only on first use, cached
