@@ -52,7 +52,7 @@ pub use middleware::{
     RequestLogging, Timeout, TrustedHosts, TrustedProxies, from_fn,
 };
 pub use middleware::{CsrfOrigin, CsrfOriginError};
-pub use pagination::{Page, PageParams};
+pub use pagination::{CursorPage, CursorParams, Page, PageParams};
 pub use response::{
     Html, IntoResponse, Json, JsonDump, NoContent, PlainText, Response, WithStatus,
 };

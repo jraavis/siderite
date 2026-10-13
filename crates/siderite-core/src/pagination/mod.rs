@@ -7,6 +7,14 @@
 //! that pins a snapshot, rows written between them can make `total` and
 //! the items disagree, and an unordered queryset can return a row on two
 //! pages or on none; order by a unique key for stable pages.
+//!
+//! [`CursorParams`] and [`CursorPage`] page by cursor instead (`?after=` or
+//! `?before=` and `?limit=`): one statement, no total, and rows that exist
+//! for the whole iteration are returned exactly once.
+
+mod cursor;
+
+pub use cursor::{CursorPage, CursorParams};
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
@@ -214,5 +222,7 @@ impl<T: Schema + 'static> Schema for Page<T> {
     }
 }
 
+#[cfg(test)]
+mod cursor_tests;
 #[cfg(test)]
 mod tests;

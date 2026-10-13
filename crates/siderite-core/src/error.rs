@@ -36,6 +36,8 @@ pub struct ApiError {
     /// Set when the request lacks the input entirely (see
     /// [`absent`](Self::absent)).
     absent: bool,
+    /// Stable machine-readable error code, if any.
+    code: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -48,6 +50,8 @@ struct Problem<'a> {
     detail: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<&'a Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'a str>,
 }
 
 impl ApiError {
@@ -61,6 +65,7 @@ impl ApiError {
             errors: None,
             headers: None,
             absent: false,
+            code: None,
         }
     }
 
@@ -94,6 +99,14 @@ impl ApiError {
     #[must_use]
     pub fn with_type(mut self, type_uri: impl Into<String>) -> Self {
         self.type_uri = type_uri.into();
+        self
+    }
+
+    /// Set the stable machine-readable `code` extension member of the
+    /// problem document, for clients that branch on the kind of failure.
+    #[must_use]
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
         self
     }
 
@@ -146,6 +159,11 @@ impl ApiError {
     pub fn errors(&self) -> Option<&Value> {
         self.errors.as_deref()
     }
+
+    /// The machine-readable error code, if any.
+    pub fn code(&self) -> Option<&str> {
+        self.code
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -156,6 +174,7 @@ impl IntoResponse for ApiError {
             status: self.status.as_u16(),
             detail: self.detail.as_deref(),
             errors: self.errors.as_deref(),
+            code: self.code,
         };
         let body = serde_json::to_vec(&problem).unwrap_or_else(|_| FALLBACK_BODY.to_vec());
         let mut response = with_content_type(PROBLEM_JSON, body);
@@ -193,7 +212,8 @@ impl Schema for ProblemSchema {
                     "title": {"type": "string"},
                     "status": {"type": "integer"},
                     "detail": {"type": "string"},
-                    "errors": {}
+                    "errors": {},
+                    "code": {"type": "string"}
                 }),
             )
             .with("required", serde_json::json!(["type", "title", "status"]))
@@ -204,6 +224,11 @@ impl From<OrmError> for ApiError {
     fn from(err: OrmError) -> Self {
         match err {
             OrmError::Query(QueryError::DoesNotExist) => Self::not_found("Resource not found."),
+            OrmError::Cursor(cursor) => {
+                // The token came from the client: say it is bad, not why.
+                let detail = "The pagination cursor is not valid.";
+                Self::bad_request(detail).with_code(cursor.code())
+            }
             OrmError::Capability(cap) => {
                 tracing::error!(error = %cap, "unsupported backend capability");
                 Self::new(
@@ -307,5 +332,11 @@ mod tests {
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
         let broken = ApiError::from(OrmError::Backend(BackendError::Database("x".into())));
         assert_eq!(broken.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let foreign = siderite_orm::CursorError::ForeignQuery;
+        let stale = ApiError::from(OrmError::Cursor(foreign));
+        assert_eq!(stale.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(stale.code(), Some("cursor.E003"));
+        let detail = Some("The pagination cursor is not valid.");
+        assert_eq!(stale.detail(), detail);
     }
 }
