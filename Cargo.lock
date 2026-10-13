@@ -3607,6 +3607,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "siderite-sessions"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "getrandom 0.3.4",
+ "hmac 0.12.1",
+ "http",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "siderite-backends",
+ "siderite-cache",
+ "siderite-core",
+ "siderite-openapi",
+ "siderite-testkit",
+ "thiserror",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "siderite-testkit"
 version = "0.1.0"
 dependencies = [
