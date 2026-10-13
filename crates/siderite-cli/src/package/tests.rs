@@ -92,18 +92,50 @@ fn selection_leaves_out_secrets_databases_and_caches() {
         "static/tls/server.key",
     ];
     assert_eq!(picked.excluded, left);
-    assert!(files::credentials(&picked.files).is_none());
+    assert!(files::credentials(&picked.files).unwrap().is_none());
     write(
         root,
         "static/config.js",
         "url = 'postgres://u:hunter2@h/db'",
     );
     let picked = files::select(root, &args(&["static"])).unwrap();
-    let found = files::credentials(&picked.files);
+    let found = files::credentials(&picked.files).unwrap();
     assert_eq!(found.as_deref(), Some("static/config.js"));
     for bad in [&["../outside"][..], &["/etc"], &["missing"], &[""]] {
         assert!(files::select(root, &args(bad)).is_err(), "{bad:?}");
     }
+}
+
+#[test]
+fn large_and_non_utf8_files_are_scanned() {
+    let dir = ScratchDir::new("package-scan");
+    let root = dir.path();
+    let url = b"postgres://user:s3cret@db/app\n";
+    let mut large = vec![b' '; 1024 * 1024 + 1 - url.len()];
+    large.extend_from_slice(url);
+    let mut binary = vec![0xff, 0xfe, b'\n'];
+    binary.extend_from_slice(url);
+    for (rel, bytes) in [("big/bundle.js", large), ("bin/data.js", binary)] {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        let dir = rel.split('/').next().unwrap();
+        let picked = files::select(root, &args(&[dir])).unwrap();
+        let found = files::credentials(&picked.files).unwrap();
+        assert_eq!(found.as_deref(), Some(rel));
+    }
+    std::fs::write(root.join("logo.png"), [0x89, b'P', 0xff, 0]).unwrap();
+    let picked = files::select(root, &args(&["logo.png"])).unwrap();
+    assert!(files::credentials(&picked.files).unwrap().is_none());
+}
+
+#[test]
+fn a_file_that_cannot_be_read_stops_packaging() {
+    let source = files::Source {
+        rel: "static/gone.js".to_owned(),
+        path: PathBuf::from("/nonexistent/siderite/static/gone.js"),
+    };
+    assert!(files::credentials(&[source]).is_err());
 }
 
 #[cfg(unix)]
