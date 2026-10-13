@@ -234,3 +234,56 @@ fn a_part_whose_heading_is_too_long_is_omitted() {
         ctx.omitted
     );
 }
+
+/// A project whose `src` holds links to its `.env`, to a key outside it
+/// and to a directory outside it; `git init`ed when `git` is set.
+#[cfg(unix)]
+fn linked_project(scratch: &ScratchDir, git: bool) -> PathBuf {
+    use std::os::unix::fs::symlink;
+    let root = scratch.path().join("app");
+    let outside = scratch.path().join("home");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir_all(outside.join(".ssh")).unwrap();
+    std::fs::create_dir_all(outside.join("tree")).unwrap();
+    let key = outside.join(".ssh/id_ed25519");
+    std::fs::write(&key, "PRIVATE KEY").unwrap();
+    std::fs::write(outside.join("tree/data.rs"), "// PRIVATE").unwrap();
+    std::fs::write(root.join(".env"), "SECRET=1").unwrap();
+    std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+    symlink("../.env", root.join("src/notes.txt")).unwrap();
+    symlink(&key, root.join("src/key.txt")).unwrap();
+    symlink(outside.join("tree"), root.join("src/linked")).unwrap();
+    if git {
+        let init = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&root)
+            .status()
+            .unwrap();
+        assert!(init.success());
+    }
+    root
+}
+
+#[cfg(unix)]
+#[test]
+fn links_under_included_directories_are_not_followed() {
+    let git_ok = std::process::Command::new("git").arg("--version").output();
+    let git_ok = git_ok.is_ok_and(|o| o.status.success());
+    for git in [false, git_ok] {
+        let scratch = ScratchDir::new("task-links");
+        let root = linked_project(&scratch, git);
+        for dir in [".", "src"] {
+            let got = collect(&root, &[PathBuf::from(dir)]);
+            let paths = got.included.iter().map(|f| f.path.as_str());
+            let paths: Vec<&str> = paths.collect();
+            assert_eq!(paths, ["src/main.rs"], "git={git} {dir}");
+            for link in ["src/key.txt", "src/linked", "src/notes.txt"] {
+                let refused = got
+                    .refused
+                    .iter()
+                    .any(|r| r.path == link && r.reason == "symbolic link");
+                assert!(refused, "git={git} {dir} {link}: {got:?}");
+            }
+        }
+    }
+}
