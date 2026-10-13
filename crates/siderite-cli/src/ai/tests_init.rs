@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::init::{Init, InitOptions, PATH, parse, run};
+use super::init::{Init, InitOptions, PATH, link_plan, parse, run};
 use crate::fixtures::{ScratchDir, author};
 use crate::report::snapshot::{Limits, Snapshot, snapshot};
 use crate::settings::CliSettings;
@@ -173,4 +173,16 @@ fn links_are_written_only_when_asked_and_keep_user_text() {
     let bad = ["ai", "init", "--link", "../x.md"];
     let bad: Vec<String> = bad.iter().map(|w| (*w).to_owned()).collect();
     assert!(parse(&bad).is_err());
+}
+
+#[test]
+fn each_link_reports_its_own_state() {
+    let scratch = ScratchDir::new("ai-links-state");
+    let repo = scratch.path();
+    std::fs::create_dir(repo.join(".git")).unwrap();
+    let files = ["AGENTS.md".to_owned(), "docs/AI.md".to_owned()];
+    let (plan, _) = link_plan(repo, &files[1..]).unwrap();
+    plan.apply().unwrap();
+    let (_, stale) = link_plan(repo, &files).unwrap();
+    assert_eq!(stale, ["AGENTS.md"], "the current file stays current");
 }
