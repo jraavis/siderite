@@ -504,17 +504,26 @@ mod checks_and_live {
     #[tokio::test]
     async fn a_timed_out_build_leaves_nothing_running() {
         let dir = ScratchDir::new("mcp-timeout");
+        // A cold shell can take longer than a second to record its
+        // child. The child sleeps much longer than this bound.
         let limits = Limits {
-            build_timeout: Duration::from_secs(1),
+            build_timeout: Duration::from_secs(5),
             ..Limits::default()
         };
         let mut s = session_with(dir.path(), &[], limits);
         s.initialize("2025-11-25").await;
         std::fs::write(dir.path().join("slow"), "").unwrap();
-        let check = s.call(1, "project_check").await;
-        assert_eq!(check["result"]["isError"], true, "{check}");
-        let pid = std::fs::read_to_string(dir.path().join("pid")).unwrap();
+        s.send(&json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "project_check", "arguments": {} }
+        }))
+        .await;
+        let pid_file = dir.path().join("pid");
+        let pid = poll(|| std::fs::read_to_string(&pid_file).ok()).await;
         let pid = pid.trim().to_owned();
+        assert!(alive(&pid), "the build runs");
+        let check = s.response(&json!(1)).await;
+        assert_eq!(check["result"]["isError"], true, "{check}");
         poll(|| (!alive(&pid)).then_some(())).await;
         s.close().await.unwrap();
     }
