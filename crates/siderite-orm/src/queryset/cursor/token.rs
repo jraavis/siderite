@@ -87,6 +87,18 @@ fn too_large() -> QueryError {
     QueryError::InvalidPlan("an ordering value does not fit a cursor".into())
 }
 
+/// Sub-second nanoseconds as whole microseconds. A finer value (or a
+/// leap second) would be truncated, and the cursor would then point
+/// between rows, skipping or repeating one, so it is refused instead.
+fn micros_of(nanos: u32) -> Result<i64, QueryError> {
+    if !nanos.is_multiple_of(1000) || nanos >= 1_000_000_000 {
+        let reason = "a time below microsecond precision cannot be a \
+                      cursor position";
+        return Err(QueryError::InvalidPlan(reason.into()));
+    }
+    Ok(i64::from(nanos / 1000))
+}
+
 fn put_len(out: &mut Vec<u8>, len: usize) -> Result<(), QueryError> {
     let len = u32::try_from(len).map_err(|_| too_large())?;
     out.extend(len.to_be_bytes());
@@ -107,7 +119,10 @@ fn put_value(out: &mut Vec<u8>, value: &Value) -> Result<(), QueryError> {
             put_len(out, b.len())?;
             out.extend(b);
         }
-        Value::Timestamp(t) => out.extend(t.timestamp_micros().to_be_bytes()),
+        Value::Timestamp(t) => {
+            micros_of(t.timestamp_subsec_nanos())?;
+            out.extend(t.timestamp_micros().to_be_bytes());
+        }
         Value::Date(d) => {
             let days = d.signed_duration_since(epoch()).num_days();
             let days = i32::try_from(days).map_err(|_| too_large())?;
@@ -121,7 +136,7 @@ fn put_value(out: &mut Vec<u8>, value: &Value) -> Result<(), QueryError> {
         }
         Value::Time(t) => {
             let secs = i64::from(t.num_seconds_from_midnight());
-            let micros = secs * MICROS + i64::from(t.nanosecond() / 1000);
+            let micros = secs * MICROS + micros_of(t.nanosecond())?;
             out.extend(micros.to_be_bytes());
         }
         Value::Null | Value::Json(_) => {}

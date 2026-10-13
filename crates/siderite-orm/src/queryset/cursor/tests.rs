@@ -218,6 +218,22 @@ fn a_position_too_large_for_a_token_is_not_issued() {
 }
 
 #[test]
+fn a_time_finer_than_a_microsecond_is_not_truncated() {
+    let at = DateTime::from_timestamp(1_700_000_000, 1_500).unwrap();
+    let made = token::encode(PRINT, Way::After, &[Value::Timestamp(at)]);
+    assert!(matches!(made, Err(QueryError::InvalidPlan(_))));
+    let time = NaiveTime::from_hms_nano_opt(1, 2, 3, 7).unwrap();
+    let made = token::encode(PRINT, Way::After, &[Value::Time(time)]);
+    assert!(matches!(made, Err(QueryError::InvalidPlan(_))));
+    let exact = DateTime::from_timestamp(1_700_000_000, 2_000).unwrap();
+    let values = [Value::Timestamp(exact)];
+    let slots = [slot(SqlType::Timestamp, false)];
+    let made = token::encode(PRINT, Way::After, &values).unwrap();
+    let back = token::decode(&made, PRINT, Way::After, &slots).unwrap();
+    assert_eq!(back, values);
+}
+
+#[test]
 fn canonical_values_do_not_depend_on_the_backend_form() {
     use SqlType as T;
     let text = |s: &str| Value::Text(s.into());
