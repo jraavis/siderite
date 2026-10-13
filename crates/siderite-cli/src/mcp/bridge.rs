@@ -132,7 +132,7 @@ impl Bridge {
         // Dropping this future (cancel, timeout) kills the whole group.
         // A finished wait disarms it: the leader has been reaped, and
         // signalling that process group could hit a reused id.
-        let mut guard = child.id().map(|pid| KillOnDrop::new(Group::led_by(pid)));
+        let mut guard = child.id().map(Group::led_by).map(KillOnDrop::new);
         let status = child
             .wait()
             .await
