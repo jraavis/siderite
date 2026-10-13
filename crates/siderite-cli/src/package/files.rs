@@ -4,13 +4,15 @@
 use crate::error::CliError;
 use crate::fsio::io_error;
 use crate::report::redact_text;
+use crate::secret_files::is_secret_name;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Component, Path, PathBuf};
 
-/// Names never packaged, wherever they appear. A trailing `*` matches
-/// any suffix, a leading `*` any prefix.
-const EXCLUDED: [&str; 14] = [
+/// Names never packaged, wherever they appear, besides those
+/// [`is_secret_name`] refuses. A trailing `*` matches any suffix, a
+/// leading `*` any prefix.
+const EXCLUDED: [&str; 10] = [
     ".git*",
     ".env*",
     "*.db",
@@ -19,10 +21,6 @@ const EXCLUDED: [&str; 14] = [
     "*.db-shm",
     "*.sqlite",
     "*.sqlite3",
-    "*.pem",
-    "*.key",
-    "*.p12",
-    "id_rsa*",
     "target",
     ".siderite",
 ];
@@ -31,15 +29,17 @@ const EXCLUDED: [&str; 14] = [
 const SCANNED_BYTES: u64 = 1024 * 1024;
 
 fn excluded(name: &str) -> bool {
-    EXCLUDED.iter().any(|pattern| {
-        if let Some(prefix) = pattern.strip_suffix('*') {
-            name.starts_with(prefix)
-        } else if let Some(suffix) = pattern.strip_prefix('*') {
-            name.ends_with(suffix)
-        } else {
-            name == *pattern
-        }
-    })
+    is_secret_name(name) || EXCLUDED.iter().any(|p| matches(p, name))
+}
+
+fn matches(pattern: &str, name: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        name.starts_with(prefix)
+    } else if let Some(suffix) = pattern.strip_prefix('*') {
+        name.ends_with(suffix)
+    } else {
+        name == pattern
+    }
 }
 
 /// A file to package.

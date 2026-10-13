@@ -62,6 +62,16 @@ fn selection_leaves_out_secrets_databases_and_caches() {
     write(root, "static/cache.db", "x");
     write(root, "static/.git/HEAD", "ref");
     write(root, "static/tls/server.key", "k");
+    write(
+        root,
+        "static/id_ed25519",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+    );
+    write(
+        root,
+        "static/id_ecdsa",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+    );
     write(root, "migrations/0001_initial.json", "{}");
     let declared = args(&["static", "migrations", "static/app.js"]);
     let picked = files::select(root, &declared).unwrap();
@@ -77,6 +87,8 @@ fn selection_leaves_out_secrets_databases_and_caches() {
         "static/.env",
         "static/.git",
         "static/cache.db",
+        "static/id_ecdsa",
+        "static/id_ed25519",
         "static/tls/server.key",
     ];
     assert_eq!(picked.excluded, left);

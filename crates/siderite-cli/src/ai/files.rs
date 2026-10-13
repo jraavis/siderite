@@ -8,6 +8,7 @@
 //! redacted like every other output.
 
 use crate::report::redact_text;
+use crate::secret_files::is_secret_name;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -121,18 +122,6 @@ fn read(root: &Path, file: &Path) -> Result<Included, Refused> {
         text: redact_text(&text),
         path,
     })
-}
-
-/// Names of files that usually hold credentials.
-pub(crate) fn is_secret_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    let secret_ext = [".pem", ".key", ".p12", ".pfx", ".keystore"];
-    lower == ".env"
-        || lower.starts_with(".env.")
-        || lower.starts_with("id_rsa")
-        || lower.starts_with("id_ed25519")
-        || lower.ends_with(".local.toml")
-        || secret_ext.iter().any(|e| lower.ends_with(e))
 }
 
 /// The files git would not ignore under `path`; `None` when git cannot

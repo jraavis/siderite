@@ -43,6 +43,7 @@ mod project;
 pub mod report;
 pub mod routes;
 mod scaffold;
+mod secret_files;
 pub mod seed;
 mod services;
 pub mod settings;
