@@ -281,8 +281,11 @@ What the layer guarantees:
   header, on unsafe requests that carry a live session. With the default
   `Lax`, pair the layer with `CsrfOrigin`, and add tokens for forms.
 
-Stores implement `SessionStore` (`load`, `save`, `delete`, `revoke_user`, and
-an `auth_epoch` hook). `MemoryStore` is bounded (a full store refuses new
+Stores implement `SessionStore` (`load`, `save`, `update`, `delete`,
+`revoke_user`, and an `auth_epoch` hook). Loaded sessions are written with
+`update`, which only replaces a stored record, so a slow request racing a
+logout or rotation cannot bring the deleted id back; `CacheStore` also keeps
+a tombstone per deleted id (24 hours by default, see `with_tombstone_ttl`). `MemoryStore` is bounded (a full store refuses new
 sessions with `503` rather than evicting a login) and lives in one process.
 `CacheStore` (feature `cache`) keeps JSON records with the store TTL in any
 `siderite_cache::Cache`, Redis included; revocation increments a per-user

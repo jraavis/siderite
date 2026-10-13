@@ -144,7 +144,7 @@ script are not ambient and need no CSRF defence.
 
 Decisions made while implementing:
 
-- `SessionStore` has a fifth method, `auth_epoch(user)` (default `0`),
+- `SessionStore` has an `auth_epoch(user)` method (default `0`),
   which login reads so the record carries the user's revocation epoch;
   that is what stops a write racing `revoke_user` from reviving a session.
 - `SameSite=None` is accepted only with `Secure` and a CSRF key, and the

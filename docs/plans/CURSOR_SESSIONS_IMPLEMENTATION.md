@@ -1,6 +1,8 @@
 # Cursor pagination and sessions/CSRF: implementation plan
 
-Updated: 2026-10-13. Implements the designs in
+Updated: 2026-10-13. Status: implemented (P1-P6, S1-S4). Live
+PostgreSQL, MySQL, MongoDB and Redis tests are `#[ignore]`d and run in
+CI. Deviations are recorded in the two design documents. Implements the designs in
 [CURSOR_PAGINATION.md](CURSOR_PAGINATION.md) (F02) and
 [SESSIONS_CSRF.md](SESSIONS_CSRF.md) (F08). Those documents stay the
 source of truth for semantics; this one fixes the API, file layout,
