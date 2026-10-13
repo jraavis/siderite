@@ -130,11 +130,16 @@ impl Bridge {
             .spawn()
             .map_err(|e| format!("cannot run cargo: {e}"))?;
         // Dropping this future (cancel, timeout) kills the whole group.
-        let guard = child.id().map(|pid| KillOnDrop::new(Group::led_by(pid)));
-        let status = child.wait().await;
-        // Nothing cargo or the app started may outlive the call.
-        drop(guard);
-        let status = status.map_err(|e| format!("cannot run cargo: {e}"))?;
+        // A finished wait disarms it: the leader has been reaped, and
+        // signalling that process group could hit a reused id.
+        let mut guard = child.id().map(|pid| KillOnDrop::new(Group::led_by(pid)));
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| format!("cannot run cargo: {e}"))?;
+        if let Some(guard) = guard.as_mut() {
+            guard.disarm();
+        }
         let Some(text) = report.read(true) else {
             return Err(format!(
                 "the app exited with {status} without its report (build \
