@@ -130,7 +130,7 @@ pub(crate) fn run(dir: &Path, snap: &Snapshot, init: &Init) -> Code {
     let (links, stale_links) = link_plan(dir, &init.links)?;
     report(&state);
     if o.check {
-        let stale = state != State::Current || stale_links;
+        let stale = state != State::Current || !stale_links.is_empty();
         return Ok(u8::from(stale));
     }
     if o.dry_run {
@@ -144,12 +144,14 @@ pub(crate) fn run(dir: &Path, snap: &Snapshot, init: &Init) -> Code {
     Ok(0)
 }
 
+type LinkPlan = Result<(Plan, Vec<String>), CliError>;
+
 /// The link blocks for `files` (relative to the repository root), and
-/// whether any of them would change.
+/// the files among them that would change.
 ///
 /// Errors:
 ///   `ai.E002` for a file whose markers cannot be updated safely.
-fn link_plan(dir: &Path, files: &[String]) -> Result<(Plan, bool), CliError> {
+pub(super) fn link_plan(dir: &Path, files: &[String]) -> LinkPlan {
     let repo = crate::generate::ci::repository(dir);
     let canonical = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.into());
     let package = canonical(dir);
@@ -163,13 +165,14 @@ fn link_plan(dir: &Path, files: &[String]) -> Result<(Plan, bool), CliError> {
         format!("{rel}/{PATH}")
     };
     let mut plan = Plan::new(&repo);
-    let mut stale = false;
+    let mut stale = Vec::new();
     for file in files {
         let existing = std::fs::read_to_string(repo.join(file)).ok();
         let block = links::block(file, &context);
         let merged = links::merge(file, existing.as_deref(), &block)?;
-        stale |= existing.as_deref() != Some(merged.as_str());
-        let state = if stale {
+        let changed = existing.as_deref() != Some(merged.as_str());
+        let state = if changed {
+            stale.push(file.clone());
             "will be updated"
         } else {
             "up to date"
