@@ -30,6 +30,8 @@ macro_rules! model_boilerplate {
     };
 }
 
+pub mod cursor;
+
 fn auto_pk() -> FieldMeta {
     FieldMeta {
         primary_key: true,
@@ -524,7 +526,7 @@ impl Model for Event {
 
 // ---- database -------------------------------------------------------------
 
-const SCHEMA: &str = "
+pub const SCHEMA: &str = "
     CREATE TABLE teams (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
     CREATE TABLE authors (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL, age INTEGER,
