@@ -24,6 +24,7 @@ version.
 | `siderite-migrations` | [/api/siderite_migrations/](/siderite/api/siderite_migrations/) |
 | `siderite-config` | [/api/siderite_config/](/siderite/api/siderite_config/) |
 | `siderite-cache` | [/api/siderite_cache/](/siderite/api/siderite_cache/) |
+| `siderite-sessions` | [/api/siderite_sessions/](/siderite/api/siderite_sessions/) |
 | `siderite-cli` | [/api/siderite_cli/](/siderite/api/siderite_cli/) |
 | `siderite-testkit` | [/api/siderite_testkit/](/siderite/api/siderite_testkit/) |
 

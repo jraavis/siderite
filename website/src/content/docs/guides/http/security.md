@@ -1,6 +1,6 @@
 ---
 title: Security
-description: Bearer validation, authorization code with PKCE, and security schemes.
+description: Bearer validation, authorization code with PKCE, security schemes, sessions and CSRF.
 ---
 
 Security schemes are extractors that document themselves. Reading credentials
@@ -75,9 +75,9 @@ See [OAuth security BCP](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.4
 
 Protocol details are in [PKCE](https://www.rfc-editor.org/rfc/rfc7636.html).
 
-The application owns browser-session CSRF protection, secure HttpOnly cookie
-policy where cookies are used, token storage, refresh rotation/revocation,
-and issuer key refresh. Keep tokens out of URLs and logs. Browser storage
+Browser sessions and CSRF protection are covered in
+[Browser sessions and CSRF](#browser-sessions-and-csrf). The application
+owns token storage, refresh rotation/revocation, and issuer key refresh. Keep tokens out of URLs and logs. Browser storage
 and cookies have different XSS/CSRF exposure; select and test one policy.
 
 Before returning a principal, a trusted verifier must check the access-token
@@ -206,6 +206,125 @@ credential-like headers (`Authorization`, `Cookie`, `X-API-Key`, and names
 containing `auth`, `token`, `session`, `jwt`, `secret`, `api-key` or
 `access-key`) skip the cache as well. See
 [Cache](/siderite/guides/production/cache/).
+
+## Browser sessions and CSRF
+
+CSRF matters wherever the browser sends credentials by itself: cookies and
+HTTP Basic. Bearer tokens and API keys that script code puts in a header are
+not ambient and need no CSRF defence. Safe methods (`GET`, `HEAD`,
+`OPTIONS`, `TRACE`) must never change state.
+
+Two pieces cover cookie-authenticated apps. `CsrfOrigin` (in
+`siderite-core`) works for any cookie, whoever issued it. `siderite-sessions`
+is an adapter that owns cookie mechanics, session ids, rotation, expiry and
+CSRF tokens; users, login flows and password storage stay in your
+application, and nothing in `siderite-core` depends on it.
+
+### `CsrfOrigin`
+
+```rust
+use siderite::middleware::CsrfOrigin;
+
+let csrf = CsrfOrigin::new(["https://app.example.com"])?
+    .exempt("/webhooks/");           // signed webhooks, no cookies
+let app = App::new().csrf_origin(csrf); // register before SessionLayer
+```
+
+For every method other than `GET`, `HEAD`, `OPTIONS` and `TRACE`:
+
+1. `Sec-Fetch-Site: cross-site` is rejected, even when `Origin` matches;
+   `Sec-Fetch-Site: same-origin` is accepted.
+2. Otherwise `Origin` must equal a configured origin; when `Origin` is
+   absent the origin of `Referer` is used.
+3. `Origin: null`, a missing `Origin` and `Referer`, repeated headers and a
+   foreign origin are all rejected.
+
+A rejection is one generic `403` problem that does not say which check
+failed. Origins are `scheme://host[:port]`, lowercased with default ports
+removed; an invalid origin is a construction error. The allowed origins are
+configuration only: they are never derived from `Host` or `X-Forwarded-*`,
+so a forged header cannot widen them.
+
+`exempt(prefix)` skips whole path segments (`/hooks` does not cover
+`/hooksy`) and never matches paths with `.` or `..` segments; exempt routes
+must authenticate callers another way, such as a webhook signature.
+`only_with_cookie()` (off by default) skips requests that carry no `Cookie`
+header and no `Authorization: Basic`, for APIs that mix bearer tokens and
+cookies. The trade-off: such a request reaches the handler unchecked, so the
+route must reject anonymous state changes itself, and any other credential a
+browser attaches by itself would bypass the check.
+
+### Sessions
+
+```rust
+use siderite_sessions::{MemoryStore, Session, SessionConfig, SessionLayer};
+
+async fn login(session: Session /* , your own credential check */) {
+    session.login("ada"); // rotates the id; the old id is deleted at once
+}
+
+let layer = SessionLayer::new(MemoryStore::default(), SessionConfig::new())?;
+let app = App::new().route("/login", post(login)).layer(layer);
+```
+
+`Session` is an extractor with `get`, `insert`, `remove`, `user`, `login`,
+`logout`, `rotate`, `csrf_token` and `verify_csrf`. A request without a
+cookie gets no stored session until it stores something, logs in, rotates or
+asks for a CSRF token.
+
+| Setting | Default |
+|---|---|
+| Cookie | `__Host-session`: `HttpOnly`, `Secure`, `Path=/`, no `Domain` |
+| `SameSite` | `Lax`; `Strict` as an option; `None` only with `Secure` and a CSRF key |
+| Idle timeout | 30 minutes |
+| Absolute lifetime | 12 hours (login restarts it, rotation does not) |
+| Idle write interval | a quarter of the idle timeout |
+| Store timeout | 2 seconds per call |
+| `insecure_development()` | drops `Secure` and the `__Host-` prefix; always explicit, never inferred from the request |
+
+What the layer guarantees:
+
+- **Ids** are 32 bytes (256 bits) from the operating system's CSPRNG,
+  base64url. The cookie holds only the id. Stores see only its SHA-256 hex
+  (`id_hash`), so a leaked table or backup hands out no live sessions; ids
+  are never logged and the `Cookie` header is never recorded.
+- **Rotation:** `login` and `rotate` issue a new id and delete the old one
+  with no grace period. `logout` deletes the session and expires the cookie.
+  `SessionStore::revoke_user` ends every session of a user, for password
+  changes and account recovery.
+- **Expiry** is enforced on the server from the stored record; cookie expiry
+  is advisory. The idle timestamp is written at most once per write interval,
+  so reads do not become writes (a session can expire up to one interval
+  early, never late). Remove expired rows with a scheduled job
+  (`MemoryStore::sweep`, or the cache's TTL), not on the request path.
+- **Fail closed:** if the store cannot be read (error or timeout) for a
+  request that carries a session cookie, the answer is a `503` problem, never
+  an anonymous fallback. A failed write for a login, rotation or change is a
+  `503` and no cookie is set for a session that was not stored. Every store
+  call is bounded by the store timeout. Problems never name the store.
+- **CSRF tokens:** `Session::csrf_token()` is the HMAC-SHA256 of the session
+  id hash under `SessionConfig::csrf_key` (at least 32 bytes), base64url; it
+  changes when the id rotates. `verify_csrf` compares in constant time. With
+  `SameSite::None` the layer itself requires the token, in the `x-csrf-token`
+  header, on unsafe requests that carry a live session. With the default
+  `Lax`, pair the layer with `CsrfOrigin`, and add tokens for forms.
+
+Stores implement `SessionStore` (`load`, `save`, `delete`, `revoke_user`, and
+an `auth_epoch` hook). `MemoryStore` is bounded (a full store refuses new
+sessions with `503` rather than evicting a login) and lives in one process.
+`CacheStore` (feature `cache`) keeps JSON records with the store TTL in any
+`siderite_cache::Cache`, Redis included; revocation increments a per-user
+epoch counter and `load` rejects older records, so it is one write. Use a
+cache that does not evict those counters (Redis `noeviction` or a
+`volatile-*` policy; a small `MemoryCache` is an LRU). Cache error texts,
+which can contain addresses, never reach logs or clients. An ORM table
+adapter is not provided: the schema is the application's choice.
+
+Limits to know: concurrent requests of one session are last-writer-wins;
+the OpenAPI document gets a `sessionCookie` cookie `apiKey` scheme that
+names the default cookie, as an optional requirement; binding sessions to
+client IP addresses is not recommended, and if you do it the address must
+come from `TrustedProxies`, never from raw forwarding headers.
 
 ## See also
 

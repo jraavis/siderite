@@ -1,14 +1,17 @@
 # Sessions and CSRF: decision (F08)
 
-Status: decided for now, open to review. Nothing here is implemented, and
-this document promises no session implementation. It fixes what siderite
-does and does not own, and the requirements any later session or CSRF
-work must meet.
+Status: S1-S3 implemented (see the backlog at the end); S4 tests and docs
+are part of that work. This document fixes what siderite does and does not
+own, and the requirements session and CSRF work must meet. User-facing
+documentation is in [SECURITY.md](../SECURITY.md); the implementation is
+`CsrfOrigin` in `siderite-core` and the `siderite-sessions` crate.
 
 ## Decision
 
-siderite does **not** ship a session store or session middleware now.
-Applications that need browser sessions either:
+siderite owns an **adapter**, not an identity stack: the `siderite-sessions`
+crate (a `Session` extractor, a layer and a store trait, with `MemoryStore`
+and a cache-backed store) and the `CsrfOrigin` middleware. Applications that
+prefer another session layer can still:
 
 1. keep using token authentication (`Authorization: Bearer`, API keys),
    which siderite already extracts and documents, or
@@ -16,12 +19,11 @@ Applications that need browser sessions either:
    `tower-sessions` with a store for their database), configured as
    below.
 
-If demand grows, the next step is an **adapter**, not an owned stack: a
-`Session` extractor and an OpenAPI cookie security scheme over a small
-store trait, with stores supplied by adapters (ORM, Redis through
-`siderite-cache`). siderite would own cookie mechanics, rotation hooks
-and CSRF checks; never identity, login flows, password storage or the
-store's data model.
+The adapter is a `Session` extractor and an OpenAPI cookie security scheme
+over a small store trait, with stores supplied by adapters (Redis through
+`siderite-cache`; an ORM table is left to the application, whose schema it
+is). siderite owns cookie mechanics, rotation hooks and CSRF checks; never
+identity, login flows, password storage or the store's data model.
 
 Why not an owned implementation: session ids, rotation, expiry
 sweeping, store consistency and CSRF are security-critical code with a
@@ -123,11 +125,32 @@ script are not ambient and need no CSRF defence.
 | Trusted proxy list | configures | applies |
 | Readiness of the store | registers the check | runs it (F04) |
 
-## Follow-up backlog (not promised)
+## Backlog
 
-- S1: Origin-checking CSRF middleware with configured origins, tested for
-  every unsafe method, missing and foreign origins and `Sec-Fetch-Site`.
-- S2: `Session` extractor and OpenAPI cookie scheme over a store trait,
-  with the requirements above as executable tests.
-- S3: store adapters (ORM table, Redis) with expiry, revocation by user
-  and failure behaviour tested against live services.
+- S1 (implemented): `siderite_core::middleware::CsrfOrigin`, tested for
+  every unsafe method, missing, foreign and `null` origins, `Referer`
+  fallback, duplicate headers, `Sec-Fetch-Site`, exemptions and
+  `only_with_cookie`.
+- S2 (implemented): `siderite-sessions` with `Session`, `SessionLayer`,
+  `SessionConfig`, `SessionStore`, `MemoryStore` and an OpenAPI cookie
+  scheme, with the requirements above as executable tests: cookie flags,
+  id length and hashing, rotation, logout, revocation, idle and absolute
+  expiry, idle write throttling, fail-closed reads and writes, store
+  timeouts, CSRF tokens and cookie redaction.
+- S3 (implemented): `CacheStore` (feature `cache`) over any
+  `siderite_cache::Cache`, with TTL expiry, revocation by user through an
+  epoch counter and failure behaviour. Live Redis tests are `#[ignore]`d
+  (`REDIS_URL`, database 15). An ORM table adapter is not provided.
+
+Decisions made while implementing:
+
+- `SessionStore` has a fifth method, `auth_epoch(user)` (default `0`),
+  which login reads so the record carries the user's revocation epoch;
+  that is what stops a write racing `revoke_user` from reviving a session.
+- `SameSite=None` is accepted only with `Secure` and a CSRF key, and the
+  layer then checks the token header on unsafe requests that carry a live
+  session, so the "token defence" cannot be forgotten.
+- The OpenAPI scheme (`sessionCookie`) names the default cookie and is an
+  optional requirement; a custom cookie name is not reflected in it.
+- The facade crate does not re-export `siderite-sessions`; depend on it
+  directly.

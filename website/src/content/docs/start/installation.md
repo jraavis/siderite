@@ -61,6 +61,7 @@ See [Backends](/siderite/guides/data/backends/) for the feature matrix.
 | `siderite-migrations` | Autodetector, JSON migrations, schema editor |
 | `siderite-config` | Layered settings, `Secret`, tracing |
 | `siderite-cache` | Memory/Redis cache, `RouteCache` |
+| `siderite-sessions` | Cookie sessions and CSRF tokens (not in the facade) |
 | `siderite-cli` | `AppCli` and the standalone `siderite` binary |
 | `siderite-testkit` | In-process `TestClient` and `TestDatabase` |
 

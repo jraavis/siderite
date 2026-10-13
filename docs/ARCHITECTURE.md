@@ -41,6 +41,7 @@ flowchart TD
 | `siderite-migrations` | Migration graph, operations, autodetector, schema editor (PostgreSQL, SQLite, MySQL), executor | Implemented |
 | `siderite-config` | Layered configuration (defaults, TOML, environment, overrides), `Secret`, `init_tracing` | Implemented |
 | `siderite-cache` | `Cache` trait, in-memory LRU, Redis cache, `RouteCache` middleware | Implemented |
+| `siderite-sessions` | Cookie sessions, CSRF tokens, `MemoryStore`, cache-backed `CacheStore` (adapter over core; not in the facade) | Implemented |
 | `siderite-cli` | `AppCli` (`run`, `routes`, `check`, `dbshell`, migrations) and the standalone `siderite` binary | Implemented; `makemigrations` runs from the app binary |
 | `siderite-testkit` | `TestClient` (in-process), `TestDatabase` fixtures and isolation, lifespan-aware `start`/`shutdown` | Implemented |
 

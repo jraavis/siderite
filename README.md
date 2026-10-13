@@ -113,6 +113,7 @@ let adults = User::objects(&db)
 | `siderite-testkit` | In-process `TestClient`, `TestDatabase` fixtures and isolation |
 | `siderite-config` | Layered configuration (TOML, environment, overrides), `Secret` |
 | `siderite-cache` | Cache trait, in-memory LRU and Redis caches, `RouteCache` middleware |
+| `siderite-sessions` | Cookie sessions, CSRF tokens, memory and cache-backed session stores |
 | `siderite-macros` | Route attributes, `routes![]`, `#[derive(Model, Validate, Schema)]` |
 | `siderite-openapi` | OpenAPI 3.1 model, builder, docs UIs |
 | `siderite-migrations` | Autodetector, JSON migrations, schema editor |
