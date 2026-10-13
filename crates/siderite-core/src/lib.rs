@@ -51,6 +51,7 @@ pub use middleware::{
     Cors, HttpsRedirect, Next, RateLimit, RateLimitError, RequestId, RequestIdLayer,
     RequestLogging, Timeout, TrustedHosts, TrustedProxies, from_fn,
 };
+pub use middleware::{CsrfOrigin, CsrfOriginError};
 pub use pagination::{Page, PageParams};
 pub use response::{
     Html, IntoResponse, Json, JsonDump, NoContent, PlainText, Response, WithStatus,

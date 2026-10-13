@@ -18,13 +18,14 @@
 //! `application/problem+json` documents ([`ApiError`](crate::ApiError)).
 //!
 //! # Built-ins
-//! [`Cors`], [`Compression`], [`TrustedHosts`], [`HttpsRedirect`],
-//! [`RequestIdLayer`] (+ [`RequestId`] extractor), [`RequestLogging`],
-//! [`Timeout`], [`ConcurrencyLimit`], [`BodyLimit`] and [`RateLimit`], each
-//! with a same-named convenience method on [`App`].
+//! [`Cors`], [`Compression`], [`CsrfOrigin`], [`TrustedHosts`],
+//! [`HttpsRedirect`], [`RequestIdLayer`] (+ [`RequestId`] extractor),
+//! [`RequestLogging`], [`Timeout`], [`ConcurrencyLimit`], [`BodyLimit`] and
+//! [`RateLimit`], each with a same-named convenience method on [`App`].
 
 mod adapt;
 mod cors;
+mod csrf;
 mod hosts;
 mod limits;
 mod observe;
@@ -38,6 +39,7 @@ use tower::{Layer, Service};
 
 pub use adapt::{BoxService, FromFnLayer, Next, from_fn};
 pub use cors::{Compression, Cors};
+pub use csrf::{CsrfOrigin, CsrfOriginError};
 pub use hosts::{HttpsRedirect, TrustedHosts};
 mod concurrency;
 pub use concurrency::{ConcurrencyLimit, ConcurrencyLimitError, ConcurrencyStats};
@@ -79,6 +81,12 @@ impl App {
     #[must_use]
     pub fn compression(self, compression: Compression) -> Self {
         self.layer(compression)
+    }
+
+    /// Add [`CsrfOrigin`] middleware.
+    #[must_use]
+    pub fn csrf_origin(self, csrf: CsrfOrigin) -> Self {
+        self.layer(csrf)
     }
 
     /// Add [`TrustedHosts`] middleware.
