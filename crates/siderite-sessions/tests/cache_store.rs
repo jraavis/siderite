@@ -221,3 +221,23 @@ async fn prefixes_separate_applications() {
     assert!(one.load("h").await.unwrap().is_some());
     assert!(two.load("h").await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn a_deleted_id_stays_refused_even_if_written_again() {
+    let store = CacheStore::new(MemoryCache::new(100));
+    store.save("h", &record(Some("ada")), LONG).await.unwrap();
+    assert!(store.update("h", &record(None), LONG).await.unwrap());
+    store.delete("h").await.unwrap();
+    assert!(!store.update("h", &record(None), LONG).await.unwrap());
+    // A write that slipped past the check (racing the delete) is never
+    // served.
+    store.save("h", &record(Some("ada")), LONG).await.unwrap();
+    assert!(store.load("h").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn update_never_creates_a_record() {
+    let store = CacheStore::new(MemoryCache::new(100));
+    assert!(!store.update("x", &record(None), LONG).await.unwrap());
+    assert!(store.load("x").await.unwrap().is_none());
+}

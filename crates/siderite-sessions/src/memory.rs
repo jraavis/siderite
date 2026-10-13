@@ -145,6 +145,28 @@ impl SessionStore for MemoryStore {
         Ok(())
     }
 
+    async fn update(
+        &self,
+        id_hash: &str,
+        record: &SessionRecord,
+        ttl: Duration,
+    ) -> Result<bool, StoreError> {
+        let now = Instant::now();
+        let mut inner = self.lock();
+        if inner.stale(record) {
+            return Err(StoreError::new("session was revoked"));
+        }
+        let Some(entry) = inner.entries.get_mut(id_hash) else {
+            return Ok(false);
+        };
+        if entry.expires <= now {
+            return Ok(false);
+        }
+        entry.record = record.clone();
+        entry.expires = now.checked_add(ttl).unwrap_or(now);
+        Ok(true)
+    }
+
     async fn delete(&self, id_hash: &str) -> Result<(), StoreError> {
         self.lock().entries.remove(id_hash);
         Ok(())

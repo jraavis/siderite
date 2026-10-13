@@ -72,7 +72,6 @@ sha2 = "0.10"
 rmcp = { version = "3.5", default-features = false, features = ["server"] }
 serde_path_to_error = "0.1"
 serde_urlencoded = "0.7"
-sha2 = "0.10"
 mongodb = { version = "3.9", default-features = false, features = ["compat-3-0-0", "rustls-tls", "dns-resolver"] }
 redis = { version = "1.7", default-features = false, features = ["aio", "tokio-comp", "connection-manager", "script"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "macros", "chrono", "uuid", "rust_decimal", "json"] }

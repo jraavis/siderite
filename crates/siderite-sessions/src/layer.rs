@@ -2,7 +2,7 @@
 
 use crate::config::{SessionConfig, SessionConfigError};
 use crate::id::{id_hash, well_formed};
-use crate::session::{CookieAction, Loaded, Plan, Session};
+use crate::session::{CookieAction, Loaded, Plan, Save, Session};
 use crate::store::{SessionRecord, SessionStore, StoreError};
 use http::header::COOKIE;
 use http::{HeaderMap, Method, StatusCode};
@@ -236,9 +236,11 @@ impl Inner {
                 let epoch = self.timed(self.store.auth_epoch(user)).await?;
                 save.record.auth_epoch = epoch;
             }
-            let write = self.store.save(&save.hash, &save.record, save.ttl);
-            match self.timed(write).await {
-                Ok(()) => {}
+            match self.timed(self.write(save)).await {
+                Ok(true) => {}
+                // Deleted meanwhile (a concurrent logout or rotation):
+                // the session is over for this client too.
+                Ok(false) => plan.cookie = CookieAction::Expire,
                 Err(error) if save.required => return Err(error),
                 Err(error) => {
                     tracing::warn!(%error, "session touch write failed");
@@ -255,6 +257,17 @@ impl Inner {
             }
         }
         Ok(())
+    }
+
+    /// Create a new id's record, or replace a loaded one only while it is
+    /// still stored. `Ok(false)` when the loaded record is gone.
+    async fn write(&self, save: &Save) -> Result<bool, StoreError> {
+        let (hash, record, ttl) = (&save.hash, &save.record, save.ttl);
+        if save.existing {
+            self.store.update(hash, record, ttl).await
+        } else {
+            self.store.save(hash, record, ttl).await.map(|()| true)
+        }
     }
 
     fn cookie(&self, value: &str, max_age: Duration) -> SetCookie {

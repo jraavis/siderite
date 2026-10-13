@@ -89,6 +89,24 @@ pub trait SessionStore: Send + Sync + 'static {
         ttl: Duration,
     ) -> Result<(), StoreError>;
 
+    /// Replace the record under `id_hash` only if one is stored, for
+    /// `ttl`; `Ok(false)` when there is none.
+    ///
+    /// The layer writes existing sessions through this method, so a slow
+    /// request that loaded a session before another request logged it
+    /// out or rotated its id cannot store it again. Implementations must
+    /// never let a deleted id become loadable again, even when the check
+    /// and the write race with [`delete`](Self::delete).
+    ///
+    /// # Errors
+    /// [`StoreError`] when the record may not have been stored.
+    async fn update(
+        &self,
+        id_hash: &str,
+        record: &SessionRecord,
+        ttl: Duration,
+    ) -> Result<bool, StoreError>;
+
     /// Remove `id_hash`. Removing an absent record is not an error.
     ///
     /// # Errors

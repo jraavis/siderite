@@ -284,6 +284,41 @@ async fn logout_deletes_the_session_and_expires_the_cookie() {
 }
 
 #[tokio::test]
+async fn a_slow_request_cannot_revive_a_logged_out_session() {
+    let (client, _) = setup();
+    let cookie = login(&client).await;
+    let slow = post_as(&client, "/slow-set", Some(&cookie));
+    let logout = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        post_as(&client, "/logout", Some(&cookie)).await
+    };
+    let (slow, logout) = tokio::join!(slow, logout);
+    assert_eq!(logout.status, StatusCode::OK);
+    assert_eq!(slow.status, StatusCode::OK);
+    let expired = set_cookie(&slow).unwrap();
+    assert!(expired.contains("Max-Age=0"), "{expired}");
+    let me = get_as(&client, "/me", Some(&cookie)).await;
+    assert_eq!(me.text(), "anonymous");
+}
+
+#[tokio::test]
+async fn a_slow_request_cannot_revive_a_rotated_id() {
+    let (client, _) = setup();
+    let cookie = login(&client).await;
+    let slow = post_as(&client, "/slow-set", Some(&cookie));
+    let rotate = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        post_as(&client, "/rotate", Some(&cookie)).await
+    };
+    let (_, rotated) = tokio::join!(slow, rotate);
+    let fresh = pair(&rotated).unwrap();
+    let old = get_as(&client, "/me", Some(&cookie)).await;
+    assert_eq!(old.text(), "anonymous");
+    let new = get_as(&client, "/me", Some(&fresh)).await;
+    assert_eq!(new.text(), "ada");
+}
+
+#[tokio::test]
 async fn revoking_a_user_ends_all_their_sessions() {
     let (client, spy) = setup();
     let first = login(&client).await;

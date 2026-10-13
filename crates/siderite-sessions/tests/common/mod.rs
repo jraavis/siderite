@@ -81,6 +81,17 @@ impl SessionStore for Spy {
         self.inner.save(id_hash, record, ttl).await
     }
 
+    async fn update(
+        &self,
+        id_hash: &str,
+        record: &SessionRecord,
+        ttl: Duration,
+    ) -> Result<bool, StoreError> {
+        self.saves.fetch_add(1, Ordering::SeqCst);
+        self.gate(id_hash, &self.fail_save).await?;
+        self.inner.update(id_hash, record, ttl).await
+    }
+
     async fn delete(&self, id_hash: &str) -> Result<(), StoreError> {
         self.gate(id_hash, &self.fail_delete).await?;
         self.inner.delete(id_hash).await
@@ -119,6 +130,7 @@ pub fn app(layer: SessionLayer) -> App {
         .route("/logout", post(|s: Session| async move { s.logout() }))
         .route("/rotate", post(|s: Session| async move { s.rotate() }))
         .route("/set", post(set))
+        .route("/slow-set", post(slow_set))
         .route("/get", get(|s: Session| async move { value(&s) }))
         .route("/me", get(me))
         .route("/token", get(token))
@@ -135,6 +147,13 @@ fn value(session: &Session) -> String {
 
 async fn set(session: Session) -> &'static str {
     session.insert("color", "red").unwrap();
+    "set"
+}
+
+/// Changes the session after a pause, to race other requests.
+async fn slow_set(session: Session) -> &'static str {
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    session.insert("color", "blue").unwrap();
     "set"
 }
 

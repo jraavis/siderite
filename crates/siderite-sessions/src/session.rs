@@ -49,6 +49,9 @@ pub(crate) struct Save {
     pub(crate) ttl: Duration,
     /// A failed write fails the request (otherwise it is only logged).
     pub(crate) required: bool,
+    /// The id was loaded from the store, so the write must not recreate
+    /// it once another request deleted it.
+    pub(crate) existing: bool,
 }
 
 /// What to do with the session cookie.
@@ -307,6 +310,7 @@ impl Session {
                 record,
                 ttl,
                 required: true,
+                existing: false,
             });
         } else if let Some(hash) = state.existing.clone()
             && (state.dirty || state.touch)
@@ -317,6 +321,7 @@ impl Session {
                 record,
                 ttl,
                 required,
+                existing: true,
             });
         }
         if plan.save.is_none() && state.expire_cookie {

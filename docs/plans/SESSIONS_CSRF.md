@@ -154,3 +154,8 @@ Decisions made while implementing:
   optional requirement; a custom cookie name is not reflected in it.
 - The facade crate does not re-export `siderite-sessions`; depend on it
   directly.
+- Existing sessions are written with `SessionStore::update`, which only
+  replaces a stored record, so a slow request racing a logout or a
+  rotation cannot store the deleted id again. `CacheStore` has no
+  conditional write, so its `delete` also leaves a tombstone (24 hours
+  by default) that `load` checks.
