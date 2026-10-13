@@ -4,8 +4,10 @@
 //! Only paths inside the project root are read. Files git ignores are
 //! skipped (through `git ls-files --exclude-standard`; without git, build
 //! output and hidden directories are skipped instead), and files whose
-//! names suggest secrets are refused even when tracked. Contents are
-//! redacted like every other output.
+//! names suggest secrets are refused even when tracked. Symbolic links
+//! found under an included directory are refused and never followed, so
+//! a link cannot pull in a secret or a file outside the project.
+//! Contents are redacted like every other output.
 
 use crate::report::redact_text;
 use crate::secret_files::is_secret_name;
@@ -108,15 +110,27 @@ fn read(root: &Path, file: &Path) -> Result<Included, Refused> {
         path: path.clone(),
         reason,
     };
-    let name = file.file_name().map(|n| n.to_string_lossy());
+    let meta = std::fs::symlink_metadata(file);
+    let meta = meta.map_err(|_| refuse("unreadable"))?;
+    if meta.file_type().is_symlink() {
+        return Err(refuse("symbolic link"));
+    }
+    if !meta.is_file() {
+        return Err(refuse("not a regular file"));
+    }
+    // A linked parent directory must not lead outside the project.
+    let real = file.canonicalize().map_err(|_| refuse("unreadable"))?;
+    if !real.starts_with(root) {
+        return Err(refuse("outside the project"));
+    }
+    let name = real.file_name().map(|n| n.to_string_lossy());
     if name.as_deref().is_some_and(is_secret_name) {
         return Err(refuse("may hold secrets"));
     }
-    let size = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
-    if size > MAX_FILE_BYTES {
+    if meta.len() > MAX_FILE_BYTES {
         return Err(refuse("larger than 1 MiB"));
     }
-    let bytes = std::fs::read(file).map_err(|_| refuse("unreadable"))?;
+    let bytes = std::fs::read(&real).map_err(|_| refuse("unreadable"))?;
     let text = String::from_utf8(bytes).map_err(|_| refuse("not text"))?;
     Ok(Included {
         text: redact_text(&text),
@@ -137,22 +151,26 @@ fn listed(root: &Path, path: &Path) -> Option<Vec<PathBuf>> {
     if !output.status.success() {
         return None;
     }
-    // Paths are relative to the directory git ran in.
+    // Paths are relative to the directory git ran in. Links are kept
+    // (not followed) so reading refuses them by name.
     let names = output.stdout.split(|b| *b == 0).filter(|n| !n.is_empty());
     let files = names
         .map(|n| root.join(String::from_utf8_lossy(n).as_ref()))
-        .filter(|f| f.is_file())
+        .filter(|f| std::fs::symlink_metadata(f).is_ok_and(|m| !m.is_dir()))
         .collect();
     Some(files)
 }
 
 /// Every file under `path` (or `path` itself), skipping hidden and build
-/// directories.
+/// directories. Symbolic links are listed, never followed.
 fn walk(path: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut stack = vec![path.to_path_buf()];
     while let Some(next) = stack.pop() {
-        if next.is_file() {
+        let Ok(meta) = std::fs::symlink_metadata(&next) else {
+            continue;
+        };
+        if !meta.is_dir() {
             found.push(next);
             continue;
         }
@@ -161,7 +179,8 @@ fn walk(path: &Path) -> Vec<PathBuf> {
         };
         for item in listing.flatten() {
             let name = item.file_name().to_string_lossy().into_owned();
-            let skip = name.starts_with('.') && item.path().is_dir();
+            let is_dir = item.file_type().is_ok_and(|t| t.is_dir());
+            let skip = name.starts_with('.') && is_dir;
             if skip || SKIPPED_DIRS.contains(&name.as_str()) {
                 continue;
             }
