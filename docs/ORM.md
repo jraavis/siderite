@@ -164,6 +164,73 @@ db.transaction(|tx| async move {
 * Generic structs are not supported.
 * `ForeignKey<T>` implements `Validate`, `Schema` and `Dump` by delegating to `T::Pk`, so a model with relation fields can derive those together with `Model`. OpenAPI shows the key type (an integer for `ForeignKey<User>` whose primary key is `i64`).
 
+## Cursor pagination
+
+`QuerySet::paginate` counts and uses `OFFSET`, which gets slow on long lists
+and shifts rows between pages that change. `cursor_page` (keyset
+pagination) seeks past the last row of the previous page instead:
+
+```rust
+let qs = Book::objects(&db).order_by([Book::likes.desc()]);
+let page = qs.clone().cursor_page(20).await?;          // CursorPage<Book>
+let more = qs.clone().after(&page.next.unwrap()).cursor_page(20).await?;
+let back = qs.before(&more.previous.unwrap()).cursor_page(20).await?;
+```
+
+* `CursorPage<M>` has `items`, `next` and `previous`: opaque strings, `None`
+  at the last and first page. There is no total; count separately if needed.
+  Pass `next` to `after` and `previous` to `before` (an `after` token given
+  to `before` is rejected). Using both on one queryset is an error.
+* **One statement per page**: the seek predicate plus `LIMIT n + 1`; the
+  extra row only says whether `next` (or `previous`) exists. Related rows
+  follow `select_related` / `prefetch_related` as for `all()`.
+* **Ordering is total.** The `order_by` terms (or the model's `ordering`) are
+  used in order and the primary key is appended ascending unless present.
+  Terms must be plain columns of the model: no expressions, annotations,
+  related columns or JSON columns. A queryset with `distinct`, grouping,
+  `having`, set operations, `limit`/`offset` or row locks is an
+  `InvalidPlan` error, as is `limit == 0`.
+* **Nulls sort last ascending and first descending**, on every backend (a
+  nullable term adds an `IS NULL` sort key; non-null columns add none, so
+  indexes keep serving the order). Mixed directions are supported: the seek
+  predicate is the expanded `(a > v1) OR (a = v1 AND b > v2) ...` form, not
+  a row-value comparison.
+* **A token belongs to its list.** It stores the ordering values of one row
+  and a 64-bit fingerprint (SHA-256) of the table, the filter with its bound
+  values and the ordering; `limit`, related-object loading and the seek
+  itself are not part of it. The client repeats its filters with each
+  request. The fingerprint hashes the filter's `Debug` form, so a siderite
+  upgrade can turn old tokens into `cursor.E003`; clients restart from the
+  first page.
+* **Tokens are validated, not trusted**: unpadded base64url of version `1`,
+  fingerprint, direction (`a`/`b`) and one tagged value per term (null, i64,
+  text, f64, bool, bytes, timestamp, date, uuid, decimal, time), at most
+  1 KiB. A bad token is `OrmError::Cursor(CursorError)` with a stable code:
+  `cursor.E001` malformed (not base64url, too long, truncated, bad value
+  encoding or wrong direction), `E002` unknown version, `E003` another
+  query's token, `E004` values that do not fit the ordering (count or type;
+  a null for a non-null term). `ApiError` answers `400` with that code.
+  Tokens are not signed.
+* **Empty pages keep their place.** A forward page that comes back empty
+  still returns `previous` (the position of the cursor row); going back
+  from it lists the rows before that position.
+* **Consistency**: rows that exist for the whole iteration and whose
+  ordering values do not change are returned exactly once, whatever is
+  inserted or deleted meanwhile. A row whose ordering values change can be
+  skipped or repeated. Rows inserted behind the cursor are not seen.
+
+| Backend | Status |
+|---|---|
+| PostgreSQL, MySQL, SQLite | supported, nullable terms included |
+| MongoDB | supported for non-null ordering columns; a nullable term fails with `Feature::NullableKeyset` |
+| Redis | `Feature::KeysetPagination` capability error |
+
+Unsupported combinations fail with a capability error before any query. Back
+the order with an index on the ordering columns plus the primary key so a
+page is a range scan. The semantics are specified in
+[plans/CURSOR_PAGINATION.md](plans/CURSOR_PAGINATION.md) and held to the
+fixtures in `crates/siderite-orm/tests/cursor_contract.json`.
+
 ## Prefetch parameter admission
 
 Prefetch constructs each source key's canonical identity once and uses a

@@ -123,6 +123,38 @@ async fn list_items(
 }
 ```
 
+### Cursor pagination
+
+`Query<CursorParams>` (`use siderite::{CursorPage, CursorParams};`) reads
+`?after=TOKEN&limit=N` or `?before=TOKEN&limit=N`: a page size from 1 to 100
+(default 20; `CursorParams<MAX, DEFAULT>` chooses other bounds) and at most
+one of the two cursors. Both cursors together, or a bad limit, are answered
+with 422 before the handler runs.
+
+`CursorPage<T>` is the response body: `items`, `next` and `previous`
+(`null` at either end) and no `total`. `params.fetch(queryset)` runs
+`QuerySet::cursor_page`: one statement per page, no count. Give the
+queryset the same filters on every request and a stable `order_by`; the
+primary key is appended, so ties are safe. A token the server rejects (a
+mangled one, one from another list or filter, one from an older siderite)
+is answered with `400` and the problem `code` `cursor.E001` to
+`cursor.E004`; clients restart from the first page. `map`, `try_map` and
+`CursorPage::from(orm_page)` work as for `Page`; the schema is inlined.
+
+```rust
+#[get("/items")]
+async fn list_items(
+    State(dbs): State<Databases>,
+    Query(params): Query<CursorParams>,
+) -> ApiResult<Json<CursorPage<ItemOut>>> {
+    let rows = dbs.objects::<Item>()?.order_by([Item::id.asc()]);
+    Ok(Json(params.fetch(rows).await?.map(ItemOut::from)))
+}
+```
+
+Prefer it over `Page` for long or fast-changing lists. See
+[the ORM guide](/siderite/guides/data/querysets/#cursor-pagination) for the ordering, null and consistency rules.
+
 The count and the fetch are two statements: rows written between them can make `total` disagree with the items, and an unordered queryset can show a row on two pages or on none. Order by a unique key, and run both inside a transaction with a snapshot (for example `REPEATABLE READ` on PostgreSQL) when the two must agree. A page past the end has no items and the real `total`.
 
 ## Custom extractors

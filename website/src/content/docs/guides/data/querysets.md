@@ -55,6 +55,7 @@ resolved into a `JOIN` when compiled. See [Relations](/siderite/guides/data/rela
 | `exists()` | `bool` |
 | `contains(&object)` | `bool` (by primary key) |
 | `paginate(page, per_page)` | `Page<M>` with `total_pages()` |
+| `after(token)` / `before(token)` + `cursor_page(n)` | `CursorPage<M>` (`next`, `previous`) |
 | `in_bulk(keys)` | map of primary key → model |
 | `rows()` | `Vec<Row>` |
 | `values(fields)` | `Vec<Row>` of named columns |
@@ -84,6 +85,34 @@ User::objects(&db)
 - `distinct_on([User::name])` needs `Feature::DistinctOn` (PostgreSQL).
 - `select_for_update()`, `nowait()`, `skip_locked()` need row locking and
   belong inside `Db::transaction`. See [Transactions](/siderite/guides/data/transactions/).
+
+## Cursor pagination
+
+`paginate` counts and uses `OFFSET`. For long or fast-changing lists use
+`cursor_page`, which seeks past the last row of the previous page:
+
+```rust
+let qs = Book::objects(&db).order_by([Book::likes.desc()]);
+let page = qs.clone().cursor_page(20).await?;
+let more = qs.clone().after(&page.next.unwrap()).cursor_page(20).await?;
+let back = qs.before(&more.previous.unwrap()).cursor_page(20).await?;
+```
+
+- One statement per page (`LIMIT n + 1`, no count). `CursorPage` has
+  `items`, `next` and `previous`; `None` marks the last and first page.
+- The primary key is appended to the ordering, so every row has a distinct
+  position. Ordering terms must be plain model columns; `distinct`,
+  grouping, set operations, `limit`/`offset` and row locks are rejected.
+- Nulls sort last ascending and first descending on every backend.
+- A token is bound to the table, filters and ordering that issued it. A bad
+  or foreign token is `OrmError::Cursor` with code `cursor.E001` to
+  `cursor.E004` (HTTP 400). Tokens are validated but not signed.
+- PostgreSQL, MySQL and SQLite are supported; MongoDB pages non-null
+  ordering columns only; Redis fails with a capability error.
+- Rows that exist for the whole iteration are returned exactly once, however
+  rows are inserted or deleted meanwhile.
+
+For the HTTP side see [Extractors](/siderite/guides/http/extractors/#cursor-pagination).
 
 ## Annotations and grouping
 

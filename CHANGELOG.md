@@ -8,6 +8,19 @@
 
 
 ### Added
+- **ORM:** cursor (keyset) pagination. `QuerySet::after(token)` /
+  `before(token)` and `cursor_page(limit)` return a `CursorPage` (`items`,
+  `next`, `previous`) in one statement without a count; the primary key is
+  appended to the ordering, nulls sort last ascending and first descending
+  on every backend, and a token is bound to the table, filters and ordering
+  that issued it. Bad tokens are `OrmError::Cursor(CursorError)` with
+  stable codes `cursor.E001` to `cursor.E004`. New capabilities
+  `Feature::KeysetPagination` and `Feature::NullableKeyset`: Redis is
+  rejected, MongoDB pages non-null columns only.
+- **HTTP:** `CursorParams` (`?after=` or `?before=`, `?limit=`, 422 for a bad
+  limit or both cursors) and `CursorPage<T>` (no `total`) in
+  `siderite-core`; a rejected cursor answers `400` with the problem `code`
+  extension member, which `ApiError::with_code` and `ApiError::code` expose.
 - **CLI:** an end-to-end acceptance test runs the whole developer journey
   (setup, new, dev, a resource and its migration, generated tests, AI
   context, verify, package) with `siderite` commands only; remaining gaps

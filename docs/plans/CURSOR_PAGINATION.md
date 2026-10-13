@@ -1,9 +1,13 @@
 # Cursor pagination: semantics (F02)
 
-Status: design for review. Nothing here is implemented; the executable
-contract is `crates/siderite-orm/tests/cursor_contract.rs` with its
-fixtures in `cursor_contract.json`, checked against a reference model so a
-future implementation can be held to the same cases.
+Status: implemented (F02): `QuerySet::after`/`before`/`cursor_page`,
+`CursorPage`, `CursorError`, and `CursorParams`/`CursorPage` in
+`siderite-core`. The executable contract is
+`crates/siderite-orm/tests/cursor_contract.rs` with its fixtures in
+`cursor_contract.json`, checked against a reference model; the same
+fixtures run through the implementation in
+`crates/siderite-backends/tests/common/cursor.rs` (SQLite by default,
+PostgreSQL, MySQL and MongoDB as ignored live tests).
 
 Page-number pagination (`QuerySet::paginate`, `PageParams`/`Page`) stays
 as it is. Cursor (keyset) pagination is for long or fast-changing lists

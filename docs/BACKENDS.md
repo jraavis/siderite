@@ -34,6 +34,7 @@ The PostgreSQL, MySQL, MongoDB and Redis suites were run and passed against dock
 | Regex lookup | `~` | capability error | `REGEXP_LIKE(x, ?, 'c')` | `$regex` |
 | Case-insensitive lookups | `ILIKE` | `LOWER(x) LIKE LOWER(?)` | `LOWER(x) LIKE LOWER(?)` | `$regex` with `i` |
 | Set operations | yes | yes | yes (`INTERSECT`/`EXCEPT` need 8.0.31) | capability error (`SetOperations`) |
+| Cursor pagination (`cursor_page`) | yes | yes | yes | non-null ordering columns only (`NullableKeyset`); Redis: capability error (`KeysetPagination`) |
 | `RETURNING` | yes | yes (3.35+) | emulated by the adapter | emulated by the adapter |
 | Raw SQL | yes | yes | yes | capability error (`RawSql`); use `MongoBackend::raw_command` |
 | Bind parameter limit (`max_params`) | 65535 | 32766 | 65535 | 50000 rows per `insert_many` |
