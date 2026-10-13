@@ -12,6 +12,9 @@ use crate::types::DbType;
 use std::collections::HashMap;
 use std::hash::Hash;
 
+/// Models decoded from fetched rows, each with its row.
+pub(super) type Decoded<M> = Result<Vec<(M, Row)>, OrmError>;
+
 /// One page of a [`QuerySet::paginate`] result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Page<M> {
@@ -89,14 +92,20 @@ impl<M: Model> QuerySet<M> {
             return Ok(Vec::new());
         }
         let result = self.db.fetch(&self.plan).await?;
-        let mut models = Vec::with_capacity(result.rows.len());
-        for row in &result.rows {
+        self.decode_rows(result.rows).await
+    }
+
+    /// Decode fetched `rows` into models, attaching `select_related`
+    /// objects and running the prefetches.
+    pub(super) async fn decode_rows(&self, rows: Vec<Row>) -> Decoded<M> {
+        let mut models = Vec::with_capacity(rows.len());
+        for row in &rows {
             let mut model = M::from_row(row, "")?;
             attach_all(&mut model, &self.related, row)?;
             models.push(model);
         }
         self.run_prefetches(&mut models).await?;
-        Ok(models.into_iter().zip(result.rows).collect())
+        Ok(models.into_iter().zip(rows).collect())
     }
 
     /// The first row, if any. An unordered queryset is ordered by primary key.

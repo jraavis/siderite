@@ -39,6 +39,7 @@ pub use capabilities::{
 };
 pub use db::{Databases, Db};
 pub use decode::FromValues;
+pub use error::CursorError;
 pub use error::{BackendCapabilityError, BackendError, OrmError, QueryError};
 pub use expr::functions;
 pub use expr::{
@@ -57,7 +58,7 @@ pub use plan::{
     Compound, DistinctMode, JoinExpr, JoinKind, LockMode, OrderDirection, OrderExpr, PlanOrigin,
     QueryPlan, QuerySource, SelectExpr, SetOp,
 };
-pub use queryset::{Page, Prefetch, QuerySet, Relation};
+pub use queryset::{CursorPage, Page, Prefetch, QuerySet, Relation};
 pub use relations::{ForeignKey, ManyToManyManager, OneToOne};
 pub use types::{DbType, SqlType};
 pub use value::Value;

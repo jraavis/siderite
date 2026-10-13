@@ -104,6 +104,11 @@ pub enum Feature {
     SetOperations,
     /// Raw SQL text (`fetch_raw`, `execute_raw`, `execute_script`).
     RawSql,
+    /// Cursor (keyset) pagination: `QuerySet::cursor_page`.
+    KeysetPagination,
+    /// Cursor pagination over nullable ordering columns, which needs a
+    /// null-position sort key the backend can express.
+    NullableKeyset,
 }
 
 /// Declared capabilities of a backend.
@@ -298,6 +303,12 @@ impl BackendCapabilities {
             Feature::Subqueries | Feature::SetOperations | Feature::RawSql => {
                 !matches!(self.kind, BackendKind::MongoDb | BackendKind::Redis)
             }
+            Feature::KeysetPagination => self.kind != BackendKind::Redis,
+            // MongoDB sorts null first; the computed sort key that would
+            // place it like the SQL backends is not verified yet.
+            Feature::NullableKeyset => {
+                !matches!(self.kind, BackendKind::MongoDb | BackendKind::Redis)
+            }
         }
     }
 
@@ -405,6 +416,24 @@ mod tests {
         }
         assert!(BackendCapabilities::sqlite().supports(Feature::Subqueries));
         assert!(BackendCapabilities::postgres().supports(Feature::RawSql));
+    }
+
+    #[test]
+    fn keyset_pagination_is_listed_per_backend() {
+        for caps in [
+            BackendCapabilities::postgres(),
+            BackendCapabilities::sqlite(),
+            BackendCapabilities::mysql(),
+        ] {
+            assert!(caps.supports(Feature::KeysetPagination));
+            assert!(caps.supports(Feature::NullableKeyset));
+        }
+        let mongo = BackendCapabilities::mongodb();
+        assert!(mongo.supports(Feature::KeysetPagination));
+        assert!(!mongo.supports(Feature::NullableKeyset));
+        let redis = BackendCapabilities::redis();
+        assert!(!redis.supports(Feature::KeysetPagination));
+        assert!(!redis.supports(Feature::NullableKeyset));
     }
 
     #[test]
