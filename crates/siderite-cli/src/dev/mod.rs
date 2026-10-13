@@ -11,7 +11,6 @@
 
 pub(crate) mod build;
 mod command;
-mod process;
 mod watch;
 
 #[cfg(test)]
@@ -23,8 +22,8 @@ pub(crate) use build::BuildSpec;
 pub(crate) use command::run;
 
 use crate::error::CliError;
+use crate::process::App;
 use build::{Built, build};
-use process::App;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 use std::time::Duration;

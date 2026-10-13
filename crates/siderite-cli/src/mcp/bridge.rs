@@ -4,9 +4,12 @@
 //!
 //! The app runs with stdin closed; its stdout and stderr go to this
 //! process's stderr, so nothing it prints reaches the protocol stream.
-//! Its report travels through a private file. One build runs at a time,
-//! and a call that is cancelled or times out kills it.
+//! Its report travels through a private file. One build runs at a time.
+//! Cargo leads its own process group (Unix), and a call that is
+//! cancelled or times out kills the whole group: cargo, rustc and the
+//! app it started.
 
+use crate::process::{self, Group, KillOnDrop};
 use crate::project::ReportFile;
 use crate::report::channel::REPORT_PATH_ENV;
 use serde::Serialize;
@@ -121,9 +124,16 @@ impl Bridge {
             .env(REPORT_PATH_ENV, report.path())
             .stdin(Stdio::null())
             .stdout(Stdio::from(std::io::stderr()))
-            .stderr(Stdio::from(std::io::stderr()))
-            .kill_on_drop(true);
-        let status = command.status().await;
+            .stderr(Stdio::from(std::io::stderr()));
+        process::own(&mut command);
+        let mut child = command
+            .spawn()
+            .map_err(|e| format!("cannot run cargo: {e}"))?;
+        // Dropping this future (cancel, timeout) kills the whole group.
+        let guard = child.id().map(|pid| KillOnDrop::new(Group::led_by(pid)));
+        let status = child.wait().await;
+        // Nothing cargo or the app started may outlive the call.
+        drop(guard);
         let status = status.map_err(|e| format!("cannot run cargo: {e}"))?;
         let Some(text) = report.read(true) else {
             return Err(format!(

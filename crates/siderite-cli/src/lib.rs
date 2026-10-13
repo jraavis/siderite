@@ -38,6 +38,7 @@ mod generate;
 mod mcp;
 mod openapi;
 mod package;
+mod process;
 mod project;
 pub mod report;
 pub mod routes;

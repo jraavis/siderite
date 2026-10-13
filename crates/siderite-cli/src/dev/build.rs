@@ -2,9 +2,9 @@
 //! stderr as cargo would print them, and the executable of the selected
 //! binary is taken from the artifact messages instead of being guessed.
 
-use super::process::{self, Group, KillOnDrop};
 use crate::cargo_msg::{self, Artifact, CargoMessage, CompilerDiagnostic};
 use crate::error::CliError;
+use crate::process::{self, Group, KillOnDrop};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
