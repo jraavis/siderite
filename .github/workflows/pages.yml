@@ -3,7 +3,13 @@ name: Pages
 on:
   push:
     branches: [master]
+    paths:
+      - website/**
+      - .github/workflows/pages.yml
   pull_request:
+    paths:
+      - website/**
+      - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
@@ -14,7 +20,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Temporary kill switch. Set `false` to `true` to run again on push and
+  # pull_request. A manual workflow_dispatch still runs while this is false.
+  autorun:
+    if: ${{ github.event_name == 'workflow_dispatch' || false }}
+    runs-on: ubuntu-26.04
+    steps:
+      - run: "true"
+
   build:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -43,8 +58,10 @@ jobs:
           path: website/dist
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: build
+    needs: [autorun, build]
+    if: >-
+      needs.autorun.result == 'success' && needs.build.result == 'success' &&
+      github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-26.04
     permissions:
       pages: write
