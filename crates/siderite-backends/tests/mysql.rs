@@ -969,3 +969,29 @@ async fn update_or_create_serializes_with_concurrent_writers() {
     assert_eq!(stored.label, "2");
     t.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "requires explicit MYSQL_URL and an isolated live service"]
+async fn cursor_pages_follow_the_contract_and_join_cleanly() {
+    let Some(t) = TestDb::open().await else {
+        return;
+    };
+    let db = &t.db;
+    db.execute_script(common::cursor::MYSQL_DDL).await.unwrap();
+    common::cursor::run_contract(db, true).await;
+
+    // Ordering columns shared with a joined table are qualified.
+    seed(db).await;
+    let joined = || {
+        Book::objects(db)
+            .select_related(Book::author_relation())
+            .order_by([Book::likes.desc()])
+    };
+    let first = joined().cursor_page(3).await.unwrap();
+    assert!(first.items.iter().all(|b| b.author.cached().is_some()));
+    let rest = joined().after(&first.next.unwrap()).cursor_page(3);
+    let rest = rest.await.unwrap();
+    let all = joined().all().await.unwrap();
+    assert_eq!([first.items, rest.items].concat(), all);
+    t.cleanup().await;
+}

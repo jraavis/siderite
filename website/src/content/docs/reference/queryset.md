@@ -51,6 +51,7 @@ Narrative guide: [QuerySets](/siderite/guides/data/querysets/).
 | `exists()` | `bool` |
 | `contains(&M)` | `bool` |
 | `paginate(page, per_page)` | `Page<M>` (`total_pages()`) |
+| `cursor_page(limit)` after `after(token)` / `before(token)` | `CursorPage<M>` (`items`, `next`, `previous`) |
 | `in_bulk(keys)` | map pk → model |
 | `rows()` | `Vec<Row>` |
 | `values([SelectExpr])` | `Vec<Row>` |

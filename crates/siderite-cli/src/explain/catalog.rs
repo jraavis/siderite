@@ -30,6 +30,7 @@ const SEED: &str = "guides/production/cli#seed-datasets";
 const SERVICES: &str = "guides/production/cli#local-services";
 const DOCTOR: &str = "guides/production/cli#doctor";
 const JSON: &str = "guides/production/cli#json-output";
+const CURSOR: &str = "guides/http/extractors#pagination";
 
 const fn entry(
     code: &'static str,
@@ -203,6 +204,54 @@ pub(crate) const CATALOG: &[Explanation] = &[
         ],
         "siderite config validate",
         CONFIG,
+    ),
+    entry(
+        "cursor.E001",
+        "Malformed pagination cursor",
+        [
+            "The `after` or `before` token is not base64url, is longer \
+             than 1 KiB, is cut short, is damaged, or was passed to the \
+             wrong parameter (a `next` token to `before`).",
+            "Do not edit tokens: pass `next` to `after` and `previous` to \
+             `before`, or restart from the first page.",
+        ],
+        "siderite docs search cursor",
+        CURSOR,
+    ),
+    entry(
+        "cursor.E002",
+        "Pagination cursor of an unknown version",
+        [
+            "The token was written with a layout this server does not \
+             read, typically by a newer or a much older siderite.",
+            "Restart from the first page without a cursor.",
+        ],
+        "siderite docs search cursor",
+        CURSOR,
+    ),
+    entry(
+        "cursor.E003",
+        "Pagination cursor from another query",
+        [
+            "The token was issued for a different table, filter or \
+             ordering than the request that carries it, or by an older \
+             siderite whose fingerprint differs.",
+            "Repeat the same filters and ordering with every request of \
+             one list; start a new list without a cursor.",
+        ],
+        "siderite docs search cursor",
+        CURSOR,
+    ),
+    entry(
+        "cursor.E004",
+        "Pagination cursor does not fit the ordering",
+        [
+            "The token holds a different number of values than the \
+             ordering has terms, or a value of the wrong type.",
+            "Use only tokens the server returned for this list.",
+        ],
+        "siderite docs search cursor",
+        CURSOR,
     ),
     entry(
         "docs.W001",

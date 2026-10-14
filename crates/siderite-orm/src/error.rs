@@ -69,6 +69,40 @@ pub enum QueryError {
     },
 }
 
+/// A pagination cursor was rejected.
+///
+/// Tokens come from clients, so they are validated, never trusted. Each
+/// variant has a stable [`code`](Self::code) for API clients; the messages
+/// say nothing about which query or column was involved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum CursorError {
+    /// Not base64url, over 1 KiB, truncated, or of the wrong direction.
+    #[error("the cursor is malformed")]
+    Malformed,
+    /// The token layout version is not one this server reads.
+    #[error("the cursor has an unknown version")]
+    UnknownVersion,
+    /// The token was issued for a different query.
+    #[error("the cursor belongs to another query")]
+    ForeignQuery,
+    /// The values do not fit the ordering (count or types).
+    #[error("the cursor does not fit the ordering")]
+    Mismatch,
+}
+
+impl CursorError {
+    /// The stable error code (`cursor.E001` to `cursor.E004`).
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Malformed => "cursor.E001",
+            Self::UnknownVersion => "cursor.E002",
+            Self::ForeignQuery => "cursor.E003",
+            Self::Mismatch => "cursor.E004",
+        }
+    }
+}
+
 /// Driver / connection level failure.
 ///
 /// Messages come from the driver and may contain SQL fragments; they are
@@ -100,6 +134,9 @@ pub enum OrmError {
     /// Capability mismatch.
     #[error(transparent)]
     Capability(#[from] BackendCapabilityError),
+    /// A pagination cursor from the client was rejected.
+    #[error(transparent)]
+    Cursor(#[from] CursorError),
     /// A signal receiver failed. A failing `pre_*` receiver aborted the
     /// operation; a failing `post_*` receiver ran after the statement.
     /// Maps to HTTP 500 (`ApiError: From<OrmError>` falls through to internal).

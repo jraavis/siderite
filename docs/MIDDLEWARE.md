@@ -18,6 +18,7 @@ only its own routes. Rejections from built-ins are RFC 7807 problems.
 | --- | --- | --- |
 | `Cors` | `cors` | origins/methods/headers/credentials/max-age; `permissive()`; credentials + "any" mirrors the request instead of `*` |
 | `Compression` | `compression` | gzip + brotli, toggleable |
+| `CsrfOrigin` | `csrf_origin` | 403 problem for unsafe methods whose `Sec-Fetch-Site`/`Origin`/`Referer` is not same-origin or a configured origin; `exempt(prefix)`, `only_with_cookie()`; see [SECURITY.md](SECURITY.md) |
 | `TrustedHosts` | `trusted_hosts` | exact / `*.sub` / `*`; 400 problem otherwise |
 | `HttpsRedirect` | `https_redirect` | 308 HTTPS redirect; forwarded scheme requires explicit proxy trust |
 | `RequestIdLayer` | `request_id` | propagates a valid `x-request-id` or generates UUID v4; `RequestId` extractor |

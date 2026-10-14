@@ -41,6 +41,7 @@ siderite-testkit ──► core
 | `siderite-migrations` | Migration graph, operations, autodetector, schema editor (PostgreSQL, SQLite, MySQL), executor |
 | `siderite-config` | Layered configuration, `Secret`, `init_tracing` |
 | `siderite-cache` | `Cache` trait, in-memory LRU, Redis cache, `RouteCache` middleware |
+| `siderite-sessions` | Cookie sessions, CSRF tokens, `MemoryStore` and cache-backed `CacheStore`; depends on core, not re-exported by the facade |
 | `siderite-cli` | `AppCli` and the standalone `siderite` binary |
 | `siderite-testkit` | `TestClient`, `TestDatabase` |
 | `siderite-bench` | Criterion benchmarks (not published) |

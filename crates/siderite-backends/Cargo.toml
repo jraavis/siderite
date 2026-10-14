@@ -50,6 +50,7 @@ mongodb = ["dep:mongodb", "dep:chrono", "dep:rust_decimal", "dep:serde_json", "d
 redis = ["dep:redis", "dep:serde", "dep:serde_json"]
 
 [dev-dependencies]
+base64.workspace = true
 chrono.workspace = true
 futures-util.workspace = true
 rust_decimal.workspace = true

@@ -8,6 +8,19 @@
 
 
 ### Added
+- **ORM:** cursor (keyset) pagination. `QuerySet::after(token)` /
+  `before(token)` and `cursor_page(limit)` return a `CursorPage` (`items`,
+  `next`, `previous`) in one statement without a count; the primary key is
+  appended to the ordering, nulls sort last ascending and first descending
+  on every backend, and a token is bound to the table, filters and ordering
+  that issued it. Bad tokens are `OrmError::Cursor(CursorError)` with
+  stable codes `cursor.E001` to `cursor.E004`. New capabilities
+  `Feature::KeysetPagination` and `Feature::NullableKeyset`: Redis is
+  rejected, MongoDB pages non-null columns only.
+- **HTTP:** `CursorParams` (`?after=` or `?before=`, `?limit=`, 422 for a bad
+  limit or both cursors) and `CursorPage<T>` (no `total`) in
+  `siderite-core`; a rejected cursor answers `400` with the problem `code`
+  extension member, which `ApiError::with_code` and `ApiError::code` expose.
 - **CLI:** an end-to-end acceptance test runs the whole developer journey
   (setup, new, dev, a resource and its migration, generated tests, AI
   context, verify, package) with `siderite` commands only; remaining gaps
@@ -439,6 +452,23 @@
 - CLI serve command is `run` (was `runserver`). The `siderite` binary wraps `cargo run` in an application package and adds `siderite new`.
 
 ### Added
+- **Core:** `CsrfOrigin` middleware (`App::csrf_origin`) rejects unsafe
+  methods unless `Sec-Fetch-Site` is `same-origin` or `Origin` (else the
+  `Referer` origin) equals a configured origin. Failures are one generic
+  403 problem; origins are never derived from `Host` or `X-Forwarded-*`.
+  `exempt(prefix)` skips webhooks; `only_with_cookie()` skips requests with
+  no `Cookie` header and no `Authorization: Basic`.
+- **Sessions:** new `siderite-sessions` crate: `SessionLayer`, the `Session`
+  extractor (`get`, `insert`, `remove`, `user`, `login`, `logout`, `rotate`,
+  `csrf_token`, `verify_csrf`) and `SessionConfig`. `__Host-` `HttpOnly`
+  `Secure` `SameSite=Lax` cookie holding a 256-bit CSPRNG id; stores see only
+  its SHA-256. Login and rotation delete the old id at once; idle and
+  absolute lifetimes are enforced on the server with throttled idle writes;
+  store read failures answer 503, failed writes set no cookie, and every
+  store call has a timeout. HMAC-SHA256 CSRF tokens, required by the layer
+  for `SameSite=None`. `MemoryStore` is bounded and sweepable; `CacheStore`
+  (feature `cache`) stores sessions in any `siderite_cache::Cache` and
+  revokes a user with one epoch increment. Live Redis tests are ignored.
 - **Backends/Cache:** explicit `tls` feature enables SQLx and Redis Rustls
   transport. Deployments still configure certificate/identity verification.
 - **Backends:** PostgreSQL/MySQL `connect_with_init` composes an explicit

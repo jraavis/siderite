@@ -5,8 +5,8 @@ use ::http::Method;
 use serde_json::Value;
 use siderite_core::http::StatusCode;
 use siderite_core::middleware::{
-    BodyLimit, Compression, ConcurrencyLimit, Cors, HttpsRedirect, RateLimit, RequestId,
-    RequestIdLayer, Timeout, TrustedHosts, from_fn,
+    BodyLimit, Compression, ConcurrencyLimit, Cors, CsrfOrigin, HttpsRedirect, RateLimit,
+    RequestId, RequestIdLayer, Timeout, TrustedHosts, from_fn,
 };
 use siderite_core::*;
 use siderite_testkit::{TestClient, TestResponse};
@@ -624,4 +624,28 @@ async fn request_logging_records_nested_docs_and_unmatched_routes() {
             "{path}: expected {route} in\n{logged}"
         );
     }
+}
+
+// ---- CSRF origin ------------------------------------------------------
+
+#[tokio::test]
+async fn csrf_origin_blocks_cross_site_writes_only() {
+    let csrf = CsrfOrigin::new(["https://app.example.com"]).unwrap();
+    let app = App::new()
+        .route("/w", get(|| async { "r" }).post(|| async { "w" }))
+        .csrf_origin(csrf);
+    let client = TestClient::new(app);
+    let write = |headers: &'static [(&'static str, &'static str)]| {
+        call(&client, Method::POST, "/w", headers, "")
+    };
+    let evil = write(&[("origin", "https://evil.test")]).await;
+    assert_problem(&evil, StatusCode::FORBIDDEN);
+    assert_problem(&write(&[]).await, StatusCode::FORBIDDEN);
+    let own = write(&[("origin", "https://app.example.com")]).await;
+    assert_eq!(own.status, StatusCode::OK);
+    let same = write(&[("sec-fetch-site", "same-origin")]).await;
+    assert_eq!(same.status, StatusCode::OK);
+    let foreign = [("origin", "https://evil.test")];
+    let read = get_with(&client, "/w", &foreign).await;
+    assert_eq!(read.status, StatusCode::OK);
 }

@@ -20,11 +20,13 @@
 //! ordering is dropped, as in Django.
 
 mod combine;
+mod cursor;
 mod fetch;
 mod related;
 mod rows;
 mod write;
 
+pub use cursor::CursorPage;
 pub use fetch::Page;
 pub use related::{Prefetch, Relation};
 
@@ -52,6 +54,8 @@ pub struct QuerySet<M: Model> {
     related: Vec<RelNode>,
     /// Extra queries run by `prefetch_related`.
     prefetches: Vec<Arc<dyn Prefetcher<M>>>,
+    /// The token set by `after` / `before`, read by `cursor_page`.
+    cursor: Option<(cursor::Way, String)>,
     /// First problem found while building; returned by terminals.
     error: Option<QueryError>,
     _model: PhantomData<fn() -> M>,
@@ -67,6 +71,7 @@ impl<M: Model> Clone for QuerySet<M> {
             empty: self.empty,
             related: self.related.clone(),
             prefetches: self.prefetches.clone(),
+            cursor: self.cursor.clone(),
             error: self.error.clone(),
             _model: PhantomData,
         }
@@ -97,6 +102,7 @@ impl<M: Model> QuerySet<M> {
             empty: false,
             related: Vec::new(),
             prefetches: Vec::new(),
+            cursor: None,
             error: None,
             _model: PhantomData,
         }

@@ -9,6 +9,7 @@
 
 #[path = "../common/mod.rs"]
 mod common;
+mod cursor;
 mod fixtures;
 mod functions;
 mod lookups;

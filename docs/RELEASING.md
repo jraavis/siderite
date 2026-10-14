@@ -28,9 +28,10 @@ Each crate depends only on crates listed before it (normal dependencies):
 7. `siderite-core`
 8. `siderite-migrations`
 9. `siderite-cache`
-10. `siderite-cli`
-11. `siderite-testkit`
-12. `siderite`
+10. `siderite-sessions`
+11. `siderite-cli`
+12. `siderite-testkit`
+13. `siderite`
 
 `siderite-bench` and the examples are `publish = false`.
 
