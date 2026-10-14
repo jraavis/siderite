@@ -155,17 +155,16 @@ fn ignored(path: &Path, layout: &Layout) -> bool {
     })
 }
 
+/// `path` with links resolved. For a missing path, the nearest existing
+/// ancestor is resolved and the missing components are kept as given.
 fn canonical(path: &Path) -> PathBuf {
-    if let Ok(found) = path.canonicalize() {
-        return found;
-    }
-    // A missing file: canonicalize its directory, keep its name.
-    match (path.parent(), path.file_name()) {
-        (Some(dir), Some(name)) => dir
-            .canonicalize()
-            .map_or_else(|_| path.to_path_buf(), |dir| dir.join(name)),
-        _ => path.to_path_buf(),
-    }
+    path.ancestors()
+        .find_map(|dir| {
+            let found = dir.canonicalize().ok()?;
+            let rest = path.strip_prefix(dir).ok()?;
+            Some(found.join(rest))
+        })
+        .unwrap_or_else(|| path.to_path_buf())
 }
 
 /// Every `.rs` file under `dir`, skipping ignored directories.

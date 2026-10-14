@@ -54,6 +54,25 @@ fn inputs_exclude_target_and_vcs_inside_the_workspace() {
     assert!(dirs.iter().all(|d| !d.starts_with(root.join("target"))));
 }
 
+/// A workspace reached through a link (macOS's `/var` is one) still
+/// ignores a missing file several directories deep under `target`.
+#[cfg(unix)]
+#[test]
+fn target_is_ignored_through_a_linked_workspace() {
+    let scratch = ScratchDir::new("watch-linked");
+    let real = scratch.path().join("real");
+    layout(&real);
+    let linked = scratch.path().join("linked");
+    std::os::unix::fs::symlink(&real, &linked).unwrap();
+    let mut layout = layout(&linked);
+    layout.target = real.join("target");
+    let out = linked.join("target/debug/build/x/out/gen.rs");
+    let sources = vec![linked.join("src/main.rs"), out.clone()];
+    let inputs = Inputs::new(&layout, sources);
+    assert!(inputs.matches(&linked.join("src/main.rs")));
+    assert!(!inputs.matches(&out));
+}
+
 #[test]
 fn overflow_and_errors_count_as_changes() {
     use notify::event::{AccessKind, Event as Raw, EventKind, Flag};
