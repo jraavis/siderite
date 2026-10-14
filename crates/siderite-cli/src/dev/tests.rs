@@ -89,15 +89,11 @@ fn alive(pid: u32) -> bool {
     pid.is_some_and(|p| rustix::process::test_kill_process(p).is_ok())
 }
 
-/// How long `until` waits. Generous, since builds slow down while the
-/// whole workspace's tests run in parallel.
-const DEADLINE: Duration = Duration::from_secs(30);
-
-/// Poll `ready` for up to [`DEADLINE`].
+/// Poll `ready` for up to ten seconds.
 async fn until(what: &str, ready: impl Fn() -> bool) {
     let started = std::time::Instant::now();
     while !ready() {
-        assert!(started.elapsed() < DEADLINE, "timed out: {what}");
+        assert!(started.elapsed().as_secs() < 10, "timed out: {what}");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
@@ -177,7 +173,12 @@ fn changes_during_a_build_coalesce_into_one_more_build() {
         for _ in 0..5 {
             tx.send(Event::Changed).await.unwrap();
         }
-        until("second start", || pids(&dir, "pids").len() == 2).await;
+        // Wait on the follow-up build itself: the first app may be
+        // stopped before it records its pid, so app pids are no signal.
+        let builds = || pids(&dir, "build-pids");
+        until("second build", || builds().len() == 2).await;
+        let second = builds()[1];
+        until("second build done", || !alive(second)).await;
         tokio::time::sleep(Duration::from_millis(700)).await;
         assert_eq!(lines(&dir, "builds").len(), 2);
         tx.send(Event::Shutdown).await.unwrap();
