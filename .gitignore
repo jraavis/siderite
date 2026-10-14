@@ -10,3 +10,5 @@ website/.astro
 
 .claude/
 __pycache__/
+.DS_Store
+.venv/

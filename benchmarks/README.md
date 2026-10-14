@@ -11,7 +11,9 @@ against FastAPI, matching the methodology described in
 - **ApacheBench (`ab`)**: Available by default on macOS (`/usr/sbin/ab`) or via
 `apache2-utils` on Linux.
 - **Rust Toolchain**: `cargo` with edition 2024.
-- **Python 3.12+**: With dependencies installed:
+- **Python 3.12+**: `run_benchmarks.py` exits with an error on older
+  interpreters (macOS's default `python3` is 3.9). With dependencies
+  installed:
   ```bash
   pip install -r benchmarks/fastapi/requirements.txt
   ```

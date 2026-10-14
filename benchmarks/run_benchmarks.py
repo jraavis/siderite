@@ -21,6 +21,15 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+# Checked before the local modules load: they use 3.10+ syntax that an
+# older interpreter rejects with an unrelated TypeError.
+MIN_PYTHON = (3, 12)
+if sys.version_info < MIN_PYTHON:
+    sys.exit(
+        "ERROR: Siderite benchmarks require Python "
+        f"{'.'.join(map(str, MIN_PYTHON))}+ (found {sys.version.split()[0]})."
+    )
+
 from latency_csv import apply_percentiles
 from benchmark_metadata import write_metadata
 from benchmark_metrics import (
