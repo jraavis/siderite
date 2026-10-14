@@ -39,6 +39,7 @@ pub fn scratch(name: &str) -> Scratch {
     let dir = std::env::temp_dir().join(format!("siderite bin {id}-{name}"));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
+    let dir = dir.canonicalize().unwrap_or(dir);
     Scratch(dir)
 }
 

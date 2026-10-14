@@ -336,14 +336,14 @@ env:
 {defaults}
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
 {setup}{offline}
   # Live-service tests run only when asked for (by hand) and on main.
   live:
     if: {LIVE_WHEN}
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 {services}{env}    steps:
 {setup}{live}",
         offline = verify("", "verify"),

@@ -11,7 +11,7 @@ env:
 
 jobs:
   backend-features:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         features:
@@ -44,7 +44,7 @@ jobs:
           --features "$BACKEND_FEATURES" -- -D warnings
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -70,7 +70,7 @@ jobs:
         run: rm -rf target/tests
 
   live:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     services:
       postgres:
         image: postgres:17-alpine
@@ -128,7 +128,7 @@ jobs:
 
   # The Cargo-free developer journey (docs/JOURNEY.md), end to end.
   journey:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -142,7 +142,7 @@ jobs:
         run: rm -rf target/tests
 
   msrv:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.99
@@ -150,7 +150,7 @@ jobs:
       - run: cargo check --workspace --all-features --all-targets
 
   deny:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
       - uses: EmbarkStudios/cargo-deny-action@v2
