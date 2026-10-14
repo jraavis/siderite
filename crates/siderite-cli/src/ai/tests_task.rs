@@ -287,3 +287,19 @@ fn links_under_included_directories_are_not_followed() {
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_project_reached_through_a_link_includes_its_files() {
+    let scratch = ScratchDir::new("task-linked-root");
+    let root = scratch.path().join("app");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+    let linked = scratch.path().join("linked");
+    std::os::unix::fs::symlink(&root, &linked).unwrap();
+    let got = collect(&linked, &[PathBuf::from("src/main.rs")]);
+    let paths = got.included.iter().map(|f| f.path.as_str());
+    let paths: Vec<&str> = paths.collect();
+    assert_eq!(paths, ["src/main.rs"], "{got:?}");
+    assert!(got.refused.is_empty(), "{got:?}");
+}
