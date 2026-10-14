@@ -11,10 +11,10 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # Temporary kill switch. Set `false` to `true` to run again on push and
-  # pull_request. A manual workflow_dispatch still runs while this is false.
+  # Push and pull_request jobs run only when the repository variable
+  # AUTORUN is true. A workflow_dispatch always runs.
   autorun:
-    if: ${{ github.event_name == 'workflow_dispatch' || true }}
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTORUN == 'true' }}
     runs-on: ubuntu-26.04
     steps:
       - run: "true"

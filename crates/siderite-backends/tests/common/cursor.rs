@@ -279,14 +279,27 @@ async fn walk_back<M: Fixture>(
     assert_eq!(at, 0, "{name}: walked back to the first page");
 }
 
+/// Whether the case orders by a column that is nullable on [`Item`].
+fn order_uses_nullable_column(case: &Case) -> bool {
+    case.order.iter().any(|term| {
+        let column = column(&term.field);
+        Item::META
+            .fields
+            .iter()
+            .any(|field| field.column == column && field.nullable)
+    })
+}
+
 /// Run every fixture case on `db`, whose `cursor_items` table exists.
 ///
-/// `nullable` says whether the backend can page over nullable columns; if
-/// not, the nullable model must fail with a capability error.
+/// `nullable` says whether the backend can page over nullable columns. If
+/// not, a case whose order includes a nullable column must fail with a
+/// capability error. An order of only non-null columns, such as the primary
+/// key, still runs.
 pub async fn run_contract(db: &Db, nullable: bool) {
     let fixtures: Fixtures = serde_json::from_str(FIXTURES).unwrap();
     for case in &fixtures.cases {
-        if nullable {
+        if nullable || !order_uses_nullable_column(case) {
             run_case::<Item>(db, case).await;
         } else {
             let first = queryset::<Item>(db, case).cursor_page(1).await;
