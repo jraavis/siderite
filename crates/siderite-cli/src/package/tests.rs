@@ -130,6 +130,24 @@ fn large_and_non_utf8_files_are_scanned() {
 }
 
 #[test]
+fn credentials_are_found_across_read_chunks_and_lines() {
+    let dir = ScratchDir::new("package-chunks");
+    let root = dir.path();
+    let url = "postgres://user:s3cret@db/app";
+    // The URL straddles the 64 KiB read boundary on one long line.
+    let straddling = format!("{}{url} x", " ".repeat(64 * 1024 - 10));
+    let unclosed = "a\npassword=\"***\nb\n".to_owned();
+    let cases = [("a.js", straddling, true), ("b.cfg", unclosed, true)];
+    let placeholder = ("c.md", "password=***\n".to_owned(), false);
+    for (rel, text, found) in cases.into_iter().chain([placeholder]) {
+        write(root, rel, &text);
+        let picked = files::select(root, &args(&[rel])).unwrap();
+        let got = files::credentials(&picked.files).unwrap();
+        assert_eq!(got.is_some(), found, "{rel}");
+    }
+}
+
+#[test]
 fn a_file_that_cannot_be_read_stops_packaging() {
     let source = files::Source {
         rel: "static/gone.js".to_owned(),
@@ -178,4 +196,19 @@ fn copies_are_checksummed() {
         std::fs::read_to_string(dir.path().join("x/a")).unwrap(),
         "abc"
     );
+}
+
+#[test]
+fn large_copies_are_streamed_and_checksummed() {
+    use sha2::{Digest, Sha256};
+    let dir = ScratchDir::new("package-copy-large");
+    let from = dir.path().join("a");
+    let bytes: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&from, &bytes).unwrap();
+    let to = dir.path().join("x/a");
+    let entry = files::copy(&from, &to, "x/a").unwrap();
+    let digest = Sha256::digest(&bytes);
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!((entry.bytes, entry.sha256), (bytes.len() as u64, hex));
+    assert_eq!(std::fs::read(&to).unwrap(), bytes);
 }

@@ -7,7 +7,13 @@ use crate::report::redact_text;
 use crate::secret_files::is_secret_name;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{Error as IoError, Result as IoResult};
 use std::path::{Component, Path, PathBuf};
+
+/// Bytes read at a time when scanning and copying files.
+const CHUNK: usize = 64 * 1024;
 
 /// Names never packaged, wherever they appear, besides those
 /// [`is_secret_name`] refuses. A trailing `*` matches any suffix, a
@@ -136,19 +142,47 @@ type Scanned = Result<Option<String>, CliError>;
 /// file is scanned whole, whatever its size or encoding (invalid UTF-8
 /// is replaced, not skipped).
 ///
+/// Files are streamed line by line, so memory is bounded by the longest
+/// line rather than the file. A URL's userinfo and a secret `key=` never
+/// span a line break, so this finds what scanning the whole text would.
+///
 /// Errors:
 ///   An IO error for a file that cannot be read, so an unchecked file
 ///   never ships.
 pub(crate) fn credentials(files: &[Source]) -> Scanned {
     for file in files {
-        let bytes = std::fs::read(&file.path);
-        let bytes = bytes.map_err(|err| io_error("read", &file.path, &err))?;
-        let text = String::from_utf8_lossy(&bytes);
-        if redact_text(&text) != text {
+        let read = |err: IoError| io_error("read", &file.path, &err);
+        let opened = File::open(&file.path).map_err(read)?;
+        let reader = BufReader::with_capacity(CHUNK, opened);
+        if holds_credential(reader).map_err(read)? {
             return Ok(Some(file.rel.clone()));
         }
     }
     Ok(None)
+}
+
+/// Whether any line of `reader` holds a credential.
+///
+/// Args:
+///   reader: The file contents.
+///
+/// Returns:
+///   `true` at the first line [`redact_text`] would change.
+///
+/// Errors:
+///   An IO error from `reader`.
+fn holds_credential(mut reader: impl BufRead) -> IoResult<bool> {
+    // The line keeps its `\n`, so an unclosed quoted value is redacted
+    // exactly as it would be in the whole text.
+    let mut line = Vec::new();
+    while reader.read_until(b'\n', &mut line)? > 0 {
+        let text = String::from_utf8_lossy(&line);
+        if redact_text(&text) != text {
+            return Ok(true);
+        }
+        line.clear();
+    }
+    Ok(false)
 }
 
 /// One packaged file in the manifest.
@@ -165,6 +199,7 @@ pub(crate) struct Entry {
 type Copied = Result<Entry, CliError>;
 
 /// Copy `from` to `to` (creating directories) and describe the copy.
+/// The file is streamed in chunks and hashed as it is written.
 ///
 /// Errors:
 ///   An IO error.
@@ -173,23 +208,38 @@ pub(crate) fn copy(from: &Path, to: &Path, rel: &str) -> Copied {
         let made = std::fs::create_dir_all(parent);
         made.map_err(|err| io_error("create", parent, &err))?;
     }
-    let bytes = std::fs::read(from);
-    let bytes = bytes.map_err(|err| io_error("read", from, &err))?;
-    std::fs::write(to, &bytes).map_err(|err| io_error("write", to, &err))?;
+    let read = |err: IoError| io_error("read", from, &err);
+    let write = |err: IoError| io_error("write", to, &err);
+    let mut source = File::open(from).map_err(read)?;
+    let mut target = BufWriter::new(File::create(to).map_err(write)?);
+    let mut buffer = vec![0; CHUNK];
+    let mut hasher = Sha256::new();
+    let mut bytes = 0u64;
+    loop {
+        let n = match source.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err) => return Err(read(err)),
+        };
+        hasher.update(&buffer[..n]);
+        target.write_all(&buffer[..n]).map_err(write)?;
+        bytes += n as u64;
+    }
+    target.flush().map_err(write)?;
     let permissions = std::fs::metadata(from).map(|m| m.permissions());
     if let Ok(permissions) = permissions {
         let kept = std::fs::set_permissions(to, permissions);
-        kept.map_err(|err| io_error("write", to, &err))?;
+        kept.map_err(write)?;
     }
     Ok(Entry {
         path: rel.to_owned(),
-        bytes: bytes.len() as u64,
-        sha256: sha256(&bytes),
+        bytes,
+        sha256: hex(&hasher.finalize()),
     })
 }
 
-/// SHA-256 of `bytes` in lowercase hexadecimal.
-pub(crate) fn sha256(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+/// `digest` in lowercase hexadecimal.
+fn hex(digest: &[u8]) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
