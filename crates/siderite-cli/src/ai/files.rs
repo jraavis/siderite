@@ -64,6 +64,13 @@ pub(crate) fn collect(root: &Path, requested: &[PathBuf]) -> Collected {
             path: shown.clone(),
             reason,
         };
+        // A link named directly is refused like one found under a
+        // directory, never resolved.
+        let meta = std::fs::symlink_metadata(&joined);
+        if meta.is_ok_and(|m| m.file_type().is_symlink()) {
+            out.refused.push(refuse("symbolic link"));
+            continue;
+        }
         let Ok(path) = joined.canonicalize() else {
             out.refused.push(refuse("not found"));
             continue;
