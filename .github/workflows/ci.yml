@@ -14,7 +14,7 @@ jobs:
   # Temporary kill switch. Set `false` to `true` to run again on push and
   # pull_request. A manual workflow_dispatch still runs while this is false.
   autorun:
-    if: ${{ github.event_name == 'workflow_dispatch' || false }}
+    if: ${{ github.event_name == 'workflow_dispatch' || true }}
     runs-on: ubuntu-26.04
     steps:
       - run: "true"
@@ -112,7 +112,7 @@ jobs:
       # replica set, so start it here.
       - name: Start MongoDB replica set
         run: |
-          docker run -d --name mongo -p 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
+          docker run -d --name mongo -e GLIBC_TUNABLES=glibc.pthread.rseq=1 -p 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
           for i in $(seq 1 30); do
             docker exec mongo mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]}).ok" && break
             sleep 2
@@ -126,7 +126,10 @@ jobs:
             fi
             sleep 2
           done
-          test "$ready" = 1
+          if [ "$ready" != 1 ]; then
+            docker logs mongo
+            exit 1
+          fi
       - run: cargo test --workspace --all-features -- --include-ignored --test-threads=1 --skip tls_certificate_contracts --skip recovery_child
       - name: Verify TLS against owned disposable services
         run: python3 scripts/test_tls.py

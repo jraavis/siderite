@@ -23,7 +23,7 @@ jobs:
   # Temporary kill switch. Set `false` to `true` to run again on push and
   # pull_request. A manual workflow_dispatch still runs while this is false.
   autorun:
-    if: ${{ github.event_name == 'workflow_dispatch' || false }}
+    if: ${{ github.event_name == 'workflow_dispatch' || true }}
     runs-on: ubuntu-26.04
     steps:
       - run: "true"

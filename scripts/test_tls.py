@@ -162,7 +162,7 @@ def main():
                 "--tlsCertificateKeyFile", "/tmp/server-combined.pem",
                 "--tlsCAFile", "/tmp/ca.pem",
                 "--tlsAllowConnectionsWithoutCertificates",
-            ])
+            ], {"GLIBC_TUNABLES": "glibc.pthread.rseq=1"})
             env = os.environ.copy()
             env.update({
                 "SIDERITE_TLS_CA": str(folder / "ca.pem"),

@@ -39,6 +39,8 @@ services:
 
   mongodb:
     image: mongo:8
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports: ["127.0.0.1:57017:27017"]
     healthcheck:
