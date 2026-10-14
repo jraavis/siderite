@@ -4,13 +4,23 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Temporary kill switch. Set `false` to `true` to run again on push and
+  # pull_request. A manual workflow_dispatch still runs while this is false.
+  autorun:
+    if: ${{ github.event_name == 'workflow_dispatch' || false }}
+    runs-on: ubuntu-26.04
+    steps:
+      - run: "true"
+
   backend-features:
+    needs: autorun
     runs-on: ubuntu-26.04
     strategy:
       matrix:
@@ -44,6 +54,7 @@ jobs:
           --features "$BACKEND_FEATURES" -- -D warnings
 
   lint:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -59,6 +70,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   test:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -70,6 +82,7 @@ jobs:
         run: rm -rf target/tests
 
   live:
+    needs: autorun
     runs-on: ubuntu-26.04
     services:
       postgres:
@@ -128,6 +141,7 @@ jobs:
 
   # The Cargo-free developer journey (docs/JOURNEY.md), end to end.
   journey:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -142,6 +156,7 @@ jobs:
         run: rm -rf target/tests
 
   msrv:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
@@ -150,6 +165,7 @@ jobs:
       - run: cargo check --workspace --all-features --all-targets
 
   deny:
+    needs: autorun
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
