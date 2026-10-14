@@ -22,7 +22,15 @@ fn codes(report: &Envelope<DoctorData>) -> Vec<&str> {
     report.diagnostics.iter().map(Diagnostic::code).collect()
 }
 
+/// A probe of `cwd`, whose configuration (written unless a test already
+/// did) listens on a free port, so a local server on the default port
+/// never adds `doctor.W004`.
 fn probe(path: OsString, cwd: &Path) -> Probe {
+    let config = cwd.join("siderite.toml");
+    if !config.exists() {
+        let addr = "[server]\naddr = \"127.0.0.1:0\"\n";
+        std::fs::write(config, addr).unwrap();
+    }
     Probe {
         path,
         cwd: cwd.to_path_buf(),

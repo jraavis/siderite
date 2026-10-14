@@ -220,16 +220,21 @@ fn a_part_whose_heading_is_too_long_is_omitted() {
     let scratch = ScratchDir::new("task-heading");
     let root = scratch.path();
     // The path is in both the heading and the source line.
-    let part = "d".repeat(240);
-    let deep = format!("{part}/{part}/{part}/{part}/{part}/x.rs");
+    // Kept well under macOS's 1024-byte PATH_MAX with the scratch prefix.
+    let part = "d".repeat(200);
+    let deep = format!("{part}/{part}/{part}/{part}/x.rs");
     std::fs::create_dir_all(root.join(&deep).parent().unwrap()).unwrap();
     std::fs::write(root.join(&deep), "fn x() {}\n".repeat(400)).unwrap();
+    // An earlier file takes room, so the deep one's heading cannot fit.
+    std::fs::write(root.join("a.rs"), "// x\n".repeat(200)).unwrap();
     let mut o = options("authors", 4096);
-    o.include = vec![PathBuf::from(&deep)];
+    o.include = vec![PathBuf::from("a.rs"), PathBuf::from(&deep)];
     let ctx = context(&o, root);
     assert!(ctx.markdown.len() <= 4096, "{}", ctx.markdown.len());
     assert!(
-        ctx.omitted.iter().any(|p| p.kind == "file"),
+        ctx.omitted
+            .iter()
+            .any(|p| p.kind == "file" && p.title == deep),
         "{:?}",
         ctx.omitted
     );
@@ -264,6 +269,24 @@ fn linked_project(scratch: &ScratchDir, git: bool) -> PathBuf {
     root
 }
 
+/// The links [`linked_project`] makes.
+#[cfg(unix)]
+const LINKS: [&str; 3] = ["src/key.txt", "src/linked", "src/notes.txt"];
+
+#[cfg(unix)]
+#[test]
+fn links_named_directly_are_refused() {
+    let scratch = ScratchDir::new("task-direct-links");
+    let root = linked_project(&scratch, false);
+    let requested: Vec<PathBuf> = LINKS.iter().map(PathBuf::from).collect();
+    let got = collect(&root, &requested);
+    assert!(got.included.is_empty(), "{got:?}");
+    let refused = got.refused.iter().map(|r| (r.path.as_str(), r.reason));
+    let refused: Vec<_> = refused.collect();
+    let want = LINKS.map(|link| (link, "symbolic link"));
+    assert_eq!(refused, want);
+}
+
 #[cfg(unix)]
 #[test]
 fn links_under_included_directories_are_not_followed() {
@@ -277,7 +300,7 @@ fn links_under_included_directories_are_not_followed() {
             let paths = got.included.iter().map(|f| f.path.as_str());
             let paths: Vec<&str> = paths.collect();
             assert_eq!(paths, ["src/main.rs"], "git={git} {dir}");
-            for link in ["src/key.txt", "src/linked", "src/notes.txt"] {
+            for link in LINKS {
                 let refused = got
                     .refused
                     .iter()
