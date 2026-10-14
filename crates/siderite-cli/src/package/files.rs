@@ -17,7 +17,8 @@ const CHUNK: usize = 64 * 1024;
 
 /// Names never packaged, wherever they appear, besides those
 /// [`is_secret_name`] refuses. A trailing `*` matches any suffix, a
-/// leading `*` any prefix.
+/// leading `*` any prefix. Case is ignored, as on case-insensitive file
+/// systems (`APP.DB`, `Target`).
 const EXCLUDED: [&str; 10] = [
     ".git*",
     ".env*",
@@ -32,7 +33,8 @@ const EXCLUDED: [&str; 10] = [
 ];
 
 fn excluded(name: &str) -> bool {
-    is_secret_name(name) || EXCLUDED.iter().any(|p| matches(p, name))
+    let lower = name.to_ascii_lowercase();
+    is_secret_name(name) || EXCLUDED.iter().any(|p| matches(p, &lower))
 }
 
 fn matches(pattern: &str, name: &str) -> bool {

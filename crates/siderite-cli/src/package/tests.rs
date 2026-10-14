@@ -212,3 +212,19 @@ fn large_copies_are_streamed_and_checksummed() {
     assert_eq!((entry.bytes, entry.sha256), (bytes.len() as u64, hex));
     assert_eq!(std::fs::read(&to).unwrap(), bytes);
 }
+
+#[test]
+fn exclusions_ignore_case() {
+    let dir = ScratchDir::new("package-case");
+    let root = dir.path();
+    for rel in ["static/APP.DB", "static/Target/x", "static/.GIT/x"] {
+        write(root, rel, "x");
+    }
+    write(root, "static/keep.txt", "x");
+    let picked = files::select(root, &args(&["static"])).unwrap();
+    let kept = picked.files.iter().map(|f| f.rel.as_str());
+    let kept: Vec<&str> = kept.collect();
+    assert_eq!(kept, ["static/keep.txt"]);
+    let want = ["static/.GIT", "static/APP.DB", "static/Target"];
+    assert_eq!(picked.excluded, want);
+}
