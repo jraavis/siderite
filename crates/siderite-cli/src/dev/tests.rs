@@ -89,11 +89,15 @@ fn alive(pid: u32) -> bool {
     pid.is_some_and(|p| rustix::process::test_kill_process(p).is_ok())
 }
 
-/// Poll `ready` for up to ten seconds.
+/// How long `until` waits. Generous, since builds slow down while the
+/// whole workspace's tests run in parallel.
+const DEADLINE: Duration = Duration::from_secs(30);
+
+/// Poll `ready` for up to [`DEADLINE`].
 async fn until(what: &str, ready: impl Fn() -> bool) {
     let started = std::time::Instant::now();
     while !ready() {
-        assert!(started.elapsed().as_secs() < 10, "timed out: {what}");
+        assert!(started.elapsed() < DEADLINE, "timed out: {what}");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
