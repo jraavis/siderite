@@ -223,6 +223,12 @@ Implemented from the roadmap:
   health/readiness, SSE, and scoped SPA fallback.
 - [x] **Delivery and compatibility:** OpenAPI comparison, CI templates,
   reproducible release packaging, and framework upgrade previews.
+- [x] **Cursor pagination:** keyset `QuerySet::after`/`before` and
+  `cursor_page`, with `CursorParams`/`CursorPage` over HTTP; see
+  [docs/plans/CURSOR_PAGINATION.md](docs/plans/CURSOR_PAGINATION.md).
+- [x] **Sessions and CSRF:** the `siderite-sessions` crate with signed CSRF
+  tokens, and `CsrfOrigin` origin checks; see
+  [docs/plans/SESSIONS_CSRF.md](docs/plans/SESSIONS_CSRF.md).
 
 All **66 tasks** in the detailed plans are complete:
 
@@ -231,10 +237,6 @@ All **66 tasks** in the detailed plans are complete:
 
 Still open:
 
-- [ ] **Cursor pagination:** semantics and contract tests only; see
-  [docs/plans/CURSOR_PAGINATION.md](docs/plans/CURSOR_PAGINATION.md).
-- [ ] **Sessions and CSRF:** a scope decision, no implementation; see
-  [docs/plans/SESSIONS_CSRF.md](docs/plans/SESSIONS_CSRF.md).
 - [ ] **Distribution:** no prebuilt CLI binaries, and no operating system is
   advertised as supported yet (CI exercises Linux only).
 - [ ] **Baselines:** first run, edit-to-restart latency, context size and
