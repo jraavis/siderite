@@ -5,6 +5,11 @@
 //!
 //! Slow (it builds a project in debug and release), so it is ignored by
 //! default; CI runs it on Linux.
+//!
+//! It also measures the developer-experience baselines recorded in
+//! `docs/JOURNEY.md`: first run, edit-to-restart latency, context size
+//! and verification duration. They are printed, and written as JSON to
+//! the file named by `SIDERITE_JOURNEY_REPORT` when it is set.
 
 #![allow(clippy::unwrap_used)]
 
@@ -13,6 +18,12 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
+
+/// How often a server is polled while it is starting or restarting.
+const POLL: Duration = Duration::from_millis(50);
+
+/// The longest a build plus start may take.
+const BUILD: Duration = Duration::from_secs(600);
 
 struct Journey {
     project: PathBuf,
@@ -74,7 +85,75 @@ fn get(port: u16, path: &str, within: Duration) -> String {
             }
         }
         assert!(started.elapsed() < within, "no answer on {port}");
-        std::thread::sleep(Duration::from_millis(250));
+        std::thread::sleep(POLL);
+    }
+}
+
+/// Poll `GET path` on `port` until it answers 200; when it first did.
+fn until_ok(port: u16, path: &str, within: Duration) -> Instant {
+    let started = Instant::now();
+    loop {
+        if get(port, path, within).contains(" 200 ") {
+            return Instant::now();
+        }
+        assert!(started.elapsed() < within, "{path} never answered 200");
+        std::thread::sleep(POLL);
+    }
+}
+
+/// Run `work`, returning its result and how long it took.
+fn timed<T>(work: impl FnOnce() -> T) -> (T, Duration) {
+    let started = Instant::now();
+    let result = work();
+    (result, started.elapsed())
+}
+
+/// The developer-experience baselines of one journey run.
+struct Baseline {
+    /// `siderite new` until it exits.
+    scaffold: Duration,
+    /// `siderite dev` started until `/livez` first answers 200.
+    first_serve: Duration,
+    /// A route added while `dev` runs until it first answers 200.
+    edit_to_restart: Duration,
+    /// The `data.budget` of `ai context --json` for the journey task.
+    context: serde_json::Value,
+    /// Parts `ai context` left out to fit its budget.
+    context_omitted: usize,
+    /// `siderite verify` until it exits.
+    verify: Duration,
+}
+
+impl Baseline {
+    /// The report: milliseconds, bytes and the platform measured on.
+    fn report(&self) -> serde_json::Value {
+        let ms = |d: Duration| d.as_millis();
+        serde_json::json!({
+            "schema_version": 1,
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+            "cpus": std::thread::available_parallelism()
+                .map_or(0, std::num::NonZeroUsize::get),
+            "first_run_ms": ms(self.scaffold + self.first_serve),
+            "scaffold_ms": ms(self.scaffold),
+            "first_serve_ms": ms(self.first_serve),
+            "edit_to_restart_ms": ms(self.edit_to_restart),
+            "context_bytes": self.context["used"],
+            "context_budget_bytes": self.context["limit"],
+            "context_omitted_parts": self.context_omitted,
+            "verify_ms": ms(self.verify),
+        })
+    }
+
+    /// Print the report and write it where `SIDERITE_JOURNEY_REPORT`
+    /// names.
+    fn publish(&self) {
+        let report = self.report();
+        let text = serde_json::to_string_pretty(&report).unwrap();
+        eprintln!("journey baseline: {text}");
+        if let Some(path) = std::env::var_os("SIDERITE_JOURNEY_REPORT") {
+            std::fs::write(path, text + "\n").unwrap();
+        }
     }
 }
 
@@ -123,13 +202,16 @@ fn the_journey_needs_no_direct_cargo_command() {
     // 2. Scaffold.
     let repo_arg = repo.display().to_string();
     let args = ["new", "shop", "--template", "api", "--path", &repo_arg];
-    let made = journey.command(&scratch, &args).output().unwrap();
+    let mut new = journey.command(&scratch, &args);
+    let (made, scaffold) = timed(|| new.output().unwrap());
     assert!(made.status.success(), "{made:?}");
     let doctor = journey.json(&["doctor", "--json"]);
     assert_eq!(doctor["ok"], true, "{doctor:#}");
-    // 3. Develop: `dev` builds, serves and stops on Ctrl-C.
+    // 3. Develop: `dev` builds, serves, restarts after an edit and stops
+    // on Ctrl-C.
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");
+    let started = Instant::now();
     let dev = journey
         .command(&journey.project, &["dev"])
         .env("ADDR", &addr)
@@ -137,9 +219,15 @@ fn the_journey_needs_no_direct_cargo_command() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let live = get(port, "/livez", Duration::from_secs(600));
+    let first_serve = until_ok(port, "/livez", BUILD) - started;
+    let edited = Instant::now();
+    journey.edit(
+        "src/lib.rs",
+        ".routes([liveness(\"/livez\")])",
+        ".routes([liveness(\"/livez\"), liveness(\"/edited\")])",
+    );
+    let edit_to_restart = until_ok(port, "/edited", BUILD) - edited;
     interrupt(dev);
-    assert!(live.contains(" 200 "), "{live}");
     // 4. A resource, registered as the generator says, and its migration.
     let mut resource = vec!["generate", "resource"];
     resource.extend(FIELDS);
@@ -174,8 +262,10 @@ fn the_journey_needs_no_direct_cargo_command() {
     tests.extend(FIELDS);
     journey.step(&tests);
     journey.step(&["ai", "init"]);
-    journey.step(&["ai", "context", "--task", "add an author to books"]);
-    let verified = journey.json(&["verify", "--json"]);
+    let task = "add an author to books";
+    let context = journey.json(&["--json", "ai", "context", "--task", task]);
+    assert_eq!(context["ok"], true, "{context:#}");
+    let (verified, verify) = timed(|| journey.json(&["verify", "--json"]));
     assert_eq!(verified["ok"], true, "{verified:#}");
     // 6. Package (the build created Cargo.lock).
     let dist = scratch.join("dist");
@@ -185,4 +275,14 @@ fn the_journey_needs_no_direct_cargo_command() {
     assert!(dist.join("manifest.json").is_file());
     assert!(dist.join("migrations").is_dir());
     let _ = std::fs::remove_dir_all(&scratch);
+    let data = &context["data"];
+    Baseline {
+        scaffold,
+        first_serve,
+        edit_to_restart,
+        context: data["budget"].clone(),
+        context_omitted: data["omitted"].as_array().map_or(0, Vec::len),
+        verify,
+    }
+    .publish();
 }
