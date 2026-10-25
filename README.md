@@ -229,6 +229,9 @@ Implemented from the roadmap:
 - [x] **Sessions and CSRF:** the `siderite-sessions` crate with signed CSRF
   tokens, and `CsrfOrigin` origin checks; see
   [docs/plans/SESSIONS_CSRF.md](docs/plans/SESSIONS_CSRF.md).
+- [x] **Baselines:** first run, edit-to-restart latency, context size and
+  verification duration, measured by the journey test; see
+  [docs/JOURNEY.md](docs/JOURNEY.md#baselines).
 
 All **66 tasks** in the detailed plans are complete:
 
@@ -239,8 +242,6 @@ Still open:
 
 - [ ] **Distribution:** no prebuilt CLI binaries, and no operating system is
   advertised as supported yet (CI exercises Linux only).
-- [ ] **Baselines:** first run, edit-to-restart latency, context size and
-  verification duration are not yet measured on documented fixtures.
 
 YAML export, client SDK generation, MCP write tools, Studio, storage
 adapters, durable queues and multi-tenancy remain deferred design scope,
