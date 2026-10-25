@@ -1,6 +1,8 @@
 # Command line
 
-Install the CLI, then use it instead of typing `cargo run -- …`:
+Install the CLI (on macOS with Apple silicon, a release also carries a
+prebuilt binary; see [RELEASING.md](RELEASING.md#prebuilt-cli)), then use
+it instead of typing `cargo run -- …`:
 
 ```bash
 cargo install --path crates/siderite-cli

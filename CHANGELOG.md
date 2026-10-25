@@ -8,6 +8,10 @@
 
 
 ### Added
+- **CLI:** release tags publish a prebuilt `siderite` for macOS on Apple
+  silicon (`aarch64-apple-darwin`, with the `mcp`, `postgres` and `mysql`
+  features) as a `.tar.gz` with a SHA-256 checksum; the `journey` CI job
+  also runs on macOS; `siderite --version` (`-V`) prints the version.
 - **CLI:** the journey acceptance test measures first run,
   edit-to-restart latency, `ai context` size and `verify` duration,
   writes them to `SIDERITE_JOURNEY_REPORT`, and CI uploads them as the
