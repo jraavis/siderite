@@ -46,6 +46,12 @@ fn report_json_error(raw: &[String], err: &CliError) -> Result<(), CliError> {
 }
 
 async fn dispatch(raw: &[String], cwd: &std::path::Path) -> Result<u8, CliError> {
+    if let [only] = raw
+        && matches!(only.as_str(), "--version" | "-V")
+    {
+        println!("siderite {}", env!("CARGO_PKG_VERSION"));
+        return Ok(0);
+    }
     let (project, raw) = split_project(raw)?;
     let raw = raw.as_slice();
     let command = first_command(raw);
@@ -281,6 +287,7 @@ Options (before the command for the project flags):
   --addr ADDR                     Listen address (run)
   --json                          One JSON report on stdout
   --help                          Show this help
+  --version, -V                   Print the version
 
 App commands run in your binary through `cargo run`; `siderite commands
 --json` lists every command with what it needs and may change.
@@ -327,6 +334,14 @@ mod tests {
         assert_eq!(dispatch(&args(&["--help"]), &cwd).await.unwrap(), 0);
         assert_eq!(dispatch(&[], &cwd).await.unwrap(), 2);
         assert_eq!(dispatch(&args(&["help"]), &cwd).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn version_alone() {
+        let cwd = std::env::temp_dir();
+        for flag in ["--version", "-V"] {
+            assert_eq!(dispatch(&args(&[flag]), &cwd).await.unwrap(), 0);
+        }
     }
 
     #[tokio::test]
