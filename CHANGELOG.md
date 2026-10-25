@@ -8,6 +8,10 @@
 
 
 ### Added
+- **CLI:** the journey acceptance test measures first run,
+  edit-to-restart latency, `ai context` size and `verify` duration,
+  writes them to `SIDERITE_JOURNEY_REPORT`, and CI uploads them as the
+  `journey-baseline` artifact. First baselines are in `docs/JOURNEY.md`.
 - **ORM:** cursor (keyset) pagination. `QuerySet::after(token)` /
   `before(token)` and `cursor_page(limit)` return a `CursorPage` (`items`,
   `next`, `previous`) in one statement without a count; the primary key is

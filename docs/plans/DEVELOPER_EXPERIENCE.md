@@ -255,5 +255,5 @@ G19 remains the urgent cache priority, not a blocker for unrelated CLI work.
 
 This document adds 20 tasks to the parent's 46; all are implemented. The
 remaining Cargo, rustup and platform gaps are recorded in
-[JOURNEY.md](../JOURNEY.md). The success measures above have no recorded
-baselines yet.
+[JOURNEY.md](../JOURNEY.md). Baselines for the success measures are
+recorded there too, measured by the journey test.
