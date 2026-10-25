@@ -101,6 +101,11 @@ fn until_ok(port: u16, path: &str, within: Duration) -> Instant {
     }
 }
 
+/// `path` as a Rust string literal.
+fn quoted(path: &str) -> String {
+    format!("\"{path}\"")
+}
+
 /// Run `work`, returning its result and how long it took.
 fn timed<T>(work: impl FnOnce() -> T) -> (T, Duration) {
     let started = Instant::now();
@@ -114,8 +119,8 @@ struct Baseline {
     scaffold: Duration,
     /// `siderite dev` started until `/livez` first answers 200.
     first_serve: Duration,
-    /// A route added while `dev` runs until it first answers 200.
-    edit_to_restart: Duration,
+    /// Each edit while `dev` runs until the route it moves answers 200.
+    edit_to_restart: Vec<Duration>,
     /// The `data.budget` of `ai context --json` for the journey task.
     context: serde_json::Value,
     /// Parts `ai context` left out to fit its budget.
@@ -137,7 +142,11 @@ impl Baseline {
             "first_run_ms": ms(self.scaffold + self.first_serve),
             "scaffold_ms": ms(self.scaffold),
             "first_serve_ms": ms(self.first_serve),
-            "edit_to_restart_ms": ms(self.edit_to_restart),
+            "edit_to_restart_ms": self
+                .edit_to_restart
+                .iter()
+                .map(|d| ms(*d))
+                .collect::<Vec<_>>(),
             "context_bytes": self.context["used"],
             "context_budget_bytes": self.context["limit"],
             "context_omitted_parts": self.context_omitted,
@@ -220,13 +229,13 @@ fn the_journey_needs_no_direct_cargo_command() {
         .spawn()
         .unwrap();
     let first_serve = until_ok(port, "/livez", BUILD) - started;
-    let edited = Instant::now();
-    journey.edit(
-        "src/lib.rs",
-        ".routes([liveness(\"/livez\")])",
-        ".routes([liveness(\"/livez\"), liveness(\"/edited\")])",
-    );
-    let edit_to_restart = until_ok(port, "/edited", BUILD) - edited;
+    // Move the liveness route and back: two restarts, same project.
+    let moves = [("/livez", "/healthz"), ("/healthz", "/livez")];
+    let edit_to_restart = moves.map(|(from, to)| {
+        let edited = Instant::now();
+        journey.edit("src/lib.rs", &quoted(from), &quoted(to));
+        until_ok(port, to, BUILD) - edited
+    });
     interrupt(dev);
     // 4. A resource, registered as the generator says, and its migration.
     let mut resource = vec!["generate", "resource"];
@@ -279,7 +288,7 @@ fn the_journey_needs_no_direct_cargo_command() {
     Baseline {
         scaffold,
         first_serve,
-        edit_to_restart,
+        edit_to_restart: edit_to_restart.to_vec(),
         context: data["budget"].clone(),
         context_omitted: data["omitted"].as_array().map_or(0, Vec::len),
         verify,
