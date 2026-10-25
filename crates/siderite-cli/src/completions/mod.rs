@@ -22,6 +22,7 @@ const GLOBAL: &[&str] = &[
     "--addr",
     "--json",
     "--help",
+    "--version",
 ];
 
 /// Flags (and short forms) that take a value, so the word after them is
