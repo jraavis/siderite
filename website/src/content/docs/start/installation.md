@@ -67,6 +67,26 @@ See [Backends](/siderite/guides/data/backends/) for the feature matrix.
 
 The full map and dependency rules live in [Crate map](/siderite/reference/crates/).
 
+## Install the CLI
+
+On macOS with Apple silicon, a
+[release](https://github.com/jraavis/siderite/releases) carries a prebuilt
+`siderite` binary; applications still build with the toolchain above.
+
+```bash
+v=0.1.0 t=aarch64-apple-darwin
+base=https://github.com/jraavis/siderite/releases/download/v$v
+a=siderite-$v-$t.tar.gz
+curl -fLO "$base/$a" -fLO "$base/$a.sha256"
+shasum -a 256 -c "$a.sha256"
+tar -xzf "$a"
+install -m 755 "siderite-$v-$t/siderite" ~/.local/bin/
+```
+
+Elsewhere, `cargo install --git https://github.com/jraavis/siderite
+siderite-cli` builds it (add `--features mcp,postgres,mysql` for the MCP
+server and those backends).
+
 ## Clone and run the examples
 
 ```bash

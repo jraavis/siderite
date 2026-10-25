@@ -26,8 +26,9 @@ No step invokes `cargo` directly; `siderite` runs Cargo where it needs it.
 Steps that still need Cargo, rustup or manual work:
 
 - **Installing the CLI** is `cargo install siderite-cli` (with
-  `--features mcp` for the MCP server). There are no prebuilt binaries
-  yet.
+  `--features mcp` for the MCP server), except on macOS with Apple
+  silicon, where a release carries a prebuilt binary (see
+  [RELEASING.md](RELEASING.md#prebuilt-cli)).
 - **Installing Rust** is rustup's job. `siderite setup` prints the exact
   rustup command, and `siderite setup --install` runs rustup for a
   missing or old toolchain or component, but rustup itself has to be
@@ -68,8 +69,8 @@ these as baselines to compare against, not targets.
 
 ## Operating systems
 
-No operating system is advertised as supported yet. The journey is
-exercised on Linux (the only CI platform). macOS shares the Unix process
-handling `siderite dev` relies on but is not exercised; on Windows, `dev`
+No operating system is advertised as supported yet. The `journey` CI job
+runs on Linux (`ubuntu-26.04`) and on macOS with Apple silicon
+(`macos-15`); the baselines above are from Linux only. On Windows, `dev`
 stops the app by force and is untested. Add a platform to the `journey`
 CI job before advertising it.

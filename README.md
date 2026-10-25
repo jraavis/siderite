@@ -17,7 +17,21 @@ edition 2024, with a declared MSRV of 1.99 (released October 2026).
 
 ## Start with the CLI
 
-Install from the repository using Rust 1.99 or newer and Cargo:
+On macOS with Apple silicon, take the prebuilt CLI from a
+[release](https://github.com/jraavis/siderite/releases) (apps still build
+with Rust 1.99 or newer):
+
+```bash
+v=0.1.0 t=aarch64-apple-darwin
+base=https://github.com/jraavis/siderite/releases/download/v$v
+a=siderite-$v-$t.tar.gz
+curl -fLO "$base/$a" -fLO "$base/$a.sha256"
+shasum -a 256 -c "$a.sha256"
+tar -xzf "$a"
+install -m 755 "siderite-$v-$t/siderite" ~/.local/bin/
+```
+
+Elsewhere, install from the repository using Rust 1.99 or newer and Cargo:
 
 ```bash
 cargo install --git https://github.com/jraavis/siderite siderite-cli
@@ -240,8 +254,10 @@ All **66 tasks** in the detailed plans are complete:
 
 Still open:
 
-- [ ] **Distribution:** no prebuilt CLI binaries, and no operating system is
-  advertised as supported yet (CI exercises Linux only).
+- [ ] **Distribution:** release tags publish a prebuilt CLI for macOS on
+  Apple silicon only (not signed or notarized); there are no Linux or
+  Windows binaries, and no operating system is advertised as supported
+  yet (the `journey` CI job runs on Linux and macOS).
 
 YAML export, client SDK generation, MCP write tools, Studio, storage
 adapters, durable queues and multi-tenancy remain deferred design scope,
