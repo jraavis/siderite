@@ -61,16 +61,20 @@ From the application directory, these commands are available today:
 | `siderite inspectmigrations` | Inspect migration recovery state |
 | `siderite rollback --steps 1` | Roll back one migration |
 | `siderite dbshell` | Open the configured database's native client |
+| `siderite dev` | Rebuild and restart the application on changes |
+| `siderite verify` | Format, lint, build, test and check |
+| `siderite generate ...` | Write a route, model, resource, test or CI workflow |
+| `siderite ai ...` | Build project context for assistants |
+| `siderite mcp` | Read-only MCP tools on stdio (the `mcp` feature) |
 
 Commands that connect to a database require its configuration; `dbshell`
 also requires its native client. Framework `check` does not replace
 compilation or Rust linting.
 Use `siderite --help` for additional commands and options.
 
-The CLI currently delegates compilation and application commands to Cargo.
-The planned workflow adds `dev`, `generate`, `verify`, `ai` and `mcp` so daily
-work can stay inside `siderite`. **Those additions are not available yet.**
-Cargo and the Rust toolchain remain build prerequisites.
+The CLI delegates compilation and application commands to Cargo, so daily
+work can stay inside `siderite`. Cargo and the Rust toolchain remain
+build prerequisites.
 
 ## Framework example
 
