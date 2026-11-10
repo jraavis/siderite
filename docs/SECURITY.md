@@ -65,9 +65,8 @@ Browser sessions and CSRF protection are covered in
 [Browser sessions and CSRF](#browser-sessions-and-csrf). The application
 owns token storage, refresh rotation/revocation, and issuer key refresh. Keep tokens out of URLs and logs. Browser storage
 and cookies have different XSS/CSRF exposure; select and test one policy.
-siderite does not ship sessions; the requirements for cookie flags, id
-rotation, expiry, store failures, CSRF and trusted proxies that any
-session layer should meet are in
+Cookie sessions ship as the `siderite-sessions` adapter documented
+below. The requirements that adapter meets are in
 [plans/SESSIONS_CSRF.md](plans/SESSIONS_CSRF.md).
 
 Before returning a principal, a trusted verifier must check the access-token
@@ -250,7 +249,7 @@ asks for a CSRF token.
 | `SameSite` | `Lax`; `Strict` as an option; `None` only with `Secure` and a CSRF key |
 | Idle timeout | 30 minutes |
 | Absolute lifetime | 12 hours (login restarts it, rotation does not) |
-| Idle write interval | a quarter of the idle timeout |
+| Idle write interval | a quarter of the idle timeout, at least one second |
 | Store timeout | 2 seconds per call |
 | `insecure_development()` | drops `Secure` and the `__Host-` prefix; always explicit, never inferred from the request |
 
@@ -265,9 +264,12 @@ What the layer guarantees:
   `SessionStore::revoke_user` ends every session of a user, for password
   changes and account recovery.
 - **Expiry** is enforced on the server from the stored record; cookie expiry
-  is advisory. The idle timestamp is written at most once per write interval,
-  so reads do not become writes (a session can expire up to one interval
-  early, never late). Remove expired rows with a scheduled job
+  is advisory. Lifetimes and the write interval are whole seconds of at
+  least one; a shorter value is rejected, because the clock would otherwise
+  treat it as zero and expire every session immediately. The idle timestamp
+  is written at most once per write interval, so reads do not become writes
+  (a session can expire up to one interval early, never late). Remove
+  expired rows with a scheduled job
   (`MemoryStore::sweep`, or the cache's TTL), not on the request path.
 - **Fail closed:** if the store cannot be read (error or timeout) for a
   request that carries a session cookie, the answer is a `503` problem, never

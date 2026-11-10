@@ -98,9 +98,12 @@ impl SessionConfig {
 
     /// Expire a session this long after its last use (default 30 min).
     ///
-    /// The last use is recorded at most once per
-    /// [`write_interval`](Self::write_interval), so a session can expire up
-    /// to one interval early, never late.
+    /// The clock is whole seconds: the duration must be at least one
+    /// second, and a fractional second does not extend the life. A shorter
+    /// value is rejected. Anything under a second used to pass and then
+    /// expire every session immediately. The last use is recorded at most
+    /// once per [`write_interval`](Self::write_interval), so a session can
+    /// expire up to one interval early, never late.
     #[must_use]
     pub fn idle_timeout(mut self, idle: Duration) -> Self {
         self.idle = idle;
@@ -109,6 +112,8 @@ impl SessionConfig {
 
     /// Expire a session this long after login (default 12 h), however
     /// active it is. Rotation does not extend it; login restarts it.
+    ///
+    /// Same whole-second rule as [`idle_timeout`](Self::idle_timeout).
     #[must_use]
     pub fn absolute_lifetime(mut self, absolute: Duration) -> Self {
         self.absolute = absolute;
@@ -116,7 +121,11 @@ impl SessionConfig {
     }
 
     /// Write the idle timestamp at most this often (default a quarter of
-    /// the idle timeout), so reads do not become writes.
+    /// the idle timeout, and at least one second), so reads do not become
+    /// writes.
+    ///
+    /// The interval is whole seconds. Below one second every read became
+    /// a write, because the idle check only sees whole seconds.
     #[must_use]
     pub fn write_interval(mut self, interval: Duration) -> Self {
         self.write_interval = Some(interval);
@@ -177,7 +186,8 @@ impl SessionConfig {
     /// # Errors
     /// [`SessionConfigError`] for an invalid cookie name, a prefixed name
     /// without `Secure`, `SameSite=None` without `Secure` and a CSRF key,
-    /// a short key, an invalid header name, or a zero duration.
+    /// a short key, an invalid header name, a zero store timeout, or a
+    /// lifetime or write interval below one second.
     pub fn validate(&self) -> Result<(), SessionConfigError> {
         let err = |message| Err(SessionConfigError(message));
         if !is_token(&self.name) {
@@ -203,12 +213,15 @@ impl SessionConfig {
         if self.csrf_header.parse::<HeaderName>().is_err() {
             return err("csrf_header is not a valid header name");
         }
-        let write = self.effective_write_interval();
-        if self.idle.is_zero() || self.absolute.is_zero() {
-            return err("session lifetimes must be positive");
+        if self.idle.as_secs() == 0 || self.absolute.as_secs() == 0 {
+            return err("session lifetimes must be at least one second");
         }
-        if self.store_timeout.is_zero() || write.is_zero() {
-            return err("timeouts and intervals must be positive");
+        let write = self.effective_write_interval();
+        if write.as_secs() == 0 {
+            return err("write_interval must be at least one second");
+        }
+        if self.store_timeout.is_zero() {
+            return err("store_timeout must be positive");
         }
         if write > self.idle {
             return err("write_interval must not exceed idle_timeout");
@@ -217,8 +230,21 @@ impl SessionConfig {
     }
 
     /// The effective idle write interval.
+    ///
+    /// A quarter of a short idle timeout is under a second. The idle
+    /// check only sees whole seconds, so that quarter would be zero and
+    /// every read would write. Use one second instead, never more than
+    /// the idle timeout itself.
     pub(crate) fn effective_write_interval(&self) -> Duration {
-        self.write_interval.unwrap_or(self.idle / 4)
+        if let Some(interval) = self.write_interval {
+            return interval;
+        }
+        let quarter = self.idle / 4;
+        if quarter.as_secs() >= 1 {
+            quarter
+        } else {
+            Duration::from_secs(1).min(self.idle)
+        }
     }
 }
 

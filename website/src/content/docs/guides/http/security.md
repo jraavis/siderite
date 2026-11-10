@@ -278,7 +278,7 @@ asks for a CSRF token.
 | `SameSite` | `Lax`; `Strict` as an option; `None` only with `Secure` and a CSRF key |
 | Idle timeout | 30 minutes |
 | Absolute lifetime | 12 hours (login restarts it, rotation does not) |
-| Idle write interval | a quarter of the idle timeout |
+| Idle write interval | a quarter of the idle timeout, at least one second |
 | Store timeout | 2 seconds per call |
 | `insecure_development()` | drops `Secure` and the `__Host-` prefix; always explicit, never inferred from the request |
 
@@ -293,9 +293,12 @@ What the layer guarantees:
   `SessionStore::revoke_user` ends every session of a user, for password
   changes and account recovery.
 - **Expiry** is enforced on the server from the stored record; cookie expiry
-  is advisory. The idle timestamp is written at most once per write interval,
-  so reads do not become writes (a session can expire up to one interval
-  early, never late). Remove expired rows with a scheduled job
+  is advisory. Lifetimes and the write interval are whole seconds of at
+  least one; a shorter value is rejected, because the clock would otherwise
+  treat it as zero and expire every session immediately. The idle timestamp
+  is written at most once per write interval, so reads do not become writes
+  (a session can expire up to one interval early, never late). Remove
+  expired rows with a scheduled job
   (`MemoryStore::sweep`, or the cache's TTL), not on the request path.
 - **Fail closed:** if the store cannot be read (error or timeout) for a
   request that carries a session cookie, the answer is a `503` problem, never
