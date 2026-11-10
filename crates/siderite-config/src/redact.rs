@@ -36,8 +36,10 @@ pub fn redact_field(key: &str, value: &str) -> String {
 ///    (or the whole userinfo when it has no `user:` part) becomes
 ///    [`REDACTED`]. The userinfo ends at the *last* `@` before the end
 ///    of the line or the next `scheme://`, so a password holding an
-///    unencoded `/ ? # @`, space or quote is still hidden. A comma
-///    separated list of URLs is redacted URL by URL.
+///    unencoded `/ ? # @`, space or quote is still hidden. A `scheme://`
+///    glued on with `:` (`user:https://secret@host`) is part of that
+///    password, not another URL. A comma separated list of URLs is
+///    redacted URL by URL.
 /// 2. **`key=value` pairs** anywhere in the text: URL query parameters,
 ///    libpq DSNs (`password=x`), ADO strings (`;Pwd=x;`) and the like.
 ///    When `is_secret_key(key)` holds, the value becomes [`REDACTED`].
@@ -69,13 +71,30 @@ fn redact_urls(text: &str) -> String {
     out
 }
 
-/// Where the text belonging to one URL ends: the end of the line or the
-/// start of the next `scheme://`, whichever comes first.
+/// Where the text belonging to one URL ends: the end of the line, the
+/// start of the next `scheme://`, or just after this URL's userinfo `@`.
+///
+/// A marker whose scheme is glued on with `:` sits inside the password
+/// (`user:https://secret@host`, or more than one `://`). Cutting at that
+/// marker would leave the password prefix in the clear. The password runs
+/// to the last `@` before a comma, quote or space that starts another URL.
 fn region_end(after: &str) -> usize {
     let line = after.find(['\n', '\r']).unwrap_or(after.len());
-    match after[..line].find("://") {
-        Some(next) => scheme_start(&after[..next]),
-        None => line,
+    let Some(rel) = after[..line].find("://") else {
+        return line;
+    };
+    let start = scheme_start(&after[..rel]);
+    let prev = start.checked_sub(1).and_then(|i| after.as_bytes().get(i));
+    if prev != Some(&b':') {
+        return start;
+    }
+    let rest_at = rel + 3;
+    let rest = &after[rest_at..line];
+    let sep = rest.find([' ', '\t', ',', '"', '\'', '`', '<', '>']);
+    let window = sep.unwrap_or(rest.len());
+    match rest[..window].rfind('@') {
+        Some(at) => rest_at + at + 1,
+        None => sep.map_or(line, |i| rest_at + i),
     }
 }
 
@@ -201,6 +220,30 @@ mod tests {
         );
         assert_eq!(redact_text("redis://tok@h"), "redis://***@h");
         assert_eq!(redact_text("redis://:pw@h"), "redis://:***@h");
+    }
+
+    #[test]
+    fn a_scheme_inside_the_password_is_not_another_url() {
+        for (text, secret) in [
+            ("postgres://u:https://evil.com@h/db", "https://evil.com"),
+            ("postgres://u:p://x@h/db", "p://x"),
+            ("postgres://u:ab://cd://x@h/db", "ab://cd://x"),
+            ("redis://:https://pw@h", "https://pw"),
+            ("postgres://u:my://password@h/db", "my://password"),
+        ] {
+            leaks(text, secret);
+        }
+        assert_eq!(
+            redact_text("postgres://u:https://evil.com@h/db"),
+            "postgres://u:***@h/db"
+        );
+        assert_eq!(
+            redact_text("postgres://u:https://evil.com@h/db,redis://:pw@h2"),
+            "postgres://u:***@h/db,redis://:***@h2"
+        );
+        let query = "postgres://user:pass@h/db?next=https://user:secret@evil";
+        let hidden = "postgres://user:***@h/db?next=https://user:***@evil";
+        assert_eq!(redact_text(query), hidden);
     }
 
     #[test]

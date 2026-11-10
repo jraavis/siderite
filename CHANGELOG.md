@@ -6,6 +6,12 @@
   admission and readiness phases; overdue cooperative workers are aborted
   and joined before resource teardown.
 
+### Fixed
+- **Config:** a connection-string password that itself contains `://`
+  (for example `https://...`) is fully redacted. The marker used to be
+  treated as the next URL, so the password prefix stayed in errors and
+  CLI reports.
+
 
 ### Added
 - **CLI:** release tags publish a prebuilt `siderite` for macOS on Apple
