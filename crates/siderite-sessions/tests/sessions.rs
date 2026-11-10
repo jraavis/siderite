@@ -119,6 +119,41 @@ fn invalid_configurations_are_refused() {
 }
 
 #[test]
+fn subsecond_lifetimes_are_refused_and_short_ones_still_work() {
+    let sub = Duration::from_millis(500);
+    for config in [
+        SessionConfig::new().idle_timeout(sub),
+        SessionConfig::new().absolute_lifetime(sub),
+        SessionConfig::new().write_interval(sub),
+    ] {
+        let err = SessionLayer::new(MemoryStore::default(), config);
+        let text = err.err().unwrap().to_string();
+        assert!(text.contains("at least one second"), "{text}");
+    }
+    // The store timeout is a real timer, so a fraction of a second is
+    // meaningful there. Lifetimes are not.
+    let ok = SessionConfig::new().store_timeout(sub);
+    assert!(SessionLayer::new(MemoryStore::default(), ok).is_ok());
+    let short = SessionConfig::new().idle_timeout(Duration::from_secs(2));
+    assert!(SessionLayer::new(MemoryStore::default(), short).is_ok());
+}
+
+#[tokio::test]
+async fn a_short_idle_timeout_does_not_write_on_every_read() {
+    let spy = Spy::new();
+    let config = SessionConfig::new().idle_timeout(Duration::from_secs(2));
+    let client = client(spy.clone(), config);
+    let cookie = login(&client).await;
+    let saves = || spy.saves.load(Ordering::SeqCst);
+    let before = saves();
+    for _ in 0..5 {
+        let res = get_as(&client, "/me", Some(&cookie)).await;
+        assert_eq!(res.text(), "ada");
+    }
+    assert_eq!(saves(), before, "reads must not become writes");
+}
+
+#[test]
 fn debug_output_hides_the_csrf_key() {
     let config = SessionConfig::new()
         .csrf_key(b"super-secret-key-of-32-bytes!!!!".to_vec());

@@ -11,6 +11,12 @@
   (for example `https://...`) is fully redacted. The marker used to be
   treated as the next URL, so the password prefix stayed in errors and
   CLI reports.
+- **Sessions:** idle and absolute lifetimes, and the idle write interval,
+  must be at least one whole second. A sub-second lifetime used to pass
+  configuration and then expire every session immediately, because expiry
+  is enforced on a one-second clock. The default write interval is at
+  least one second, so an idle timeout under four seconds no longer turns
+  every read into a store write.
 
 
 ### Added
