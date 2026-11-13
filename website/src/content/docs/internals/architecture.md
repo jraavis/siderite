@@ -9,7 +9,8 @@ the Django ORM. It favours compilable, idiomatic Rust over Python
 look-alike syntax: where a Python feature has no natural Rust mapping, the
 Rust equivalent is documented instead.
 
-Status: **Phase 6 (production tooling) complete, pre-alpha.**
+Status: **alpha**; the roadmap milestones are complete and public APIs may
+still change before 1.0.
 
 The crate table and dependency rules are in [Crate map](/siderite/reference/crates/).
 This page is the “why”.
