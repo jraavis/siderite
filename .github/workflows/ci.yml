@@ -59,9 +59,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          tool: actionlint
+          python-version: "3.12"
+      # The PyPI build of actionlint; shellcheck comes with the runner.
+      - name: Install actionlint
+        run: python -m pip install --disable-pip-version-check actionlint-py==1.7.12.25
       - name: Lint workflows (actionlint, with shellcheck)
         run: actionlint -color
       - name: Audit workflow security (zizmor)
