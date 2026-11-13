@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-13
+
 - Own HTTP/HTTP2 and WebSocket work through shutdown, with bounded transport
   admission and readiness phases; overdue cooperative workers are aborted
   and joined before resource teardown.
