@@ -16,6 +16,7 @@ page covers how to connect, dialect notes, and Redis.
 | Backend | Feature | Execution | Notes |
 |---|---|---|---|
 | SQLite | default | `SqliteBackend` | Row locking, regex, `DISTINCT ON`, arrays, `STDDEV` / `VARIANCE` are capability errors |
+| SQLite (native) | `sqlite-native` | `NativeSqliteBackend` | Opt-in; same capabilities as `SqliteBackend`; no group commit |
 | PostgreSQL | `postgres` | `PgBackend` | Live suite against `postgres:17` |
 | MySQL 8 | `mysql` | `MySqlBackend` | 8.0.31+; live suite against `mysql:8.4` |
 | MongoDB | `mongodb` | `MongoBackend` | 5.0+; replica set for transactions; supported QuerySet subset |
@@ -29,6 +30,39 @@ use siderite::orm::Db;
 
 let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
 ```
+
+### Native SQLite
+
+Enable the `sqlite-native` feature on `siderite-backends` (it implies
+`sqlite`) and explicitly use `sqlite::native::NativeSqliteBackend`. SQLx
+`SqliteBackend` remains the default; nothing switches by URL. The native
+backend calls SQLite in process through rusqlite: reads run on the calling
+task over a set of reader connections (`readers`, default 10), writes queue
+for one writer connection on Tokio's blocking pool. It accepts the same
+URLs, binds and decodes values identically and runs the same SQLite test
+suites and migrations. Group commit is not available on it yet.
+
+```rust
+use siderite_backends::sqlite::native::{
+    JournalMode, NativeSqliteBackend, NativeSqliteOptions,
+};
+use siderite::orm::Db;
+
+let backend = NativeSqliteBackend::connect_with(
+    "sqlite://app.db?mode=rwc",
+    NativeSqliteOptions {
+        journal_mode: Some(JournalMode::Wal),
+        ..NativeSqliteOptions::default()
+    },
+)
+.await?;
+let db = Db::new(backend);
+```
+
+`Dispatch` picks per side whether statements run inline (reads, by default)
+or on the blocking pool (writes, by default). An inline statement occupies
+its runtime worker until SQLite returns, so switch reads to
+`Dispatch::Blocking` for long analytical queries.
 
 Live tests skip themselves when the matching URL variable is unset. Start
 the four servers from the root `docker-compose.yml`. See

@@ -483,6 +483,7 @@ def run_todo_suite(
     runtime_workers: int = 1,
     fastapi_sqlite_mode: str = "pooled",
     siderite_group_commit: bool = False,
+    sqlite_driver: str = "sqlx",
 ) -> Dict[str, Dict[str, Any]]:
     profile_name = sqlite_profile or (
         "wal-normal" if sqlite_wal else "default"
@@ -491,6 +492,7 @@ def run_todo_suite(
         raise ValueError("Invalid SQLite durability profile")
     if backend == "sqlite":
         sqlite_pool_size(fastapi_sqlite_mode, pool_size)
+        driver_env = sqlite_driver_env(sqlite_driver, siderite_group_commit)
     database_file = sqlite_path or SQLITE_DB
     db_url = db_url or resolve_db_url(backend)
 
@@ -523,7 +525,7 @@ def run_todo_suite(
         env["FASTAPI_SQLITE_MODE"] = fastapi_sqlite_mode
         env["SQLITE_PROFILE"] = profile_name
         env["SQLITE_WAL"] = "1" if profile_name == "wal-normal" else "0"
-        env["SQLITE_GROUP_COMMIT"] = "1" if siderite_group_commit else "0"
+        env.update(driver_env)
     specs = server_specs(
         "siderite_todo",
         "todo_app",
@@ -541,6 +543,8 @@ def run_todo_suite(
             # Shared commits are a different workload from FastAPI's
             # one commit per request; never report them as the same row.
             profile += "-siderite-group-commit"
+        if sqlite_driver == "native":
+            profile += "-siderite-native"
     results = {}
     for path, method, name in (
         ("/todos", "GET", "list 20"),
@@ -633,6 +637,36 @@ def sqlite_pool_size(mode: str, pool_size: int) -> int:
     return pool_size
 
 
+def sqlite_driver_env(driver: str, group_commit: bool) -> Dict[str, str]:
+    """Return the Siderite SQLite driver settings for the app environment.
+
+    ``sqlx`` is the default backend. ``native`` selects the in-process
+    rusqlite backend: ``--pool-size`` reader connections plus its single
+    writer, with the same journal/synchronous profile. It needs a release
+    binary built with the ``sqlite-native`` feature and has no group commit.
+
+    Args:
+        driver: Siderite SQLite driver, ``sqlx`` or ``native``.
+        group_commit: Whether Siderite shares commits between inserts.
+
+    Returns:
+        Environment variables selecting the driver and commit strategy.
+
+    Raises:
+        ValueError: Unknown driver, or group commit on the native driver.
+    """
+    if driver not in ("sqlx", "native"):
+        raise ValueError("Invalid Siderite SQLite driver")
+    if driver == "native" and group_commit:
+        raise ValueError("native SQLite has no group commit; drop "
+                         "--siderite-group-commit or use --sqlite-driver "
+                         "sqlx")
+    return {
+        "SIDERITE_SQLITE_DRIVER": driver,
+        "SQLITE_GROUP_COMMIT": "1" if group_commit else "0",
+    }
+
+
 def print_markdown_summary(
     plain_results: Dict[str, Any], todo_results: Dict[str, Any]
 ):
@@ -716,6 +750,12 @@ def main():
         choices=["sqlx", "native"],
         default="sqlx",
         help="Siderite MySQL driver; native requires its release feature",
+    )
+    parser.add_argument(
+        "--sqlite-driver",
+        choices=["sqlx", "native"],
+        default="sqlx",
+        help="Siderite SQLite driver; native requires its release feature",
     )
     parser.add_argument(
         "--todo-operation",
@@ -831,6 +871,14 @@ def main():
         args.suite == "plain" or args.db not in ("mysql", "all")
     ):
         parser.error("native MySQL requires a DB suite containing MySQL")
+    if args.sqlite_driver == "native" and (
+        args.suite == "plain" or args.db not in ("sqlite", "all")
+    ):
+        parser.error("native SQLite requires a DB suite containing SQLite")
+    try:
+        sqlite_driver_env(args.sqlite_driver, args.siderite_group_commit)
+    except ValueError as error:
+        parser.error(str(error))
     if not (0 < args.min_seconds < args.timeout < float("inf")):
         parser.error("require 0 < min-seconds < timeout, both finite")
     print(f"Raw trial evidence: {TRIALS_DIR}")
@@ -900,6 +948,7 @@ def main():
                     runtime_workers=args.runtime_workers,
                     fastapi_sqlite_mode=args.fastapi_sqlite_mode,
                     siderite_group_commit=args.siderite_group_commit,
+                    sqlite_driver=args.sqlite_driver,
                 )
                 all_todo_results.update(res)
 

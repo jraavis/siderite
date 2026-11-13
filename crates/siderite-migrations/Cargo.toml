@@ -20,6 +20,12 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["time"] }
 
+[features]
+# Test-only: run the SQLite tests against `NativeSqliteBackend` instead of
+# the SQLx backend (`cargo test -p siderite-migrations --features
+# sqlite-native`). The library itself does not depend on a backend.
+sqlite-native = ["siderite-backends/sqlite-native"]
+
 [dev-dependencies]
 async-trait.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite", "mysql", "postgres"] }

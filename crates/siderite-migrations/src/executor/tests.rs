@@ -1,11 +1,11 @@
 #![allow(clippy::unwrap_used)]
 use super::progress::PROGRESS_TABLE;
+use super::test_backend::TestSqlite;
 use super::*;
 use crate::state::{FieldState, ModelState, SqlType};
-use siderite_backends::sqlite::SqliteBackend;
 
 async fn memory_db() -> Db {
-    Db::new(SqliteBackend::connect("sqlite::memory:").await.unwrap())
+    Db::new(TestSqlite::connect("sqlite::memory:").await.unwrap())
 }
 
 fn run_sql_migration(id: &str, bodies: &[(&str, &str)]) -> Migration {

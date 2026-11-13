@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import run_benchmarks as runner
 import database_fixtures as fixtures
@@ -316,3 +316,82 @@ class SQLitePoolTests(unittest.TestCase):
     def test_unknown_mode_is_rejected(self):
         with self.assertRaises(ValueError):
             runner.sqlite_pool_size("threads", 1)
+
+
+class SQLiteDriverTests(unittest.TestCase):
+    """The Siderite SQLite driver is explicit and separately labelled."""
+
+    def test_sqlx_is_the_default_and_keeps_group_commit(self):
+        self.assertEqual(
+            runner.sqlite_driver_env("sqlx", True),
+            {"SIDERITE_SQLITE_DRIVER": "sqlx", "SQLITE_GROUP_COMMIT": "1"},
+        )
+
+    def test_native_is_selected_without_group_commit(self):
+        self.assertEqual(
+            runner.sqlite_driver_env("native", False),
+            {"SIDERITE_SQLITE_DRIVER": "native", "SQLITE_GROUP_COMMIT": "0"},
+        )
+        with self.assertRaises(ValueError):
+            runner.sqlite_driver_env("native", True)
+
+    def test_unknown_driver_is_rejected(self):
+        with self.assertRaises(ValueError):
+            runner.sqlite_driver_env("rusqlite", False)
+
+    def test_suite_passes_driver_and_labels_native_runs(self):
+        for driver, label in (
+            ("sqlx", "sqlite-wal-normal-pool4-fastapi-pooled: get one"),
+            ("native",
+             "sqlite-wal-normal-pool4-fastapi-pooled-siderite-native: "
+             "get one"),
+        ):
+            env, labels = self.run_suite(driver)
+            self.assertEqual(env["SIDERITE_SQLITE_DRIVER"], driver)
+            self.assertEqual(env["SQLITE_PROFILE"], "wal-normal")
+            self.assertEqual(env["DATABASE_POOL_SIZE"], "4")
+            self.assertIn(label, labels)
+
+    def test_cli_rejects_native_outside_a_sqlite_suite(self):
+        for argv in (
+            ["--suite", "db", "--db", "mysql", "--sqlite-driver", "native"],
+            ["--suite", "db", "--sqlite-driver", "native",
+             "--siderite-group-commit"],
+        ):
+            with patch("sys.argv", ["run_benchmarks.py", *argv]):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as raised:
+                        runner.main()
+            self.assertEqual(raised.exception.code, 2)
+
+    def run_suite(self, driver):
+        """Run the SQLite read profile with servers and load stubbed out.
+
+        Args:
+            driver: Siderite SQLite driver passed to the suite.
+
+        Returns:
+            The Siderite environment and the reported result labels.
+        """
+        captured = {}
+
+        def specs(*args):
+            captured["env"] = args[5]
+            return {label: Mock() for label in ("Siderite", "FastAPI")}
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.object(runner, "reset_sqlite_file"),
+                patch.object(runner, "seed_database"),
+                patch.object(runner, "server_specs", side_effect=specs),
+                patch.object(runner, "run_benchmark_set",
+                             return_value=({}, {})),
+                patch.object(runner, "asdict", side_effect=dict),
+            ):
+                results = runner.run_todo_suite(
+                    "sqlite", 1, 2, pool_size=4, todo_operation="reads",
+                    sqlite_profile="wal-normal", db_url="sqlite://x.db",
+                    sqlite_path=Path(directory) / "x.db",
+                    sqlite_driver=driver,
+                )
+        return captured["env"], list(results)

@@ -156,6 +156,25 @@ sampling, server-log review, effective database settings and build provenance
 meet plan 3's publication gates. A driver-probe gain is not an HTTP gain.
 
 
+## Native SQLite HTTP profile
+
+Build the benchmark with the opt-in backend, then select it explicitly:
+
+```bash
+cargo build --release -p siderite_todo --features sqlite-native
+python3 benchmarks/run_benchmarks.py --suite db --db sqlite \
+  --sqlite-driver native --sqlite-profile wal-normal --todo-operation reads
+```
+
+`--sqlite-driver sqlx` (the default) selects the SQLx backend. The native
+backend applies the same `--sqlite-profile` pragmas and opens
+`--pool-size` reader connections plus its single writer, so it holds one
+connection more than the SQLx pool and FastAPI. Reads run on the runtime
+worker; writes run on Tokio's blocking pool. It has no group commit, so
+`--siderite-group-commit` is rejected with it. Labels end in
+`-siderite-native`. The app reads `SIDERITE_SQLITE_DRIVER`.
+
+
 The runner records repetition identities in timed trial JSON and emits a
 paired-comparison record for each workload. It reports the geometric mean
 of within-pair Siderite/FastAPI throughput ratios and a deterministic 10,000

@@ -1,8 +1,8 @@
 //! Run-level atomicity, concurrency and RunRust ordering.
 
+use crate::common::backend::TestSqlite;
 use crate::common::{author_meta, temp_dir};
 use crate::fixtures::memory_db;
-use siderite_backends::sqlite::SqliteBackend;
 use siderite_migrations::executor::Migrator;
 use siderite_migrations::loader::{self, MigrationGraph};
 use siderite_migrations::make_migrations;
@@ -70,7 +70,7 @@ async fn concurrent_sqlite_migrate_applies_once() {
     let dir = temp_dir();
     let db_path = dir.join("app.db");
     let url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let db = Db::new(SqliteBackend::connect(&url).await.unwrap());
+    let db = Db::new(TestSqlite::connect(&url).await.unwrap());
     let models: &[&'static siderite_orm::ModelMeta] = &[author_meta()];
     make_migrations(models, &dir, None, false).unwrap().unwrap();
     let graph = MigrationGraph::build(loader::load_dir(&dir).unwrap()).unwrap();

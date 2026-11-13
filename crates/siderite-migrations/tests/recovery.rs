@@ -1,6 +1,9 @@
 //! Recovery inspection must not mutate fresh or damaged databases.
 
-use siderite_backends::sqlite::SqliteBackend;
+#[path = "common/backend.rs"]
+mod backend;
+
+use backend::TestSqlite;
 use siderite_migrations::{MigrationGraph, Migrator};
 use siderite_orm::{Db, Value};
 use std::time::Duration;
@@ -9,7 +12,7 @@ type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 
 #[tokio::test]
 async fn fresh_inspection_creates_no_tables() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = MigrationGraph::build(Vec::new())?;
     let migrator = Migrator::new(&db, &graph);
     let report = migrator.inspect_recovery().await?;
@@ -47,7 +50,7 @@ async fn fresh_inspection_creates_no_tables() -> Result {
 
 #[tokio::test]
 async fn damaged_progress_is_reported_without_repair() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = MigrationGraph::build(Vec::new())?;
     db.execute_script(
         "CREATE TABLE siderite_migration_progress (
@@ -94,7 +97,7 @@ async fn damaged_progress_is_reported_without_repair() -> Result {
 
 #[tokio::test]
 async fn scoped_execution_is_rejected_before_bookkeeping() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = MigrationGraph::build(Vec::new())?;
     db.transaction::<_, _, (), siderite_migrations::MigrationError>(|tx| async move {
         assert!(tx.is_scoped());

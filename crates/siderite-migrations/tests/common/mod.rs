@@ -1,6 +1,7 @@
 //! Hand-written `ModelMeta` copied from `siderite-backends/tests/reference_model.rs`.
 #![allow(dead_code, clippy::unwrap_used)]
 
+pub mod backend;
 pub mod scratch;
 
 use siderite_orm::{

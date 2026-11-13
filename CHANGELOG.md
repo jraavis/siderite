@@ -83,6 +83,16 @@
   with `--features sqlite-native`. No group commit yet. The SQLx backend
   remains the default, and the foreign-key bookkeeping of schema changes
   and value binding are now shared between the two.
+- **SQLite:** the native backend is documented next to the SQLx one
+  (backends guide, ORM reference, README): an application opts in by
+  enabling `sqlite-native` on `siderite-backends` and constructing
+  `NativeSqliteBackend`; the SQLx backend stays the default and URLs still
+  select it. `siderite-migrations` gains a test-only `sqlite-native`
+  feature that runs its SQLite tests on the native backend.
+- **Benchmarks:** the todo app runs on the native SQLite backend with
+  `--features sqlite-native` and `SIDERITE_SQLITE_DRIVER=native`
+  (`run_benchmarks.py --sqlite-driver native`), with the same
+  journal/synchronous profiles and `--pool-size` reader connections.
 - **Release:** prebuilt `siderite` archives for Linux (static musl,
   x86-64 and ARM64) and macOS on Intel, next to Apple silicon, each with
   signed build provenance (`gh attestation verify`). Release notes come

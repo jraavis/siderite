@@ -38,6 +38,9 @@ use locks::release_migrate_lock;
 #[cfg(test)]
 mod intent_tests;
 #[cfg(test)]
+#[path = "../tests/common/backend.rs"]
+mod test_backend;
+#[cfg(test)]
 mod tests;
 
 /// History table written by the migrator.

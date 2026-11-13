@@ -92,54 +92,115 @@ pub async fn open_db(url: &str) -> Result<Db, ApiError> {
         }
         Ok(Db::new(backend))
     } else {
-        // `SQLITE_WAL=1` (the runner's `--sqlite-wal`) trades durability for
-        // write throughput; the FastAPI app applies the same pragmas.
-        let profile = std::env::var("SQLITE_PROFILE").unwrap_or_else(|_| {
-            if std::env::var("SQLITE_WAL").is_ok_and(|v| v == "1") {
-                "wal-normal".to_owned()
-            } else {
-                "default".to_owned()
-            }
-        });
-        let backend = if profile == "wal-normal" || profile == "wal-full" {
-            let options: SqliteConnectOptions = url.parse().map_err(ApiError::internal)?;
-            let sync = if profile == "wal-full" {
-                SqliteSynchronous::Full
-            } else {
-                SqliteSynchronous::Normal
-            };
-            SqliteBackend::connect_with(
-                options
-                    .journal_mode(SqliteJournalMode::Wal)
-                    .synchronous(sync),
-                SqlitePoolOptions::new().max_connections(pool_size()),
-            )
-            .await
-        } else if profile == "default" {
-            let options: SqliteConnectOptions = url.parse().map_err(ApiError::internal)?;
-            SqliteBackend::connect_with(
-                options,
-                SqlitePoolOptions::new().max_connections(pool_size()),
-            )
-            .await
-        } else {
-            return Err(ApiError::internal("invalid SQLite profile"));
-        }
-        .map_err(ApiError::internal)?;
-        // `SQLITE_GROUP_COMMIT=1` (the runner's `--siderite-group-commit`)
-        // shares commits between concurrent inserts. FastAPI has no
-        // counterpart, so results are labelled as a separate workload.
-        let backend = if std::env::var("SQLITE_GROUP_COMMIT").is_ok_and(|v| v == "1") {
-            backend.group_commit(GroupCommit::default())
-        } else {
-            backend
-        };
-        let db = Db::new(backend);
-        db.execute_script(SQLITE_SCHEMA)
-            .await
-            .map_err(ApiError::internal)?;
-        Ok(db)
+        open_sqlite(url).await
     }
+}
+
+/// `SQLITE_PROFILE` (the runner's `--sqlite-profile`): `default`,
+/// `wal-normal` or `wal-full`. `SQLITE_WAL=1` (the legacy `--sqlite-wal`)
+/// means `wal-normal`. The FastAPI app applies the same pragmas.
+fn sqlite_profile() -> String {
+    std::env::var("SQLITE_PROFILE").unwrap_or_else(|_| {
+        if std::env::var("SQLITE_WAL").is_ok_and(|v| v == "1") {
+            "wal-normal".to_owned()
+        } else {
+            "default".to_owned()
+        }
+    })
+}
+
+/// Open SQLite with the requested profile on the requested driver.
+///
+/// `SIDERITE_SQLITE_DRIVER` (the runner's `--sqlite-driver`) is `sqlx`
+/// (default) or `native`; `native` needs the `sqlite-native` feature.
+///
+/// Args:
+///     url: SQLite benchmark database URL.
+///
+/// Returns:
+///     Configured database with the schema created, or a setup error.
+async fn open_sqlite(url: &str) -> Result<Db, ApiError> {
+    let profile = sqlite_profile();
+    if !matches!(profile.as_str(), "default" | "wal-normal" | "wal-full") {
+        return Err(ApiError::internal("invalid SQLite profile"));
+    }
+    // `SQLITE_GROUP_COMMIT=1` (the runner's `--siderite-group-commit`)
+    // shares commits between concurrent inserts. FastAPI has no
+    // counterpart, so results are labelled as a separate workload.
+    let group_commit = std::env::var("SQLITE_GROUP_COMMIT").is_ok_and(|v| v == "1");
+    let driver = std::env::var("SIDERITE_SQLITE_DRIVER").unwrap_or_else(|_| "sqlx".into());
+    let db = if driver == "native" {
+        if group_commit {
+            return Err(ApiError::internal(
+                "group commit is not available on native SQLite",
+            ));
+        }
+        open_sqlite_native(url, &profile).await?
+    } else if driver == "sqlx" {
+        let options: SqliteConnectOptions = url.parse().map_err(ApiError::internal)?;
+        let options = match profile.as_str() {
+            "wal-normal" => options
+                .journal_mode(SqliteJournalMode::Wal)
+                .synchronous(SqliteSynchronous::Normal),
+            "wal-full" => options
+                .journal_mode(SqliteJournalMode::Wal)
+                .synchronous(SqliteSynchronous::Full),
+            _ => options,
+        };
+        let backend = SqliteBackend::connect_with(
+            options,
+            SqlitePoolOptions::new().max_connections(pool_size()),
+        )
+        .await
+        .map_err(ApiError::internal)?;
+        if group_commit {
+            Db::new(backend.group_commit(GroupCommit::default()))
+        } else {
+            Db::new(backend)
+        }
+    } else {
+        return Err(ApiError::internal("invalid SIDERITE_SQLITE_DRIVER"));
+    };
+    db.execute_script(SQLITE_SCHEMA)
+        .await
+        .map_err(ApiError::internal)?;
+    Ok(db)
+}
+
+/// The native SQLite backend with `DATABASE_POOL_SIZE` reader connections
+/// (plus its one writer) and the profile's pragmas.
+///
+/// Args:
+///     url: SQLite benchmark database URL.
+///     profile: Validated SQLite durability profile.
+///
+/// Returns:
+///     Database without the schema, or an explicit driver/setup error.
+#[cfg(feature = "sqlite-native")]
+async fn open_sqlite_native(url: &str, profile: &str) -> Result<Db, ApiError> {
+    use siderite_backends::sqlite::native::{
+        JournalMode, NativeSqliteBackend, NativeSqliteOptions, Synchronous,
+    };
+    let (journal_mode, synchronous) = match profile {
+        "wal-normal" => (Some(JournalMode::Wal), Some(Synchronous::Normal)),
+        "wal-full" => (Some(JournalMode::Wal), Some(Synchronous::Full)),
+        _ => (None, None),
+    };
+    let options = NativeSqliteOptions {
+        readers: pool_size() as usize,
+        journal_mode,
+        synchronous,
+        ..NativeSqliteOptions::default()
+    };
+    let backend = NativeSqliteBackend::connect_with(url, options)
+        .await
+        .map_err(ApiError::internal)?;
+    Ok(Db::new(backend))
+}
+
+#[cfg(not(feature = "sqlite-native"))]
+async fn open_sqlite_native(_url: &str, _profile: &str) -> Result<Db, ApiError> {
+    Err(ApiError::internal("build with sqlite-native feature"))
 }
 
 /// Select the explicitly requested driver with equally initialized pools.

@@ -1,8 +1,8 @@
 //! Unconfirmed callbacks must never be replayed by ordinary registration.
 
 use super::MigrationRegistry as Registry;
+use super::test_backend::TestSqlite;
 use super::*;
-use siderite_backends::sqlite::SqliteBackend;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -30,7 +30,7 @@ fn graph() -> std::result::Result<MigrationGraph, MigrationError> {
 
 #[tokio::test]
 async fn callback_failure_blocks_replay_before_more_data() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = graph()?;
     let migration = graph.get("0001_intent").ok_or("missing migration")?;
     db.execute_script(&create_history_sql(BackendKind::MySql))
@@ -64,7 +64,7 @@ async fn callback_failure_blocks_replay_before_more_data() -> Result {
 
 #[tokio::test]
 async fn replay_safe_callback_finishes_without_duplicate_data() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = graph()?;
     let migration = graph.get("0001_intent").ok_or("missing migration")?;
     db.execute_script(&create_history_sql(BackendKind::MySql))
@@ -114,7 +114,7 @@ async fn apply(
 
 #[tokio::test]
 async fn partial_sql_script_blocks_duplicate_committed_data() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     db.execute_script(&create_history_sql(BackendKind::MySql))
         .await?;
     db.execute_script("CREATE TABLE effects (id INTEGER)")
@@ -146,7 +146,7 @@ async fn partial_sql_script_blocks_duplicate_committed_data() -> Result {
 
 #[tokio::test]
 async fn recorded_safe_callback_completion_clears_stale_intent() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = graph()?;
     let migration = graph.get("0001_intent").ok_or("missing migration")?;
     let kind = BackendKind::MySql;
@@ -184,7 +184,7 @@ async fn recorded_safe_callback_completion_clears_stale_intent() -> Result {
 
 #[tokio::test]
 async fn recorded_safe_reverse_completion_does_not_rerun_callback() -> Result {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let graph = graph()?;
     let migration = graph.get("0001_intent").ok_or("missing migration")?;
     let kind = BackendKind::MySql;

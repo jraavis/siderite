@@ -162,7 +162,9 @@ Examples (in `examples/`):
 Guides: [configuration](https://jraavis.github.io/siderite/guides/production/config/) and [cache](https://jraavis.github.io/siderite/guides/production/cache/).
 
 Backends other than SQLite use Cargo features: `postgres`, `mysql`,
-`mongodb` and `redis`. Live tests are ignored in ordinary test runs; explicitly
+`mongodb` and `redis`. Opt-in native drivers sit beside the SQLx ones:
+`sqlite-native` (`NativeSqliteBackend`, in-process SQLite) and
+`mysql-native` (`NativeMySqlBackend`); SQLx stays the default for both. Live tests are ignored in ordinary test runs; explicitly
 selected live tests require their service configuration and fail if it is
 missing. Setting a URL alone does not enable ignored tests.
 

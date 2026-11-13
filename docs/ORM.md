@@ -58,6 +58,38 @@ let team = user.fetch_team(&db).await?; // Option<Arc<Team>>
 
 ## Transactions
 
+### Native SQLite
+
+Enable `sqlite-native` on `siderite-backends` (it implies `sqlite`) to opt
+into `sqlite::native::{NativeSqliteBackend, NativeSqliteOptions}`. The SQLx
+`SqliteBackend` remains the default; an application switches by
+constructing the native backend, not by URL. It accepts the same URLs and
+behaves the same for binding, decoding, errors, multi-statement SQL and
+schema transactions, and the backend and migration SQLite suites run on it
+with `--features sqlite-native`.
+
+```rust
+use siderite_backends::sqlite::native::{
+    JournalMode, NativeSqliteBackend, NativeSqliteOptions,
+};
+use siderite_orm::Db;
+
+let backend = NativeSqliteBackend::connect_with(
+    "sqlite://app.db?mode=rwc",
+    NativeSqliteOptions {
+        journal_mode: Some(JournalMode::Wal),
+        ..NativeSqliteOptions::default()
+    },
+)
+.await?;
+let db = Db::new(backend);
+```
+
+Reads run inline on `readers` connections (default 10); writes,
+transactions and schema changes queue for one writer connection behind the
+write gate and run on Tokio's blocking pool. `Dispatch` changes either
+side. Group commit is not available on the native backend yet.
+
 ### Experimental native MySQL
 
 Enable `mysql-native` on `siderite-backends` to opt into

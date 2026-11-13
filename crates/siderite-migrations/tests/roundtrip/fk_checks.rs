@@ -1,8 +1,8 @@
 //! SQLite rebuild foreign-key behaviour.
 
+use crate::common::backend::TestSqlite;
 use crate::common::{author_meta, book_meta, temp_dir};
 use crate::fixtures::memory_db;
-use siderite_backends::sqlite::SqliteBackend;
 use siderite_migrations::cli;
 use siderite_migrations::executor::Migrator;
 use siderite_migrations::loader::{self, MigrationGraph};
@@ -23,7 +23,7 @@ async fn sqlite_rebuild_of_parent_keeps_cascade_children() {
     let dir = temp_dir();
     let db_path = dir.join("app.db");
     let url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let db = Db::new(SqliteBackend::connect(&url).await.unwrap());
+    let db = Db::new(TestSqlite::connect(&url).await.unwrap());
     let models: &[&'static siderite_orm::ModelMeta] = &[author_meta(), book_meta()];
     let first = make_migrations(models, &dir, None, false).unwrap().unwrap();
     cli::run(models, &db, &dir, ["migrate".to_owned()])
@@ -108,7 +108,7 @@ async fn sqlite_rebuild_ignores_preexisting_violations() {
     let dir = temp_dir();
     let db_path = dir.join("app.db");
     let url = format!("sqlite://{}?mode=rwc", db_path.display());
-    let db = Db::new(SqliteBackend::connect(&url).await.unwrap());
+    let db = Db::new(TestSqlite::connect(&url).await.unwrap());
     let models: &[&'static siderite_orm::ModelMeta] = &[author_meta(), book_meta()];
     let first = make_migrations(models, &dir, None, false).unwrap().unwrap();
     cli::run(models, &db, &dir, ["migrate".to_owned()])
