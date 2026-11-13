@@ -17,10 +17,10 @@ hero:
 
 import { Code } from '@astrojs/starlight/components';
 
-<p class="status-banner">
-  Pre-alpha. Phase 6 (production tooling) is complete. Public APIs will change.
-  MSRV 1.92, edition 2024.
-</p>
+<div class="status-banner">
+  <strong>Pre-alpha</strong>
+  <span>The core framework and initial tooling are implemented. Public APIs may change. MSRV 1.99, edition 2024.</span>
+</div>
 
 <Code
   lang="rust"
@@ -43,27 +43,31 @@ async fn main() -> Result<(), ServerError> {
 }`}
 />
 
+<div class="section-label">What is in the box</div>
+
 <dl class="feature-list">
-  <dt>HTTP</dt>
-  <dd>
-    Route macros, extractors, middleware, lifespan, WebSockets, and RFC 7807
-    errors. OpenAPI 3.1 is generated from handler signatures and served at
-    <code>/docs</code>.
-  </dd>
-  <dt>Validation</dt>
-  <dd>
-    A Pydantic-style pipeline on <code>#[derive(Validate, Schema)]</code>.
-    Invalid input is a 422 that lists every error with its location.
-  </dd>
-  <dt>ORM</dt>
-  <dd>
-    <code>#[derive(Model)]</code> and lazy <code>QuerySet</code>s.
-    <code>User::age.icontains(..)</code> does not compile. Unsupported backend
-    features fail with a capability error before any I/O.
-  </dd>
-  <dt>Production</dt>
-  <dd>
-    Layered configuration, signals, database routing, cache, CLI, testkit, and
-    migrations for SQLite, PostgreSQL, and MySQL.
-  </dd>
+  <div>
+    <dt>HTTP</dt>
+    <dd>Route macros, extractors, middleware, lifespan, WebSockets, and RFC 7807 errors. OpenAPI 3.1 is generated from handler signatures and served at <code>/docs</code>.</dd>
+  </div>
+  <div>
+    <dt>Validation</dt>
+    <dd>A Pydantic-style pipeline on <code>#[derive(Validate, Schema)]</code>. Invalid input is a 422 that lists every error with its location.</dd>
+  </div>
+  <div>
+    <dt>ORM</dt>
+    <dd><code>#[derive(Model)]</code> and lazy <code>QuerySet</code>s. <code>User::age.icontains(..)</code> does not compile. Unsupported backend features fail with a capability error before any I/O.</dd>
+  </div>
+  <div>
+    <dt>Production</dt>
+    <dd>Layered configuration, signals, database routing, cache, CLI, testkit, and migrations for SQLite, PostgreSQL, and MySQL.</dd>
+  </div>
 </dl>
+
+<div class="section-label">Where to go next</div>
+
+<ul class="next-steps">
+  <li><a href="/siderite/start/installation/"><strong>Install</strong>Add the crate, pick cargo features, and check the toolchain.</a></li>
+  <li><a href="/siderite/tutorials/todo-sqlite/"><strong>Build a Todo API</strong>Models, migrations, and CRUD routes on SQLite.</a></li>
+  <li><a href="/siderite/reference/backend-matrix/"><strong>Compare backends</strong>What SQLite, PostgreSQL, MySQL, and MongoDB each support.</a></li>
+</ul>

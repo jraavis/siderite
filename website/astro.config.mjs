@@ -25,6 +25,9 @@ export default defineConfig({
 				baseUrl: 'https://github.com/jraavis/siderite/edit/master/website/',
 			},
 			customCss: ['./src/styles/theme.css'],
+			expressiveCode: {
+				styleOverrides: { borderRadius: '6px' },
+			},
 			head: [
 				{
 					tag: 'meta',

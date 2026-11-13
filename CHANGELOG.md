@@ -24,7 +24,15 @@
   `orm/decode_100_rows` measures model decoding without a driver, both
   borrowing and moving.
 
+- **Docs site:** retouched theme. The landing page gets feature cards and
+  next-step links, the sidebar marks the current page with a quiet accent
+  rule instead of a filled block in dark mode, tables and inline code are
+  easier to scan, and buttons, cards and code blocks share one corner
+  radius.
+
 ### Fixed
+- **Docs site:** the landing page status note rendered as an empty bar
+  with its text outside, and still said MSRV 1.92; it now reads 1.99.
 - **Docs:** the `Speedup` column of the FastAPI comparison did not match
   the throughput columns beside it (MySQL insert read 1.02x for 3,371
   against 3,433 req/s). Every value is now the ratio of its own row.
