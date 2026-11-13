@@ -2,7 +2,7 @@
 
 `siderite` is an async-first Rust web framework. It takes its API ergonomics from FastAPI, its validation model from Pydantic v2 and its ORM ergonomics from the Django ORM. It favours **compilable, idiomatic Rust** over Python look-alike syntax: where a Python feature has no natural Rust mapping, we design a Rust equivalent and document how it differs.
 
-> Status: **Phase 6 (production tooling) complete, pre-alpha**. The table in [Crate map](#crate-map) lists the crates and what each one owns.
+> Status: **alpha**; the roadmap milestones are complete and public APIs may still change before 1.0. The table in [Crate map](#crate-map) lists the crates and what each one owns.
 
 ## Crate map
 

@@ -30,6 +30,12 @@
   easier to scan, and buttons, cards and code blocks share one corner
   radius.
 
+- **Status:** the project is now described as alpha instead of pre-alpha
+  in the README, the docs site and the architecture notes: every roadmap
+  milestone is implemented and tested, and public APIs may still change
+  before 1.0. The first tagged release and crates.io publishing are still
+  pending.
+
 ### Fixed
 - **Docs site:** the landing page status note rendered as an empty bar
   with its text outside, and still said MSRV 1.92; it now reads 1.99.

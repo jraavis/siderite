@@ -11,9 +11,10 @@ edition 2024, with a declared MSRV of 1.99 (released October 2026).
 
 **Documentation:** [jraavis.github.io/siderite](https://jraavis.github.io/siderite/)
 
-> **Status: pre-alpha.** Core framework and initial tooling are implemented;
-> APIs may change, and reliability work continues. Expanded CLI workflows and
-> AI assistance are planned. See the [roadmap](#roadmap) for delivery scope.
+> **Status: alpha.** The framework, ORM, adapters and CLI workflow are
+> implemented and tested; public APIs may still change before 1.0. The first
+> tagged release and crates.io publishing are pending. See the
+> [roadmap](#roadmap) for delivery scope.
 
 ## Start with the CLI
 
