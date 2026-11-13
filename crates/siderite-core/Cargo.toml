@@ -41,4 +41,6 @@ hyper = { workspace = true, features = ["client", "http1", "http2"] }
 tokio = { workspace = true, features = ["io-util"] }
 siderite-validation.workspace = true
 jsonschema.workspace = true
-siderite-testkit.workspace = true
+# Path-only: crates published later in docs/RELEASING.md order are
+# stripped from the published manifest, breaking the publish cycle.
+siderite-testkit = { path = "../siderite-testkit" }
