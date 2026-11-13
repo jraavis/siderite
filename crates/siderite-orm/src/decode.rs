@@ -66,7 +66,8 @@ impl Row {
     /// # Errors
     /// [`QueryError::Decode`] if there is no such column or it has the wrong type.
     pub fn decode_at<T: DbType>(&self, index: usize) -> Result<T, QueryError> {
-        let (name, value) = self.iter().nth(index).ok_or_else(|| QueryError::Decode {
+        let cell = self.column_at(index);
+        let (name, value) = cell.ok_or_else(|| QueryError::Decode {
             column: format!("#{index}"),
             reason: format!("row has only {} columns", self.len()),
         })?;
@@ -140,5 +141,49 @@ mod tests {
             Value::Decimal(rust_decimal::Decimal::new(275, 1)),
         )]);
         assert!(fractional.get_as::<i64>("s").is_err());
+    }
+
+    #[test]
+    fn rows_share_a_header_and_give_up_values_once() {
+        let names = ["id".to_owned(), "name".to_owned()];
+        let names: std::sync::Arc<[String]> = names.into();
+        let mut shared = Row::with_columns(
+            names.clone(),
+            vec![Value::Int(7), Value::Text("ann".into()), Value::Int(9)],
+        );
+        assert_eq!(shared.len(), 2, "surplus values are dropped");
+        assert_eq!(shared, Row::new(shared.clone().into_columns()));
+        // A wrong or out-of-range hint falls back to the name search.
+        assert_eq!(shared.position("name", 1), Some(1));
+        assert_eq!(shared.position("name", 0), Some(1));
+        assert_eq!(shared.position("name", 99), Some(1));
+        assert_eq!(shared.position("missing", 0), None);
+        assert_eq!(shared.take_at(1), Some(Value::Text("ann".into())));
+        assert_eq!(shared.get("name"), Some(&Value::Null));
+        assert_eq!(shared.take_at(2), None);
+        let short = Row::with_columns(names, vec![Value::Int(7)]);
+        assert_eq!(short.position("name", 1), None, "no value, no column");
+        assert_eq!(short.iter().count(), 1);
+    }
+
+    #[test]
+    fn columns_are_read_and_taken_by_prefixed_name() {
+        use crate::model::{read_column_at, take_column};
+        let mut joined = Row::new(vec![
+            ("id".into(), Value::Int(1)),
+            ("author__name".into(), Value::Text("ann".into())),
+        ]);
+        assert_eq!(read_column_at::<i64>(&joined, "", "id", 5), Ok(1));
+        let name = take_column::<String>(&mut joined, "author__", "name", 0);
+        assert_eq!(name.as_deref(), Ok("ann"));
+        assert_eq!(joined.get("id"), Some(&Value::Int(1)));
+        let again = take_column::<String>(&mut joined, "author__", "name", 0);
+        assert!(again.is_err(), "a taken column reads as NULL");
+        let gone = take_column::<i64>(&mut joined, "author__", "age", 0);
+        let column = match gone {
+            Err(QueryError::Decode { column, .. }) => column,
+            _ => String::new(),
+        };
+        assert_eq!(column, "author__age");
     }
 }

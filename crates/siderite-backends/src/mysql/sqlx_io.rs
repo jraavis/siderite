@@ -2,11 +2,12 @@
 
 use super::db_error;
 use super::io::{MySqlIo, WriteDone};
-use siderite_orm::{OrmError, QueryError, QueryResult, Row, Value};
+use crate::shared::decode_rows;
+use siderite_orm::{OrmError, QueryResult, Value};
 use sqlx::mysql::{MySqlArguments, MySqlRow, MySqlValueRef};
 use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use sqlx::types::{Decimal, JsonValue};
-use sqlx::{Column as _, Row as _, TypeInfo as _, ValueRef as _};
+use sqlx::{Row as _, TypeInfo as _, ValueRef as _};
 
 type Bound<'q> = sqlx::query::Query<'q, sqlx::MySql, MySqlArguments>;
 
@@ -42,7 +43,7 @@ where
         .fetch_all(executor)
         .await
         .map_err(db_error)?;
-    let rows = rows.iter().map(decode_row).collect::<Result<_, _>>()?;
+    let rows = decode_rows(&rows, value)?;
     Ok(QueryResult { rows })
 }
 
@@ -76,30 +77,6 @@ where
 }
 
 // Decode wire values with the same canonical storage mapping as binding.
-
-fn decode_row(row: &MySqlRow) -> Result<Row, QueryError> {
-    row.columns()
-        .iter()
-        .enumerate()
-        .map(|(i, col)| {
-            let name = col.name().to_owned();
-            let raw = row.try_get_raw(i).map_err(|e| QueryError::Decode {
-                column: name.clone(),
-                reason: e.to_string(),
-            })?;
-            let value = if raw.is_null() {
-                Value::Null
-            } else {
-                value(row, i, raw).map_err(|reason| QueryError::Decode {
-                    column: name.clone(),
-                    reason,
-                })?
-            };
-            Ok((name, value))
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(Row::new)
-}
 
 type Wire<'a> = MySqlValueRef<'a>;
 

@@ -42,15 +42,8 @@ pub fn model_impl(plan: &ModelPlan<'_>) -> TokenStream {
         let (field, column) = (f.ident, &f.column);
         quote!((#column, #orm::DbType::to_value(&self.#field)))
     });
-    let reads = plan.fields.iter().map(|f| {
-        let field = f.ident;
-        if f.is_column() {
-            let column = &f.column;
-            quote!(#field: #orm::read_column(row, prefix, #column)?)
-        } else {
-            quote!(#field: ::core::default::Default::default())
-        }
-    });
+    let reads = field_reads(plan, &quote!(#orm::read_column_at));
+    let takes = field_reads(plan, &quote!(#orm::take_column));
     quote! {
         #[automatically_derived]
         impl #orm::Model for #ident {
@@ -80,6 +73,39 @@ pub fn model_impl(plan: &ModelPlan<'_>) -> TokenStream {
             ) -> ::core::result::Result<Self, #orm::QueryError> {
                 ::core::result::Result::Ok(Self { #(#reads),* })
             }
+
+            fn from_row_mut(
+                row: &mut #orm::Row,
+                prefix: &str,
+            ) -> ::core::result::Result<Self, #orm::QueryError> {
+                ::core::result::Result::Ok(Self { #(#takes),* })
+            }
         }
     }
+}
+
+/// Struct-literal initializers decoding every field with `reader`.
+///
+/// Args:
+///     plan: Parsed model.
+///     read: Path of `fn(row, prefix, column, hint)`.
+///
+/// Returns:
+///     One `field: value` initializer per struct field; fields without a
+///     column take their default. The hint is the column's position among
+///     the model's columns, which is its place in a default projection.
+fn field_reads(plan: &ModelPlan<'_>, read: &TokenStream) -> Vec<TokenStream> {
+    let mut position = 0usize;
+    plan.fields
+        .iter()
+        .map(|f| {
+            let field = f.ident;
+            if !f.is_column() {
+                return quote!(#field: ::core::default::Default::default());
+            }
+            let (column, hint) = (&f.column, position);
+            position += 1;
+            quote!(#field: #read(row, prefix, #column, #hint)?)
+        })
+        .collect()
 }

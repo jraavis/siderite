@@ -73,12 +73,15 @@ impl<M: Model> QuerySet<M> {
     /// # Errors
     /// Capability, backend or decode errors.
     pub async fn all(self) -> Result<Vec<M>, OrmError> {
-        Ok(self
-            .all_annotated()
-            .await?
-            .into_iter()
-            .map(|(model, _)| model)
-            .collect())
+        let rows = self.fetch_rows().await?;
+        let mut models = Vec::with_capacity(rows.len());
+        for mut row in rows {
+            let mut model = M::from_row_mut(&mut row, "")?;
+            attach_all(&mut model, &self.related, &row)?;
+            models.push(model);
+        }
+        self.run_prefetches(&mut models).await?;
+        Ok(models)
     }
 
     /// Like [`all`](Self::all), pairing each model with its full result row,
@@ -87,12 +90,17 @@ impl<M: Model> QuerySet<M> {
     /// # Errors
     /// As [`all`](Self::all).
     pub async fn all_annotated(self) -> Result<Vec<(M, Row)>, OrmError> {
+        let rows = self.fetch_rows().await?;
+        self.decode_rows(rows).await
+    }
+
+    /// Rows of the checked plan; none for an empty queryset.
+    async fn fetch_rows(&self) -> Result<Vec<Row>, OrmError> {
         self.ready()?;
         if self.empty {
             return Ok(Vec::new());
         }
-        let result = self.db.fetch(&self.plan).await?;
-        self.decode_rows(result.rows).await
+        Ok(self.db.fetch(&self.plan).await?.rows)
     }
 
     /// Decode fetched `rows` into models, attaching `select_related`

@@ -11,6 +11,7 @@ use crate::plan::OrderDirection;
 use crate::queryset::QuerySet;
 use crate::types::{DbType, SqlType};
 use crate::value::Value;
+use std::borrow::Cow;
 
 /// What happens to rows referencing a deleted row (Django `on_delete`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -252,9 +253,46 @@ pub trait Model: Sized + Send + Sync + 'static {
     /// [`QueryError::Decode`] naming the missing or mistyped column.
     fn from_row(row: &Row, prefix: &str) -> Result<Self, QueryError>;
 
+    /// Decode a model by moving its columns out of `row`.
+    ///
+    /// The queryset uses this when the row is not needed afterwards, so
+    /// text, bytes and JSON are moved into the model instead of copied. The
+    /// consumed columns read as `NULL` afterwards; columns of other
+    /// prefixes are untouched. The default forwards to
+    /// [`from_row`](Self::from_row); `#[derive(Model)]` overrides it.
+    ///
+    /// Args:
+    ///     row: Row to consume this model's columns from.
+    ///     prefix: Column name prefix, as for [`from_row`](Self::from_row).
+    ///
+    /// Returns:
+    ///     The decoded model.
+    ///
+    /// # Errors
+    /// As [`from_row`](Self::from_row).
+    fn from_row_mut(row: &mut Row, prefix: &str) -> Result<Self, QueryError> {
+        Self::from_row(row, prefix)
+    }
+
     /// Lazy queryset over this model (Django `Model.objects`).
     fn objects(db: &Db) -> QuerySet<Self> {
         QuerySet::new(db)
+    }
+}
+
+/// `prefix + column`, borrowing `column` when there is no prefix.
+fn column_key<'a>(prefix: &str, column: &'a str) -> Cow<'a, str> {
+    if prefix.is_empty() {
+        Cow::Borrowed(column)
+    } else {
+        Cow::Owned(format!("{prefix}{column}"))
+    }
+}
+
+fn missing(key: &str) -> QueryError {
+    QueryError::Decode {
+        column: key.to_owned(),
+        reason: "column missing from result".into(),
     }
 }
 
@@ -263,14 +301,60 @@ pub trait Model: Sized + Send + Sync + 'static {
 /// # Errors
 /// [`QueryError::Decode`] if the column is missing or has the wrong type.
 pub fn read_column<T: DbType>(row: &Row, prefix: &str, column: &str) -> Result<T, QueryError> {
-    let key = if prefix.is_empty() {
-        std::borrow::Cow::Borrowed(column)
-    } else {
-        std::borrow::Cow::Owned(format!("{prefix}{column}"))
-    };
-    let value = row.get(&key).cloned().ok_or_else(|| QueryError::Decode {
-        column: key.clone().into_owned(),
-        reason: "column missing from result".into(),
-    })?;
+    read_column_at(row, prefix, column, 0)
+}
+
+/// [`read_column`] that tries position `hint` before searching by name.
+///
+/// Args:
+///     row: Row to read from.
+///     prefix: Column name prefix (`""` for the root model).
+///     column: Column name without the prefix.
+///     hint: Expected position of the column; any value is safe.
+///
+/// Returns:
+///     The decoded value.
+///
+/// # Errors
+/// [`QueryError::Decode`] if the column is missing or has the wrong type.
+pub fn read_column_at<T: DbType>(
+    row: &Row,
+    prefix: &str,
+    column: &str,
+    hint: usize,
+) -> Result<T, QueryError> {
+    let key = column_key(prefix, column);
+    let value = row
+        .position(&key, hint)
+        .and_then(|index| row.column_at(index))
+        .map(|(_, value)| value.clone())
+        .ok_or_else(|| missing(&key))?;
+    crate::types::decode(&key, value)
+}
+
+/// Move `prefix + column` out of `row`, decoding it as `T`.
+///
+/// Args:
+///     row: Row to take the value from; the column reads `NULL` afterwards.
+///     prefix: Column name prefix (`""` for the root model).
+///     column: Column name without the prefix.
+///     hint: Expected position of the column; any value is safe.
+///
+/// Returns:
+///     The decoded value.
+///
+/// # Errors
+/// [`QueryError::Decode`] if the column is missing or has the wrong type.
+pub fn take_column<T: DbType>(
+    row: &mut Row,
+    prefix: &str,
+    column: &str,
+    hint: usize,
+) -> Result<T, QueryError> {
+    let key = column_key(prefix, column);
+    let value = row
+        .position(&key, hint)
+        .and_then(|index| row.take_at(index))
+        .ok_or_else(|| missing(&key))?;
     crate::types::decode(&key, value)
 }

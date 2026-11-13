@@ -4,20 +4,21 @@
 //! text form ([`canonical_text`]), so they compare and sort correctly and
 //! decode through [`DbType::from_value`](siderite_orm::DbType::from_value).
 
-use crate::shared::{TxSlot, affected_result, map_error, returning_result, with_tx};
+use crate::shared::{TxSlot, with_tx};
+use crate::shared::{affected_result, decode_rows, map_error, returning_result};
 use crate::sql::{CompiledQuery, Sqlite, compile, compile_write};
 use async_trait::async_trait;
 use siderite_orm::types::canonical_text;
 use siderite_orm::{
     Backend, BackendCapabilities, BackendError, ExecResult, Executor, IsolationLevel, OrmError,
-    QueryError, QueryPlan, QueryResult, Row, Transaction, Value, WritePlan,
+    QueryError, QueryPlan, QueryResult, Transaction, Value, WritePlan,
 };
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{
     SqliteArguments, SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow,
-    SqliteTransactionManager,
+    SqliteTransactionManager, SqliteValueRef,
 };
-use sqlx::{Column as _, Row as _, TransactionManager, TypeInfo as _, ValueRef as _};
+use sqlx::{Row as _, TransactionManager, TypeInfo as _, ValueRef as _};
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -582,7 +583,7 @@ where
         .fetch_all(ex)
         .await
         .map_err(map_error)?;
-    let rows = rows.iter().map(decode_row).collect::<Result<_, _>>()?;
+    let rows = decode_rows(&rows, cell)?;
     Ok(QueryResult { rows })
 }
 
@@ -618,31 +619,17 @@ fn script_result(
     done.map(|_| ()).map_err(|e| map_error(e).into())
 }
 
-fn decode_row(row: &SqliteRow) -> Result<Row, QueryError> {
-    row.columns()
-        .iter()
-        .enumerate()
-        .map(|(i, col)| {
-            let name = col.name().to_owned();
-            let decode_err = |e: sqlx::Error| QueryError::Decode {
-                column: name.clone(),
-                reason: e.to_string(),
-            };
-            let raw = row.try_get_raw(i).map_err(decode_err)?;
-            let value = if raw.is_null() {
-                Value::Null
-            } else {
-                match raw.type_info().name() {
-                    "INTEGER" | "BOOLEAN" => Value::Int(row.try_get(i).map_err(decode_err)?),
-                    "REAL" => Value::Float(row.try_get(i).map_err(decode_err)?),
-                    "BLOB" => Value::Bytes(row.try_get(i).map_err(decode_err)?),
-                    _ => Value::Text(row.try_get(i).map_err(decode_err)?),
-                }
-            };
-            Ok((name, value))
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(Row::new)
+type Wire<'a> = SqliteValueRef<'a>;
+
+/// Decode a non-null cell by its SQLite storage class.
+fn cell(row: &SqliteRow, i: usize, raw: Wire<'_>) -> Result<Value, String> {
+    let text = |e: sqlx::Error| e.to_string();
+    Ok(match raw.type_info().name() {
+        "INTEGER" | "BOOLEAN" => Value::Int(row.try_get(i).map_err(text)?),
+        "REAL" => Value::Float(row.try_get(i).map_err(text)?),
+        "BLOB" => Value::Bytes(row.try_get(i).map_err(text)?),
+        _ => Value::Text(row.try_get(i).map_err(text)?),
+    })
 }
 
 #[cfg(test)]

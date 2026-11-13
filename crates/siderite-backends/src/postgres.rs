@@ -9,14 +9,13 @@
 //! date-part lookups (`EXTRACT`) agree with the values the ORM writes.
 
 use crate::connection_init::ConnectionInit;
-use crate::shared::{
-    ConnSlot, TxSlot, affected_result, map_error, returning_result, with_conn, with_tx,
-};
+use crate::shared::{ConnSlot, TxSlot, with_conn, with_tx};
+use crate::shared::{affected_result, decode_rows, map_error, returning_result};
 use crate::sql::{CompiledQuery, Postgres, compile, compile_write};
 use async_trait::async_trait;
 use siderite_orm::{
     Backend, BackendCapabilities, BackendError, ExecResult, Executor, IsolationLevel, OrmError,
-    QueryError, QueryPlan, QueryResult, Row, Transaction, Value, WritePlan,
+    QueryPlan, QueryResult, Transaction, Value, WritePlan,
 };
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
@@ -27,7 +26,7 @@ use sqlx::postgres::{
 use sqlx::types::chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use sqlx::types::uuid::Uuid;
 use sqlx::types::{Decimal, JsonValue};
-use sqlx::{Column as _, Executor as _, Row as _, TypeInfo as _, ValueRef as _};
+use sqlx::{Executor as _, Row as _, TypeInfo as _, ValueRef as _};
 
 /// PostgreSQL adapter executing compiled plans on a connection pool.
 #[derive(Debug, Clone)]
@@ -331,7 +330,7 @@ where
         .fetch_all(ex)
         .await
         .map_err(map_error)?;
-    let rows = rows.iter().map(decode_row).collect::<Result<_, _>>()?;
+    let rows = decode_rows(&rows, decode_value)?;
     Ok(QueryResult { rows })
 }
 
@@ -363,30 +362,6 @@ where
 
 fn script_result(done: Result<sqlx::postgres::PgQueryResult, sqlx::Error>) -> Result<(), OrmError> {
     done.map(|_| ()).map_err(|e| map_error(e).into())
-}
-
-fn decode_row(row: &PgRow) -> Result<Row, QueryError> {
-    row.columns()
-        .iter()
-        .enumerate()
-        .map(|(i, col)| {
-            let name = col.name().to_owned();
-            let raw = row.try_get_raw(i).map_err(|e| QueryError::Decode {
-                column: name.clone(),
-                reason: e.to_string(),
-            })?;
-            let value = if raw.is_null() {
-                Value::Null
-            } else {
-                decode_value(row, i, raw).map_err(|reason| QueryError::Decode {
-                    column: name.clone(),
-                    reason,
-                })?
-            };
-            Ok((name, value))
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(Row::new)
 }
 
 /// Decode a non-null column by its PostgreSQL type name.

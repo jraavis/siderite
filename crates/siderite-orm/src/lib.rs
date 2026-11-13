@@ -51,8 +51,9 @@ pub use expr::{
 };
 pub use model::{
     ConstraintMeta, DbDefault, FieldMeta, IndexMeta, ManyToManyMeta, MetaRef, Model, ModelMeta,
-    OnDelete, RelationKind, RelationMeta, read_column,
+    OnDelete, RelationKind, RelationMeta,
 };
+pub use model::{read_column, read_column_at, take_column};
 pub use ops::ModelOps;
 pub use plan::{
     Compound, DistinctMode, JoinExpr, JoinKind, LockMode, OrderDirection, OrderExpr, PlanOrigin,
