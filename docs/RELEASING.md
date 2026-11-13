@@ -28,8 +28,14 @@ target from a clean state (no cache), checks that `siderite --version`
 prints that version and that `siderite new` writes an app, attests the
 build provenance of each archive, then creates the GitHub release with
 that changelog section as its notes. A version with a pre-release suffix
-(`0.2.0-rc.1`) is marked as a pre-release. A manual run of the workflow
-builds the same archives as artifacts and publishes nothing.
+(`0.2.0-rc.1`) is marked as a pre-release.
+
+Without a local tag push, release from **Actions → Release → Run
+workflow** on `master` with **release** checked. The run checks that
+`v<version>` does not exist yet, does everything a tag push does, and
+creates the tag on the run's commit together with the GitHub release. A
+manual run without **release** builds the same archives as artifacts,
+dry-runs the crates.io publish and publishes nothing.
 
 | Target | Platform | Runner |
 |---|---|---|
