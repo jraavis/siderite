@@ -38,7 +38,7 @@ fn semver_lines() {
 }
 
 const MANIFEST: &str = "[dependencies]\n\
-    siderite = { workspace = true }\n\
+    siderite-web = { workspace = true }\n\
     siderite-cli = { git = \"https://github.com/o/s\", branch = \"main\" }\n\
     siderite-testkit = { path = \"../kit\" }\n\
     serde = \"1\"\n";
@@ -47,7 +47,7 @@ const REGISTRY: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
 fn specs() -> Vec<Value> {
     vec![
-        json!({ "name": "siderite", "req": "^0.1",
+        json!({ "name": "siderite-web", "req": "^0.1",
             "source": REGISTRY }),
         json!({ "name": "siderite-cli", "req": "*",
             "source": "git+https://github.com/o/s?branch=main" }),

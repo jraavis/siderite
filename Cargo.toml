@@ -22,7 +22,7 @@ keywords = ["web", "framework", "orm", "openapi", "validation"]
 categories = ["web-programming::http-server", "database"]
 
 [workspace.dependencies]
-siderite = { path = "crates/siderite", version = "0.1.0" }
+siderite-web = { path = "crates/siderite", version = "0.1.0" }
 siderite-core = { path = "crates/siderite-core", version = "0.1.0" }
 siderite-macros = { path = "crates/siderite-macros", version = "0.1.0" }
 siderite-validation = { path = "crates/siderite-validation", version = "0.1.0" }

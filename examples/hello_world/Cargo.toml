@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-siderite.workspace = true
+siderite-web.workspace = true
 siderite-cli.workspace = true
 tokio.workspace = true
 serde.workspace = true

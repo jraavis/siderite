@@ -9,7 +9,7 @@ publish = false
 workspace = true
 
 [dependencies]
-siderite.workspace = true
+siderite-web.workspace = true
 siderite-cli.workspace = true
 siderite-backends = { workspace = true, features = ["mongodb"] }
 tokio.workspace = true

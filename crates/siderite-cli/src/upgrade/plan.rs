@@ -4,7 +4,11 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// Crates of the framework, upgraded together.
-const FRAMEWORK: [&str; 3] = ["siderite", "siderite-cli", "siderite-testkit"];
+const FRAMEWORK: [&str; 3] = [
+    crate::workspace::FRAMEWORK,
+    "siderite-cli",
+    "siderite-testkit",
+];
 
 /// Where a dependency comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

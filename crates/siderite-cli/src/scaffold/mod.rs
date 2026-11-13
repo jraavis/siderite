@@ -322,7 +322,7 @@ version = \"0.1.0\"
 edition = \"2024\"
 
 [dependencies]
-siderite = {{ {siderite} }}
+siderite-web = {{ {siderite} }}
 siderite-cli = {{ {cli} }}
 {backends}tokio = {{ version = \"1\", features = [\"macros\", \"rt-multi-thread\"] }}
 serde = {{ version = \"1\", features = [\"derive\"] }}

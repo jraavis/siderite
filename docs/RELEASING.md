@@ -107,14 +107,11 @@ One-time setup:
    settings, require trusted publishing so API tokens can no longer
    publish it.
 
-### Name conflict: `siderite`
+### Package name: `siderite-web`
 
 The crate name `siderite` on crates.io belongs to an unrelated project
-(`maugier/siderite`, 2021), so the preflight stops before uploading.
-Before the first release, either ask its owner to transfer the name
-(crates.io lists the owner; the
-[crates.io policies](https://crates.io/policies) describe the process),
-or rename the facade package and keep the library name, e.g.:
+(`maugier/siderite`, 2021). The facade (`crates/siderite`) is therefore
+published as `siderite-web`, and its library keeps the name `siderite`:
 
 ```toml
 [package]
@@ -123,6 +120,10 @@ name = "siderite-web"
 [lib]
 name = "siderite"
 ```
+
+Applications depend on `siderite-web = "X.Y"` and still write
+`use siderite::...`. The CLI recognizes apps by a normal dependency on
+the `siderite-web` package (`crates/siderite-cli/src/workspace.rs`).
 
 ### Publish order
 
@@ -140,11 +141,11 @@ Each crate depends only on crates listed before it (normal dependencies):
 10. `siderite-sessions`
 11. `siderite-cli`
 12. `siderite-testkit`
-13. `siderite`
+13. `siderite-web`
 
 `siderite-bench` and the examples are `publish = false`.
 
-Several crates use `siderite-testkit` (and `siderite-cli` uses `siderite`)
+Several crates use `siderite-testkit` (and `siderite-cli` uses `siderite-web`)
 as a dev-dependency while those crates depend on them. Those
 dev-dependencies are path-only, without a version, so Cargo strips them
 from the published manifests and the cycle never reaches crates.io;

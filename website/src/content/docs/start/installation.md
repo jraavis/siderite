@@ -8,12 +8,14 @@ git repository (or a path checkout).
 
 ```toml
 [dependencies]
-siderite = { git = "https://github.com/jraavis/siderite" }
+siderite-web = { git = "https://github.com/jraavis/siderite" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-The `siderite` crate is the public facade. Most applications depend only on it
-and `use siderite::prelude::*;`.
+The `siderite-web` package is the public facade; its library is named
+`siderite`, so code still writes `use siderite::prelude::*;`. (The crates.io
+name `siderite` belongs to an unrelated project.) Most applications depend
+only on it.
 
 ## Toolchain
 

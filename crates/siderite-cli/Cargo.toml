@@ -37,7 +37,7 @@ http.workspace = true
 jsonschema.workspace = true
 # Path-only: crates published later in docs/RELEASING.md order are
 # stripped from the published manifest, breaking the publish cycle.
-siderite = { path = "../siderite" }
+siderite-web = { path = "../siderite" }
 siderite-testkit = { path = "../siderite-testkit" }
 tracing.workspace = true
 

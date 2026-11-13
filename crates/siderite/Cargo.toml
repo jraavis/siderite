@@ -1,5 +1,5 @@
 [package]
-name = "siderite"
+name = "siderite-web"
 description = "Public facade and prelude for the siderite web framework"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+# `siderite` on crates.io belongs to another project. Code still writes
+# `use siderite::...`: the library keeps the framework's name.
+[lib]
+name = "siderite"
 
 [lints]
 workspace = true

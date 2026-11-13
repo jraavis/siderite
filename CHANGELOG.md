@@ -7,6 +7,11 @@
   and joined before resource teardown.
 
 ### Changed
+- **Breaking:** the facade package is published as `siderite-web`; the
+  crates.io name `siderite` belongs to an unrelated project. The library
+  is still `siderite`, so code keeps `use siderite::...`; manifests
+  change `siderite = ...` to `siderite-web = ...`. `siderite new`
+  writes the new name, and the CLI detects apps by it.
 - **ORM:** rows of one result set share a single column-name header
   instead of copying every name into every row (`Row::with_columns`;
   SQLite, PostgreSQL and MySQL through SQLx). Generated decoders try a
