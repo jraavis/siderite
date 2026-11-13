@@ -24,6 +24,7 @@ criterion = { workspace = true, features = ["async_tokio"] }
 http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx = { workspace = true, features = ["sqlite"] }
 tokio.workspace = true
 tower.workspace = true
 

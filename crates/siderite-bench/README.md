@@ -18,6 +18,12 @@ cargo bench -p siderite-bench -- --warm-up-time 1 --measurement-time 2
   `axum::response::IntoResponse`, and `serde_json::to_vec`).
 - `orm`: `QuerySet` builder to `QueryPlan`, SQL compilation of that plan for
   SQLite and PostgreSQL, and fetching 100 rows from in-memory SQLite.
+  `orm/sqlx_fetch_100_rows` runs the same query through raw SQLx with the
+  same single-connection pool, as the driver-only control: the gap between
+  the two is what the ORM adds. `orm/decode_100_rows` decodes already
+  fetched rows into models with no driver involved, by cloning
+  (`borrowed`, `Model::from_row`) and by moving (`moved`,
+  `Model::from_row_mut`, the path `QuerySet::all` takes).
 
 ## Results
 
@@ -51,6 +57,10 @@ Criterion's median point estimate per iteration.
 | `orm/compile/sqlite` | 453 ns |
 | `orm/compile/postgres` | 482 ns |
 | `orm/sqlite_fetch_100_rows` | 147 us |
+
+The table predates the workspace release profile (fat LTO, one codegen
+unit), the shared-header row decoding and the `orm/sqlx_fetch_100_rows` and
+`orm/decode_100_rows` benchmarks; rerun on the machine above to refresh it.
 
 Notes on what is measured:
 
