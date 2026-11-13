@@ -6,7 +6,28 @@
   admission and readiness phases; overdue cooperative workers are aborted
   and joined before resource teardown.
 
+### Changed
+- **ORM:** rows of one result set share a single column-name header
+  instead of copying every name into every row (`Row::with_columns`;
+  SQLite, PostgreSQL and MySQL through SQLx). Generated decoders try a
+  field's declared column position before searching by name
+  (`read_column_at`, `Row::position`), and `QuerySet::all`, `first`,
+  `get`, `paginate` and `in_bulk` move text, bytes and JSON out of the row
+  through the new `Model::from_row_mut` (`take_column`, `Row::take_at`)
+  instead of cloning them. Hand-written `Model` impls keep working: the
+  new method defaults to `from_row`.
+- **Build:** the workspace release profile uses fat LTO and one codegen
+  unit for the benchmark apps, examples and CLI. Unwinding stays enabled,
+  so a panicking handler still fails one request, not the server.
+- **Benchmarks:** `orm/sqlx_fetch_100_rows` fetches the same rows through
+  raw SQLx as a driver-only control for `orm/sqlite_fetch_100_rows`, and
+  `orm/decode_100_rows` measures model decoding without a driver, both
+  borrowing and moving.
+
 ### Fixed
+- **Docs:** the `Speedup` column of the FastAPI comparison did not match
+  the throughput columns beside it (MySQL insert read 1.02x for 3,371
+  against 3,433 req/s). Every value is now the ratio of its own row.
 - **Config:** a connection-string password that itself contains `://`
   (for example `https://...`) is fully redacted. The marker used to be
   treated as the next URL, so the password prefix stayed in errors and
