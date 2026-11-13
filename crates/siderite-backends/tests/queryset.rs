@@ -140,6 +140,16 @@ async fn get_reports_missing_and_multiple() {
         Book::objects(&db).get(Book::likes.gt(0_i64)).await,
         Err(OrmError::Query(QueryError::MultipleObjectsReturned(2)))
     ));
+    // Authors are ordered by name by default; `get` runs without it.
+    let authors = Author::objects(&db);
+    assert_eq!(
+        authors.clone().get(Author::id.eq(s.ann.id)).await.unwrap(),
+        s.ann
+    );
+    assert!(matches!(
+        authors.get(Author::age.gt(20)).await,
+        Err(OrmError::Query(QueryError::MultipleObjectsReturned(2)))
+    ));
 }
 
 #[tokio::test]

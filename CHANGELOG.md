@@ -21,6 +21,10 @@
   through the new `Model::from_row_mut` (`take_column`, `Row::take_at`)
   instead of cloning them. Hand-written `Model` impls keep working: the
   new method defaults to `from_row`.
+- **ORM:** `QuerySet::get` (and the lookups of `get_or_create` /
+  `update_or_create`) drops the default and explicit ordering, as Django
+  does, so a point lookup no longer sends `ORDER BY`. The ordering is kept
+  when it picks the rows: after `limit` / `offset`, or with `distinct_on`.
 - **Build:** the workspace release profile uses fat LTO and one codegen
   unit for the benchmark apps, examples and CLI. Unwinding stays enabled,
   so a panicking handler still fails one request, not the server.

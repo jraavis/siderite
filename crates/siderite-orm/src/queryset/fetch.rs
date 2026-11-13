@@ -46,15 +46,28 @@ pub(super) fn is_flat(plan: &QueryPlan) -> bool {
         && plan.compound.is_empty()
 }
 
+/// Whether `plan` keeps only part of its rows (a limit or offset), so which
+/// rows survive depends on its ordering.
+fn is_sliced(plan: &QueryPlan) -> bool {
+    plan.limit.is_some() || plan.offset.is_some()
+}
+
 /// `plan` without row locks and, unless a limit makes it meaningful, without
 /// ordering (PostgreSQL rejects `ORDER BY` next to aggregates).
 pub(super) fn unordered(plan: &QueryPlan) -> QueryPlan {
     let mut plan = plan.clone();
     plan.lock = None;
-    if plan.limit.is_none() && plan.offset.is_none() {
+    if !is_sliced(&plan) {
         plan.ordering.clear();
     }
     plan
+}
+
+/// Whether the ordering of `plan` can change which rows it returns, not
+/// just their order: a slice keeps the first rows, and `DISTINCT ON` keeps
+/// the first row of each group.
+fn ordering_selects_rows(plan: &QueryPlan) -> bool {
+    is_sliced(plan) || matches!(plan.distinct, DistinctMode::On(_))
 }
 
 /// The first column of the first row as an unsigned count.
@@ -164,6 +177,10 @@ impl<M: Model> QuerySet<M> {
 
     /// Exactly one row matching `predicate`.
     ///
+    /// The query runs with `LIMIT 2` and, like Django, without `ORDER BY`
+    /// (default or explicit) unless the ordering picks the rows: after
+    /// `limit` / `offset`, or with [`distinct_on`](Self::distinct_on).
+    ///
     /// # Errors
     /// [`QueryError::DoesNotExist`], [`QueryError::MultipleObjectsReturned`],
     /// or as [`all`](Self::all).
@@ -171,9 +188,24 @@ impl<M: Model> QuerySet<M> {
         self.filter(predicate).one().await
     }
 
-    /// The only row of this queryset.
+    /// The only row of this queryset, fetched with `LIMIT 2` (or the
+    /// queryset's own limit when that is smaller).
+    ///
+    /// The ordering is dropped unless it decides which rows come back (see
+    /// [`get`](Self::get)): the outcome is then the same zero, one or many
+    /// rows in any order. It is cleared after `limit` so the plan is not
+    /// re-settled: a `GROUP BY` derived from an aggregate ordering stays, and
+    /// so do joins the ordering added, keeping the row count unchanged.
     pub(super) async fn one(self) -> Result<M, OrmError> {
-        let mut rows = self.limit(2).all().await?;
+        let keep_ordering = ordering_selects_rows(&self.plan);
+        // Never widen a narrower slice: `limit(1).get(..)` sees one row.
+        let cap = self.plan.limit.map_or(2, |limit| limit.min(2));
+        let mut probe = self.limit(cap);
+        if !keep_ordering {
+            probe.plan.ordering.clear();
+            probe.default_ordering = false;
+        }
+        let mut rows = probe.all().await?;
         match rows.len() {
             0 => Err(QueryError::DoesNotExist.into()),
             1 => rows.pop().ok_or_else(|| QueryError::DoesNotExist.into()),
@@ -280,3 +312,6 @@ impl<M: Model> QuerySet<M> {
         Ok(found)
     }
 }
+
+#[cfg(test)]
+mod tests;
