@@ -22,8 +22,9 @@ use std::time::{Duration, Instant};
 /// How often a server is polled while it is starting or restarting.
 const POLL: Duration = Duration::from_millis(50);
 
-/// The longest a build plus start may take.
-const BUILD: Duration = Duration::from_secs(600);
+/// The longest a build plus start may take. The first build compiles
+/// the app from scratch, which took 3 to over 10 minutes on CI runners.
+const BUILD: Duration = Duration::from_secs(900);
 
 struct Journey {
     project: PathBuf,
