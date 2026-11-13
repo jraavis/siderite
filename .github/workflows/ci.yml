@@ -20,13 +20,14 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # Push and pull_request runs need the repository variable AUTORUN set to
-  # true. Manual runs and release tags always run. On a pull request, each
-  # job group runs only when its paths (.github/path-filters.yml) changed.
+  # Push and pull_request runs are skipped only while the repository
+  # variable AUTORUN is false. Manual runs and release tags always run. On a
+  # pull request, each job group runs only when its paths
+  # (.github/path-filters.yml) changed.
   changes:
     if: >-
       github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
-      || vars.AUTORUN == 'true'
+      || vars.AUTORUN != 'false'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:

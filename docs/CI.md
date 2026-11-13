@@ -46,10 +46,10 @@ party.
 
 These live in GitHub settings, not in the repository.
 
-1. **Settings → Secrets and variables → Actions → Variables**: create
-   `AUTORUN` = `true`. Without it, pushes and PRs do not run CI (manual
-   runs and tags still do). The repository is public, so standard runners
-   cost nothing.
+1. Nothing to do for CI to run: the repository is public, so standard
+   runners cost nothing. To pause push and PR runs (on a mirror, say),
+   create the variable `AUTORUN` = `false` under **Settings → Secrets and
+   variables → Actions → Variables**; manual runs and tags still run.
 2. **Settings → Rules → Rulesets → New branch ruleset** for `master`:
    require a pull request, require the status checks `ci-success` and
    `conventional-commits`, block force pushes, and allow squash merging

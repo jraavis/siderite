@@ -21,10 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Push and pull_request jobs run only when the repository variable
-  # AUTORUN is true. A workflow_dispatch always runs.
+  # Push and pull_request jobs are skipped only while the repository
+  # variable AUTORUN is false. A workflow_dispatch always runs.
   autorun:
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTORUN == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTORUN != 'false' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
