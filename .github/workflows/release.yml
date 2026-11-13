@@ -1,64 +1,114 @@
 name: Release
 
-# A `v*` tag builds the prebuilt `siderite` CLI and publishes it as a
-# GitHub release. A manual run builds the same archive as an artifact
-# only.
+# A `v*` tag re-runs CI on the tagged commit, builds the prebuilt `siderite`
+# CLI for Linux and macOS with signed build provenance, creates the GitHub
+# release from the matching CHANGELOG.md section and, once the `crates-io`
+# environment is approved, publishes the crates. A manual run builds the
+# same archives as artifacts and dry-runs the crates.io publish; it
+# publishes nothing. See docs/RELEASING.md.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
   FEATURES: mcp,postgres,mysql
 
-permissions:
-  contents: read
-
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-15
-    runs-on: ${{ matrix.runner }}
-    env:
-      TARGET: ${{ matrix.target }}
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  version:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          targets: ${{ matrix.target }}
-      - name: Read the version and check it against the tag
+          persist-credentials: false
+      - name: Check the version against the tag and the changelog
         id: version
         run: |
           version=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.name == "siderite-cli")
                      | .version')
-          if [ "$GITHUB_REF_TYPE" = tag ] \
-            && [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "tag $GITHUB_REF_NAME does not match v$version" >&2
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "tag $GITHUB_REF_NAME does not match v$version" >&2
+              exit 1
+            fi
+            python3 scripts/release_notes.py "$version" > /dev/null
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [ci, version]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-26.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-26.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No cache: release binaries are built from a clean state only.
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+          cache: "false"
+      # Native runners for each architecture, so musl-gcc compiles the C
+      # in ring and the bundled SQLite without a cross toolchain.
+      - name: Install the musl C toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
       - run: >-
           cargo build --release --locked -p siderite-cli
           --features "$FEATURES" --target "$TARGET"
       - name: Smoke test the binary
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           bin="$PWD/target/$TARGET/release/siderite"
           test "$("$bin" --version)" = "siderite $VERSION"
+          if [ "$RUNNER_OS" = Linux ]; then
+            file "$bin" | grep -Eq 'static(-pie)? linked|statically linked'
+          fi
           cd "$RUNNER_TEMP"
           "$bin" new smoke
           test -f smoke/Cargo.toml
       - name: Package the archive and its checksum
         id: package
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           name="siderite-$VERSION-$TARGET"
           stage="$RUNNER_TEMP/$name"
@@ -68,20 +118,29 @@ jobs:
           tar -C "$RUNNER_TEMP" -czf "$name.tar.gz" "$name"
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
           echo "name=$name" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v5
+      - name: Attest build provenance
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.package.outputs.name }}.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.package.outputs.name }}
           path: ${{ steps.package.outputs.name }}.tar.gz*
           if-no-files-found: error
 
-  publish:
+  github-release:
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
@@ -89,6 +148,54 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY"
-          --title "$TAG" --generate-notes --verify-tag
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          python3 scripts/release_notes.py "$VERSION" > "$notes"
+          flags=()
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" --notes-file "$notes" --verify-tag "${flags[@]}"
+
+  # Uploads to crates.io cannot be undone, so this job waits for approval
+  # of the `crates-io` environment. It authenticates with trusted
+  # publishing (OIDC); the CARGO_REGISTRY_TOKEN environment secret is only
+  # for the very first release, before trusted publishing can be set up.
+  crates-io:
+    if: github.ref_type == 'tag'
+    needs: [version, github-release]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    environment:
+      name: crates-io
+      url: https://crates.io/crates/siderite-cli
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BOOTSTRAP_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache: "false"
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        if: env.BOOTSTRAP_TOKEN == ''
+        id: auth
+      - run: python3 scripts/publish_crates.py --execute
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || env.BOOTSTRAP_TOKEN }}
+
+  crates-io-dry-run:
+    if: github.ref_type != 'tag'
+    needs: version
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: python3 scripts/publish_crates.py
