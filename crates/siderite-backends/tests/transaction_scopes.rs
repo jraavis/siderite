@@ -2,7 +2,11 @@
 #![cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
 
 #[cfg(feature = "sqlite")]
-use siderite_backends::sqlite::SqliteBackend;
+#[path = "common/backend.rs"]
+mod backend;
+
+#[cfg(feature = "sqlite")]
+use backend::TestSqlite;
 use siderite_orm::{BackendKind, Db, OrmError, QueryError, Value};
 use std::future::pending;
 use std::sync::Arc;
@@ -11,7 +15,7 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "sqlite")]
 async fn fixture() -> Result<Db, OrmError> {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await?);
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await?);
     let sql = "CREATE TABLE siderite_scope_writes (id INTEGER PRIMARY KEY)";
     db.execute_script(sql).await?;
     Ok(db)

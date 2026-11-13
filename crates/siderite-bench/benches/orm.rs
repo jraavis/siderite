@@ -1,7 +1,7 @@
 //! ORM: plan construction, SQL compilation, a 100-row SQLite fetch and a
-//! primary-key lookup, with the same queries through raw SQLx as the
-//! driver-only control and, for the lookup, synchronous rusqlite as the
-//! floor.
+//! primary-key lookup, on the SQLx-backed and the native SQLite backend,
+//! with the same queries through raw SQLx as the driver-only control and,
+//! for the lookup, synchronous rusqlite as the floor.
 #![allow(clippy::unwrap_used, missing_docs)]
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
@@ -9,6 +9,7 @@ use siderite::orm::{Db, Row};
 use siderite::prelude::*;
 use siderite_backends::sql::{Postgres, Sqlite, compile};
 use siderite_backends::sqlite::SqliteBackend;
+use siderite_backends::sqlite::native::NativeSqliteBackend;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::hint::black_box;
 
@@ -134,6 +135,22 @@ fn build_get(db: &Db, id: i64) -> QuerySet<Widget> {
 
 async fn seeded_db(rows: i64) -> Db {
     let db = Db::new(SqliteBackend::connect("sqlite::memory:").await.unwrap());
+    seed_db(&db, rows).await;
+    db
+}
+
+/// [`seeded_db`] on the native backend, with its default dispatch (reads
+/// inline on the calling task).
+async fn seeded_native_db(rows: i64) -> Db {
+    let backend = NativeSqliteBackend::connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let db = Db::new(backend);
+    seed_db(&db, rows).await;
+    db
+}
+
+async fn seed_db(db: &Db, rows: i64) {
     db.execute_script(SCHEMA).await.unwrap();
     let widgets = (0..rows)
         .map(|i| Widget {
@@ -143,8 +160,7 @@ async fn seeded_db(rows: i64) -> Db {
             active: true,
         })
         .collect();
-    Widget::objects(&db).bulk_create(widgets).await.unwrap();
-    db
+    Widget::objects(db).bulk_create(widgets).await.unwrap();
 }
 
 fn bench_orm(c: &mut Criterion) {
@@ -153,9 +169,12 @@ fn bench_orm(c: &mut Criterion) {
         .build()
         .unwrap();
     let db = runtime.block_on(seeded_db(100));
+    let native = runtime.block_on(seeded_native_db(100));
 
     let fetched = runtime.block_on(Widget::objects(&db).all()).unwrap();
     assert_eq!(fetched.len(), 100);
+    let native_fetched = runtime.block_on(Widget::objects(&native).all()).unwrap();
+    assert_eq!(native_fetched, fetched);
 
     let pool = runtime.block_on(seeded_pool(100));
     let raw = runtime.block_on(raw_fetch(&pool));
@@ -180,6 +199,10 @@ fn bench_orm(c: &mut Criterion) {
         b.to_async(&runtime)
             .iter(|| async { Widget::objects(&db).all().await.unwrap() });
     });
+    group.bench_function("sqlite_native_fetch_100_rows", |b| {
+        b.to_async(&runtime)
+            .iter(|| async { Widget::objects(&native).all().await.unwrap() });
+    });
     group.bench_function("sqlx_fetch_100_rows", |b| {
         b.to_async(&runtime).iter(|| raw_fetch(&pool));
     });
@@ -200,6 +223,10 @@ fn bench_orm(c: &mut Criterion) {
     let got = runtime
         .block_on(Widget::objects(&db).get(Widget::id.eq(LOOKUP_ID)))
         .unwrap();
+    let native_got = runtime
+        .block_on(Widget::objects(&native).get(Widget::id.eq(LOOKUP_ID)))
+        .unwrap();
+    assert_eq!(native_got, got);
     let raw_got = runtime.block_on(raw_get(&pool, LOOKUP_ID));
     let floor = rusqlite_get(&conn, LOOKUP_ID);
     assert_eq!((got.id, got.price, got.active), (50, 49, true));
@@ -214,6 +241,14 @@ fn bench_orm(c: &mut Criterion) {
     group.bench_function("get_by_pk/siderite", |b| {
         b.to_async(&runtime).iter(|| async {
             Widget::objects(&db)
+                .get(Widget::id.eq(black_box(LOOKUP_ID)))
+                .await
+                .unwrap()
+        });
+    });
+    group.bench_function("get_by_pk/siderite_native", |b| {
+        b.to_async(&runtime).iter(|| async {
+            Widget::objects(&native)
                 .get(Widget::id.eq(black_box(LOOKUP_ID)))
                 .await
                 .unwrap()

@@ -41,7 +41,7 @@ async fn paginate_checks_the_plan_before_counting() {
     // No schema: a query that ran would fail with "no such table", so the
     // capability error proves nothing was executed.
     let bare = siderite_orm::Db::new(
-        siderite_backends::sqlite::SqliteBackend::connect("sqlite::memory:")
+        common::TestSqlite::connect("sqlite::memory:")
             .await
             .unwrap(),
     );

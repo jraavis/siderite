@@ -4,9 +4,9 @@
 mod common;
 
 use async_trait::async_trait;
+use common::TestSqlite;
 use common::{Author, Book, db, seed};
 use siderite_backends::sql::{Sqlite, compile};
-use siderite_backends::sqlite::SqliteBackend;
 use siderite_orm::{Backend, BackendCapabilities, Db, ExecResult, Executor};
 use siderite_orm::{Expr, IsolationLevel, Model, OrmError, Prefetch};
 use siderite_orm::{QueryError, QueryPlan, QueryResult, Transaction};
@@ -21,7 +21,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[derive(Clone)]
 struct Bounded {
-    inner: SqliteBackend,
+    inner: TestSqlite,
     max: usize,
     counts: Arc<Mutex<Vec<usize>>>,
     reports: bool,
@@ -30,7 +30,7 @@ struct Bounded {
 impl Bounded {
     async fn new(max: usize) -> Result<Self, siderite_orm::BackendError> {
         Ok(Self {
-            inner: SqliteBackend::connect("sqlite::memory:").await?,
+            inner: TestSqlite::connect("sqlite::memory:").await?,
             max,
             counts: Arc::default(),
             reports: true,

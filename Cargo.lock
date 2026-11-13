@@ -3455,6 +3455,7 @@ dependencies = [
  "mongodb",
  "mysql_async",
  "redis",
+ "rusqlite",
  "rust_decimal",
  "serde",
  "serde_json",

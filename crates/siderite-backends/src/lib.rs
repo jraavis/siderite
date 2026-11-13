@@ -3,7 +3,9 @@
 //! * [`sql`] compiles a [`QueryPlan`](siderite_orm::QueryPlan) into
 //!   parameterised SQL for a [`Dialect`](sql::Dialect). Values are **always**
 //!   bound, never interpolated.
-//! * [`sqlite`] (feature `sqlite`, default) executes plans with SQLx.
+//! * [`sqlite`] (feature `sqlite`, default) executes plans with SQLx;
+//!   `sqlite::native` (feature `sqlite-native`) runs them on SQLite in
+//!   process, without SQLx's worker thread.
 //! * [`postgres`] (feature `postgres`) executes plans with SQLx.
 //!
 //! * [`mysql`] (feature `mysql`) executes plans with SQLx.

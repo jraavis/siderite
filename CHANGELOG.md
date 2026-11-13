@@ -68,6 +68,21 @@
 
 
 ### Added
+- **SQLite:** `sqlite-native` feature (implies `sqlite`) adds
+  `sqlite::native::NativeSqliteBackend`, which calls SQLite in process
+  through rusqlite instead of SQLx's per-connection worker thread. A
+  primary-key `get` drops from about 100 µs to 2–2.3 µs and a 100-row
+  fetch from about 490 µs to 30 µs (`orm/get_by_pk/siderite_native`,
+  `orm/sqlite_native_fetch_100_rows`). Reads run on a set of reader
+  connections, writes queue for one writer connection behind the existing
+  write gate, and `Dispatch` picks per side whether statements run on the
+  calling task (reads, by default) or on Tokio's blocking pool (writes, by
+  default); inline statements block their runtime thread while they run.
+  Binding, decoding, error classification, multi-statement SQL and schema
+  transactions match `SqliteBackend`, and the SQLite suites run against it
+  with `--features sqlite-native`. No group commit yet. The SQLx backend
+  remains the default, and the foreign-key bookkeeping of schema changes
+  and value binding are now shared between the two.
 - **Release:** prebuilt `siderite` archives for Linux (static musl,
   x86-64 and ARM64) and macOS on Intel, next to Apple silicon, each with
   signed build provenance (`gh attestation verify`). Release notes come

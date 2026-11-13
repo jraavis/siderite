@@ -6,8 +6,8 @@
 //! costs throughput and adds a long latency tail. Queuing writers here in
 //! FIFO order instead hands the lock over without sleeping.
 //!
-//! The gate covers writers of one [`SqliteBackend`](super::SqliteBackend) and
-//! its clones only. Other processes, other backends on the same file and, in
+//! The gate covers writers of one [`SqliteBackend`](super::SqliteBackend)
+//! (or native backend) and its clones only. Other processes, other backends on the same file and, in
 //! rollback-journal mode, readers holding a shared lock still contend through
 //! SQLite's busy handler.
 

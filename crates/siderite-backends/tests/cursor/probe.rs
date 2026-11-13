@@ -2,10 +2,10 @@
 //! of another backend, to show the statement budget and that unsupported
 //! cursor queries fail before any statement runs.
 
+use crate::common::TestSqlite;
 use crate::common::cursor::{Item, SQLITE_DDL, Strict};
 use crate::common::{Book, SCHEMA, seed};
 use async_trait::async_trait;
-use siderite_backends::sqlite::SqliteBackend;
 use siderite_orm::BackendCapabilityError as Unsupported;
 use siderite_orm::{Backend, BackendCapabilities, BackendKind};
 use siderite_orm::{Db, ExecResult, Executor, Expr, Feature, IsolationLevel};
@@ -22,7 +22,7 @@ type Scope = Box<dyn Transaction>;
 
 #[derive(Clone)]
 struct Probe {
-    inner: SqliteBackend,
+    inner: TestSqlite,
     caps: BackendCapabilities,
     fetches: Arc<AtomicUsize>,
 }
@@ -30,7 +30,7 @@ struct Probe {
 impl Probe {
     async fn new(caps: BackendCapabilities) -> Self {
         Self {
-            inner: SqliteBackend::connect("sqlite::memory:").await.unwrap(),
+            inner: TestSqlite::connect("sqlite::memory:").await.unwrap(),
             caps,
             fetches: Arc::default(),
         }

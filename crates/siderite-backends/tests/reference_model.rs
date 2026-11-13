@@ -4,7 +4,10 @@
 #![cfg(feature = "sqlite")]
 #![allow(clippy::unwrap_used, non_upper_case_globals, dead_code)]
 
-use siderite_backends::sqlite::SqliteBackend;
+#[path = "common/backend.rs"]
+mod backend;
+
+use backend::TestSqlite;
 use siderite_orm::{
     Db, DbType, Expr, Feature, Field, FieldMeta, ForeignKey, InsertPlan, IsolationLevel, Model,
     ModelMeta, OnDelete, OrderDirection, OrmError, QueryError, RelationKind, RelationMeta, Row,
@@ -168,7 +171,7 @@ impl Author {
 // ---- tests ----
 
 async fn db() -> Db {
-    let db = Db::new(SqliteBackend::connect("sqlite::memory:").await.unwrap());
+    let db = Db::new(TestSqlite::connect("sqlite::memory:").await.unwrap());
     db.execute_script(
         "CREATE TABLE authors (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL);
          CREATE TABLE books (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,

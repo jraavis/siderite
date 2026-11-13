@@ -19,7 +19,7 @@ bench = false
 [dev-dependencies]
 axum.workspace = true
 siderite-web.workspace = true
-siderite-backends = { workspace = true, features = ["sqlite", "postgres"] }
+siderite-backends = { workspace = true, features = ["sqlite", "sqlite-native", "postgres"] }
 criterion = { workspace = true, features = ["async_tokio"] }
 # 0.32 shares libsqlite3-sys 0.30 with sqlx; "bundled" matches what sqlx's
 # `sqlite` feature already turns on, so there is one SQLite build.

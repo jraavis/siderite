@@ -10,13 +10,13 @@ mod probe;
 mod rejected;
 mod types;
 
+use common::TestSqlite;
 use common::cursor::{SQLITE_DDL, run_contract};
 use common::{Author, Book, db, seed};
-use siderite_backends::sqlite::SqliteBackend;
 use siderite_orm::{Db, Model, ModelOps};
 
 async fn bare() -> Db {
-    let backend = SqliteBackend::connect("sqlite::memory:").await.unwrap();
+    let backend = TestSqlite::connect("sqlite::memory:").await.unwrap();
     Db::new(backend)
 }
 

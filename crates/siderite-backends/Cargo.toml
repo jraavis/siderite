@@ -26,6 +26,13 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
+# 0.32 shares libsqlite3-sys 0.30 with sqlx's `sqlite` feature, so there is
+# one SQLite build (`links = "sqlite3"` allows no other).
+[dependencies.rusqlite]
+version = "0.32"
+optional = true
+features = ["bundled"]
+
 [dependencies.mysql_async]
 version = "=0.37.1"
 optional = true
@@ -40,6 +47,9 @@ tls = [
     "redis?/tls-rustls-webpki-roots",
 ]
 sqlite = ["sqlx/sqlite"]
+# Implies `sqlite`: it reuses that backend's write gate, schema-change and
+# URL handling, and SQLite is linked once either way.
+sqlite-native = ["sqlite", "dep:rusqlite"]
 postgres = ["sqlx/postgres"]
 mysql = ["sqlx/mysql"]
 mysql-native = [
