@@ -37,6 +37,10 @@
   pending.
 
 ### Fixed
+- **Dependencies:** rmcp 3.10 (RUSTSEC-2026-0457, -0461 and -0462 in
+  the MCP SDK) and rustix 1.1.6 (RUSTSEC-2026-0486). Bundled SQLite
+  RUSTSEC-2026-0459 has no SQLx release with the fix yet; see
+  docs/DEPENDENCY_EXCEPTIONS.md.
 - **Docs site:** the landing page status note rendered as an empty bar
   with its text outside, and still said MSRV 1.92; it now reads 1.99.
 - **Docs:** the `Speedup` column of the FastAPI comparison did not match
@@ -55,6 +59,11 @@
 
 
 ### Added
+- **Release:** prebuilt `siderite` archives for Linux (static musl,
+  x86-64 and ARM64) and macOS on Intel, next to Apple silicon, each with
+  signed build provenance (`gh attestation verify`). Release notes come
+  from this changelog, and crates publish to crates.io through trusted
+  publishing (docs/RELEASING.md).
 - **CLI:** release tags publish a prebuilt `siderite` for macOS on Apple
   silicon (`aarch64-apple-darwin`, with the `mcp`, `postgres` and `mysql`
   features) as a `.tar.gz` with a SHA-256 checksum; the `journey` CI job

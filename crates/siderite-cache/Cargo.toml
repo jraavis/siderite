@@ -34,7 +34,9 @@ siderite-backends = { workspace = true, optional = true }
 
 [dev-dependencies]
 axum.workspace = true
-siderite-testkit.workspace = true
+# Path-only: crates published later in docs/RELEASING.md order are
+# stripped from the published manifest, breaking the publish cycle.
+siderite-testkit = { path = "../siderite-testkit" }
 bytes.workspace = true
 futures-util.workspace = true
 tokio.workspace = true

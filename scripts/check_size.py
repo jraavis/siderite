@@ -215,7 +215,9 @@ def compare(cur, base):
         for f, n in cur[key].items():
             allowed = base[key].get(f)
             if allowed is None:
-                bad.append("%s: %d %s, not in baseline" % (f, n, MESSAGES[key]))
+                bad.append(
+                    "%s: %d %s, not in baseline" % (f, n, MESSAGES[key])
+                )
             elif n > allowed:
                 bad.append("%s: %d %s, baseline allows %d"
                            % (f, n, MESSAGES[key], allowed))

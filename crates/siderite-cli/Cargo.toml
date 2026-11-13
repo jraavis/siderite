@@ -35,8 +35,10 @@ rustix.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 http.workspace = true
 jsonschema.workspace = true
-siderite.workspace = true
-siderite-testkit.workspace = true
+# Path-only: crates published later in docs/RELEASING.md order are
+# stripped from the published manifest, breaking the publish cycle.
+siderite = { path = "../siderite" }
+siderite-testkit = { path = "../siderite-testkit" }
 tracing.workspace = true
 
 [features]

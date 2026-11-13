@@ -20,10 +20,15 @@ Rules:
 
 Branch from `master`; never push to it directly. A PR is merged only when:
 
-- All CI jobs pass: `lint` (fmt, clippy, rustdoc with `-D warnings`), `test`,
-  `live` (Postgres, MySQL, MongoDB, Redis), `msrv` (Rust 1.99) and `deny`.
+- The `ci-success` check passes: it covers `lint` (fmt, clippy, rustdoc
+  with `-D warnings`), the backend feature matrix, `test`, `live` (Postgres,
+  MySQL, MongoDB, Redis), `journey`, `msrv` (Rust 1.99), `deny`, `python`
+  (ruff and the benchmark and release tooling tests) and `workflow-lint`
+  (actionlint and zizmor). Jobs whose paths a PR does not touch are
+  skipped. See [docs/CI.md](docs/CI.md).
 - It does one thing. Split unrelated changes into separate PRs.
-- The title and commits follow [Conventional Commits](https://www.conventionalcommits.org/)
+- The title (checked by the `conventional-commits` job) and commits follow
+  [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`, with an optional scope,
   e.g. `fix(validation): ...`).
 - The description says what changed and why, and links any related issue.

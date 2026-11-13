@@ -6,6 +6,7 @@ version = 2
 yanked = "deny"
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "Reviewed 2026-10-03: SQLx MySQL public-key encryption only; no patched release. Scope and exit: docs/DEPENDENCY_EXCEPTIONS.md" },
+    { id = "RUSTSEC-2026-0459", reason = "Reviewed 2026-11-13: bundled SQLite; no SQLx release allows libsqlite3-sys >= 0.39. Scope and exit: docs/DEPENDENCY_EXCEPTIONS.md" },
 ]
 
 [licenses]

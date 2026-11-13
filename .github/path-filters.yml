@@ -1,0 +1,29 @@
+# Paths that decide which CI jobs a pull request needs. Pushes to master,
+# tags and manual runs always run everything.
+rust:
+  - "**/*.rs"
+  - "**/Cargo.toml"
+  - Cargo.lock
+  - clippy.toml
+  - deny.toml
+  - rustfmt.toml
+  - crates/**
+  - examples/**
+  - benchmarks/siderite_todo/**
+  - benchmarks/mysql_driver_probe/**
+  # Read by tests: the size guard, the TLS check, the docs search index
+  # (website docs and the changelog) and the CLI report schema.
+  - scripts/**
+  - website/src/content/docs/**
+  - CHANGELOG.md
+  - docs/schemas/**
+  - .github/actions/setup-rust/**
+  - .github/workflows/ci.yml
+  - .github/path-filters.yml
+python:
+  - "**/*.py"
+  - ruff.toml
+  - benchmarks/fastapi/requirements.txt
+  - .github/workflows/ci.yml
+workflows:
+  - .github/**

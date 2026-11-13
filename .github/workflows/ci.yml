@@ -5,24 +5,80 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  # The release workflow re-runs the full suite on the tagged commit.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
 jobs:
-  # Push and pull_request jobs run only when the repository variable
-  # AUTORUN is true. A workflow_dispatch always runs.
-  autorun:
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTORUN == 'true' }}
+  # Push and pull_request runs are skipped only while the repository
+  # variable AUTORUN is false. Manual runs and release tags always run. On a
+  # pull request, each job group runs only when its paths
+  # (.github/path-filters.yml) changed.
+  changes:
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+      || vars.AUTORUN != 'false'
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.rust == 'true' }}
+      python: ${{ github.event_name != 'pull_request' || steps.filter.outputs.python == 'true' }}
+      workflows: >-
+        ${{ github.event_name != 'pull_request'
+        || steps.filter.outputs.workflows == 'true' }}
     steps:
-      - run: "true"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        if: github.event_name == 'pull_request'
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
+  workflow-lint:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      # The PyPI build of actionlint; shellcheck comes with the runner.
+      - name: Install actionlint
+        run: python -m pip install --disable-pip-version-check actionlint-py==1.7.12.25
+      - name: Lint workflows (actionlint, with shellcheck)
+        run: actionlint -color
+      - name: Audit workflow security (zizmor)
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          advanced-security: false
 
   backend-features:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         features:
           - ""
@@ -41,11 +97,13 @@ jobs:
           - sqlite,postgres,mysql
           - postgres,mysql-native
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+          cache-key: backend-${{ matrix.features }}
       - name: Lint each backend feature without feature unification
         env:
           BACKEND_FEATURES: ${{ matrix.features }}
@@ -54,14 +112,17 @@ jobs:
           --features "$BACKEND_FEATURES" -- -D warnings
 
   lint:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt,clippy
       - run: cargo fmt --check
       - run: python3 scripts/check_size.py --strict
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -70,20 +131,25 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   test:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-features
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo test --workspace --all-features --locked
       # trybuild's scratch dir under target/tests breaks rust-cache's cleanup.
       - if: always()
         run: rm -rf target/tests
 
   live:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:17-alpine
@@ -105,20 +171,21 @@ jobs:
       MONGODB_URL: mongodb://127.0.0.1:27017/siderite?directConnection=true
       REDIS_URL: redis://127.0.0.1:6379/15
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
       # Service containers cannot take arguments; MongoDB transactions need a
       # replica set, so start it here.
       - name: Start MongoDB replica set
         run: |
           docker run -d --name mongo -e GLIBC_TUNABLES=glibc.pthread.rseq=1 -p 27017:27017 mongo:8 --replSet rs0 --bind_ip_all
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             docker exec mongo mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]}).ok" && break
             sleep 2
           done
           ready=0
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if docker exec mongo mongosh --quiet --eval \
               'quit(db.hello().isWritablePrimary ? 0 : 1)'; then
               ready=1
@@ -130,12 +197,12 @@ jobs:
             docker logs mongo
             exit 1
           fi
-      - run: cargo test --workspace --all-features -- --include-ignored --test-threads=1 --skip tls_certificate_contracts --skip recovery_child
+      - run: cargo test --workspace --all-features --locked -- --include-ignored --test-threads=1 --skip tls_certificate_contracts --skip recovery_child
       - name: Verify TLS against owned disposable services
         run: python3 scripts/test_tls.py
       - name: Exercise the native MySQL ORM with the same live contracts
         run: >-
-          cargo test -p siderite-backends --all-features
+          cargo test -p siderite-backends --all-features --locked
           --test mysql --test transaction_scopes -- --include-ignored
         env:
           SIDERITE_TEST_NATIVE_MYSQL: "1"
@@ -145,25 +212,28 @@ jobs:
   # The Cargo-free developer journey (docs/JOURNEY.md), end to end, on
   # each operating system the docs advertise.
   journey:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-26.04, macos-15]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt,clippy
       - run: >-
-          cargo test -p siderite-cli --test journey --test package_release
-          --test templates_verify -- --ignored
+          cargo test -p siderite-cli --locked --test journey
+          --test package_release --test templates_verify -- --ignored
         env:
           SIDERITE_JOURNEY_REPORT: ${{ runner.temp }}/journey-baseline.json
       - if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: journey-baseline-${{ matrix.os }}
           path: ${{ runner.temp }}/journey-baseline.json
@@ -172,17 +242,76 @@ jobs:
         run: rm -rf target/tests
 
   msrv:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.99
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-features --all-targets
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: "1.99"
+      - run: cargo check --workspace --all-features --all-targets --locked
 
   deny:
-    needs: autorun
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  python:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The oldest version the benchmark runner accepts (MIN_PYTHON).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: "0.16.9"
+      - name: Benchmark tooling tests
+        working-directory: benchmarks
+        run: python -m unittest discover -p 'test_*.py'
+      - name: Release tooling tests
+        working-directory: scripts
+        run: python -m unittest discover -p 'test_release_*.py'
+
+  # The single check for branch protection: it fails if any job failed or
+  # was cancelled, and passes when the rest succeeded or were not needed.
+  ci-success:
+    if: always()
+    needs:
+      - changes
+      - workflow-lint
+      - backend-features
+      - lint
+      - test
+      - live
+      - journey
+      - msrv
+      - deny
+      - python
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Check every job's result
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          jq -e '.changes.result == "success" and
+            ([.[].result] | all(. == "success" or . == "skipped"))' \
+            <<< "$NEEDS" > /dev/null
