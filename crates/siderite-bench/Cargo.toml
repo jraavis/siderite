@@ -21,6 +21,9 @@ axum.workspace = true
 siderite-web.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite", "postgres"] }
 criterion = { workspace = true, features = ["async_tokio"] }
+# 0.32 shares libsqlite3-sys 0.30 with sqlx; "bundled" matches what sqlx's
+# `sqlite` feature already turns on, so there is one SQLite build.
+rusqlite = { version = "0.32", features = ["bundled"] }
 http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
