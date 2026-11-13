@@ -12,12 +12,12 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.42.4",
+    "@astrojs/starlight": "^0.42.9",
     "@fontsource/ibm-plex-mono": "^5.2.6",
     "@fontsource/ibm-plex-sans": "^5.2.6",
-    "astro": "^7.2.10",
+    "astro": "^7.4.7",
     "sharp": "^0.35.3",
-    "starlight-links-validator": "^0.26.0"
+    "starlight-links-validator": "^0.27.0"
   },
   "trustedDependencies": [
     "esbuild",
