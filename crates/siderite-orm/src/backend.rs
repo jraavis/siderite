@@ -10,48 +10,113 @@ use crate::plan::QueryPlan;
 use crate::value::Value;
 use crate::write::WritePlan;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// One decoded result row: column names paired with backend-neutral values.
 ///
 /// Dynamic projections and annotations decode into `Row`; models decode from
 /// it with [`Model::from_row`](crate::Model::from_row).
+///
+/// The column names are reference counted, so every row of one result set
+/// can share a single header (see [`Row::with_columns`]).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Row {
-    columns: Vec<(String, Value)>,
+    names: Arc<[String]>,
+    values: Vec<Value>,
 }
 
 impl Row {
     /// Build a row from `(column, value)` pairs.
     pub fn new(columns: Vec<(String, Value)>) -> Self {
-        Self { columns }
+        let (names, values): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
+        Self {
+            names: names.into(),
+            values,
+        }
+    }
+
+    /// Build a row over a shared header: `values[i]` belongs to
+    /// `columns[i]`.
+    ///
+    /// Backends decode a whole result set against one `columns` allocation
+    /// instead of copying the names into every row.
+    ///
+    /// Args:
+    ///     columns: Column names in projection order.
+    ///     values: One value per column; a surplus on either side is dropped.
+    ///
+    /// Returns:
+    ///     The row.
+    pub fn with_columns(columns: Arc<[String]>, values: Vec<Value>) -> Self {
+        let mut values = values;
+        values.truncate(columns.len());
+        Self {
+            names: columns,
+            values,
+        }
+    }
+
+    /// Index of `column`, checking position `hint` before scanning.
+    ///
+    /// Generated decoders pass a field's declaration index, which is the
+    /// column's position in a default projection, so the common lookup is
+    /// one comparison.
+    ///
+    /// Args:
+    ///     column: Column name to find.
+    ///     hint: Position to try first; any value is safe.
+    ///
+    /// Returns:
+    ///     The position of the first column with that name, if any.
+    pub fn position(&self, column: &str, hint: usize) -> Option<usize> {
+        let found = match self.names.get(hint) {
+            Some(name) if name == column => hint,
+            _ => self.names.iter().position(|name| name == column)?,
+        };
+        (found < self.values.len()).then_some(found)
     }
 
     /// Look up a value by column name.
     pub fn get(&self, column: &str) -> Option<&Value> {
-        self.columns
-            .iter()
-            .find(|(c, _)| c == column)
-            .map(|(_, v)| v)
+        self.values.get(self.position(column, 0)?)
+    }
+
+    /// Move the value at `index` out of the row, leaving `NULL` behind.
+    ///
+    /// Args:
+    ///     index: Column position, from [`position`](Self::position).
+    ///
+    /// Returns:
+    ///     The value, or `None` when the row has no such column.
+    pub fn take_at(&mut self, index: usize) -> Option<Value> {
+        self.values
+            .get_mut(index)
+            .map(|value| std::mem::replace(value, Value::Null))
+    }
+
+    /// Name and value of the `index`-th column.
+    pub fn column_at(&self, index: usize) -> Option<(&str, &Value)> {
+        Some((self.names.get(index)?.as_str(), self.values.get(index)?))
     }
 
     /// Iterate over `(column, value)` pairs in projection order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
-        self.columns.iter().map(|(c, v)| (c.as_str(), v))
+        self.names.iter().map(String::as_str).zip(&self.values)
     }
 
     /// Consume into `(column, value)` pairs.
     pub fn into_columns(self) -> Vec<(String, Value)> {
-        self.columns
+        self.names.iter().cloned().zip(self.values).collect()
     }
 
     /// Number of columns.
     pub fn len(&self) -> usize {
-        self.columns.len()
+        self.values.len()
     }
 
     /// Whether the row has no columns.
     pub fn is_empty(&self) -> bool {
-        self.columns.is_empty()
+        self.values.is_empty()
     }
 }
 

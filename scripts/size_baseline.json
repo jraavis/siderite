@@ -20,7 +20,7 @@
   "lines_over_79": {
     "benchmarks/siderite_todo": 10,
     "crates/siderite": 102,
-    "crates/siderite-backends": 527,
+    "crates/siderite-backends": 521,
     "crates/siderite-bench": 9,
     "crates/siderite-cache": 121,
     "crates/siderite-cli": 105,
@@ -29,7 +29,7 @@
     "crates/siderite-macros": 246,
     "crates/siderite-migrations": 388,
     "crates/siderite-openapi": 16,
-    "crates/siderite-orm": 222,
+    "crates/siderite-orm": 221,
     "crates/siderite-testkit": 15,
     "crates/siderite-validation": 189,
     "examples/blog_postgres": 42,

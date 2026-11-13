@@ -2,9 +2,13 @@
 //! [`postgres`](crate::postgres)): error mapping, write-result shaping and
 //! the open-transaction slot.
 
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-use siderite_orm::Row;
 use siderite_orm::{BackendError, ExecResult, OrmError, QueryError};
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+use siderite_orm::{Row, Value};
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+use sqlx::{Column as _, ValueRef as _};
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Classify a driver error: constraint violations (unique, foreign key,
@@ -22,6 +26,68 @@ pub(crate) fn map_error(e: sqlx::Error) -> BackendError {
         }
         _ => BackendError::Database(e.to_string()),
     }
+}
+
+/// Wire value of one cell of `R`.
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+type Cell<'r, R> = <Driver<R> as sqlx::Database>::ValueRef<'r>;
+
+/// Database of the driver row `R`.
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+type Driver<R> = <R as sqlx::Row>::Database;
+
+/// Rows decoded from one result set.
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+type Decoded = Result<Vec<Row>, QueryError>;
+
+/// Decode a driver result set into rows that share one column header.
+///
+/// The column names are copied once for the whole set, not once per row.
+///
+/// Args:
+///     rows: Driver rows of a single statement.
+///     cell: Decodes the non-null cell at a column index of a row; the
+///         error is the reason reported for that column.
+///
+/// Returns:
+///     The decoded rows in driver order, or the first decode error, naming
+///     its column.
+#[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+pub(crate) fn decode_rows<R, F>(rows: &[R], cell: F) -> Decoded
+where
+    R: sqlx::Row,
+    usize: sqlx::ColumnIndex<R>,
+    F: for<'r> Fn(&'r R, usize, Cell<'r, R>) -> Result<Value, String>,
+{
+    let Some(first) = rows.first() else {
+        return Ok(Vec::new());
+    };
+    let names: Arc<[String]> = first
+        .columns()
+        .iter()
+        .map(|column| column.name().to_owned())
+        .collect();
+    let decode = |row: &R, index: usize| {
+        let raw = row.try_get_raw(index).map_err(|e| e.to_string())?;
+        if raw.is_null() {
+            Ok(Value::Null)
+        } else {
+            cell(row, index, raw)
+        }
+    };
+    rows.iter()
+        .map(|row| {
+            (0..names.len())
+                .map(|index| {
+                    decode(row, index).map_err(|reason| QueryError::Decode {
+                        column: names[index].clone(),
+                        reason,
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| Row::with_columns(Arc::clone(&names), values))
+        })
+        .collect()
 }
 
 /// Result of a write that used `RETURNING`: the rows are the outcome.

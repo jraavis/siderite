@@ -46,7 +46,7 @@ let team = user.fetch_team(&db).await?; // Option<Arc<Team>>
 
 ## Contract (committed before implementation)
 
-* `siderite_orm::Model`: `type Pk`, `META`, `pk`, `set_pk`, `is_unsaved`, `to_values`, `from_row(row, prefix)`, and a provided `objects(&Db)`.
+* `siderite_orm::Model`: `type Pk`, `META`, `pk`, `set_pk`, `is_unsaved`, `to_values`, `from_row(row, prefix)`, a provided `from_row_mut(&mut row, prefix)` (overridden by the derive to move values out of the row), and a provided `objects(&Db)`.
 * `ModelMeta`, `FieldMeta`, `RelationMeta`, `ManyToManyMeta`, `IndexMeta`, `ConstraintMeta`, `OnDelete`, `DbDefault`.
 * `DbType`: maps a Rust type to its `SqlType`, nullability and `Value`. It is implemented for the integer and float families, `bool`, `String`, `Vec<u8>`, `Decimal`, `Uuid`, `NaiveDate`, `NaiveTime`, `DateTime<Utc>`, `TimeDelta`, `IpAddr`, JSON and `Option<T>`. Each type has a canonical text fallback, listed in `types.rs`.
 * `ForeignKey<T>` and `OneToOne<T>`: store the primary key, optionally cache the loaded object, and serialize as the key. Validation and JSON Schema follow `T::Pk`.
