@@ -37,6 +37,10 @@
   pending.
 
 ### Fixed
+- **Dependencies:** rmcp 3.10 (RUSTSEC-2026-0457, -0461 and -0462 in
+  the MCP SDK) and rustix 1.1.6 (RUSTSEC-2026-0486). Bundled SQLite
+  RUSTSEC-2026-0459 has no SQLx release with the fix yet; see
+  docs/DEPENDENCY_EXCEPTIONS.md.
 - **Docs site:** the landing page status note rendered as an empty bar
   with its text outside, and still said MSRV 1.92; it now reads 1.99.
 - **Docs:** the `Speedup` column of the FastAPI comparison did not match

@@ -31,3 +31,32 @@ Exit condition: remove the exception when the locked driver stops depending
 on affected rsa, or adopts a patched release. Any new private-key callpath
 invalidates this rationale. Record the new review before release instead of
 broadening the ignore list. See [TLS configuration](BACKEND_TLS.md).
+
+## RUSTSEC-2026-0459: libsqlite3-sys (bundled SQLite)
+
+Reviewed: 2026-11-13. Locked packages: libsqlite3-sys 0.30.1, sqlx-sqlite
+0.8.6. Responsible role: backend/release maintainers; no named assignee is
+recorded. Review on every relevant lockfile/callpath change and before a
+release.
+
+[RustSec](https://rustsec.org/advisories/RUSTSEC-2026-0459.html): SQLite
+before 3.54.0 can return uninitialized page-cache memory when a process
+opens a database file together with a `-wal` file whose page size differs.
+The fix is libsqlite3-sys 0.39 (SQLite 3.54). No SQLx release can use it:
+sqlx-sqlite 0.8.6 and 0.9.0 both require `libsqlite3-sys >=0.30.1, <0.38`,
+so neither a lockfile update nor the SQLx 0.9 upgrade removes it.
+
+Exposure: the attack needs the victim process to open a database file and
+its `-wal` that a less trusted party wrote. Siderite opens SQLite only at
+URLs the application developer configures (settings, `DATABASE_URL`,
+`--database`); `siderite doctor --live` opens the project's own database
+read-only. No callpath opens database files supplied by end users or other
+untrusted parties.
+
+Decision: retain the narrow cargo-deny exception. Applications must not
+open SQLite files (or their `-wal`) from untrusted sources while it
+stands. This rationale does not cover application code that does.
+
+Exit condition: remove the exception when a SQLx release allows
+libsqlite3-sys 0.39 or later, and update to it. A callpath that opens
+untrusted database files invalidates this rationale.
