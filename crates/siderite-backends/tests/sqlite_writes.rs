@@ -45,10 +45,16 @@ async fn count(backend: &SqliteBackend) -> Result<Option<Value>, OrmError> {
     Ok(rows.rows[0].get("n").cloned())
 }
 
+/// The most 200 queued inserts may take, slot waits included.
+const TOTAL: Duration = Duration::from_secs(30);
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn pooled_concurrent_inserts_never_meet_the_busy_handler() -> Result<(), OrmError> {
     let file = TempDb::new();
-    let db = Db::new(open(&file).await?);
+    // 200 queued durable commits can outlast the default 5 s slot wait on
+    // a slow disk; the bound under test is the 30 s total below.
+    let backend = open(&file).await?.with_write_timeout(TOTAL);
+    let db = Db::new(backend);
     let started = Instant::now();
     let tasks: Vec<_> = (0..200)
         .map(|n| {
@@ -67,7 +73,7 @@ async fn pooled_concurrent_inserts_never_meet_the_busy_handler() -> Result<(), O
         .await?;
     assert_eq!(rows.rows[0].get("n"), Some(&Value::Int(200)));
     // Racing writers would wait out the five second busy timeout or fail.
-    assert!(started.elapsed() < Duration::from_secs(30));
+    assert!(started.elapsed() < TOTAL);
     Ok(())
 }
 
