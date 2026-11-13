@@ -2437,6 +2437,15 @@
       "title": "Changelog > Unreleased",
       "path": "CHANGELOG.md",
       "line": 3,
+      "features": [],
+      "text": ""
+    },
+    {
+      "id": "changelog#0.1.0",
+      "kind": "changelog",
+      "title": "Changelog > 0.1.0",
+      "path": "CHANGELOG.md",
+      "line": 5,
       "features": [
         "mcp",
         "mysql-native",
