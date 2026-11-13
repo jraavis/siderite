@@ -1,0 +1,59 @@
+# Weekly grouped updates. The cooldown leaves new releases a week to be
+# yanked or flagged before they are proposed. Security updates are not
+# delayed or grouped. Commit prefixes keep PR titles Conventional.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      cargo-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: bun
+    directory: /website
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: docs
+      include: scope
+    groups:
+      website:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /benchmarks/fastapi
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      benchmark-baseline:
+        patterns: ["*"]

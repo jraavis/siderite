@@ -1,0 +1,5 @@
+# Workflow security audit (CI job `workflow-lint`).
+rules:
+  # Style hint to write local actions as `$/...`; `./...` is kept.
+  self-repository:
+    disable: true

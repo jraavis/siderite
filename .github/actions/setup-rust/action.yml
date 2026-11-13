@@ -1,0 +1,50 @@
+name: Set up Rust
+description: >-
+  Install a Rust toolchain with rustup and restore the Cargo cache. Only
+  master saves the cache by default, so pull requests cannot evict it.
+
+inputs:
+  toolchain:
+    description: Toolchain to install and make the default.
+    default: stable
+  components:
+    description: Comma-separated rustup components, e.g. "clippy,rustfmt".
+    default: ""
+  targets:
+    description: Comma-separated extra compilation targets.
+    default: ""
+  cache-key:
+    description: Extra key that separates this job's cache from others.
+    default: ""
+  cache:
+    description: >-
+      "false" skips the cache entirely, e.g. for release builds.
+    default: "true"
+  save-cache:
+    description: >-
+      "auto" saves on master only; "true" or "false" force the choice.
+    default: auto
+
+runs:
+  using: composite
+  steps:
+    - name: Install the toolchain
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain }}
+        COMPONENTS: ${{ inputs.components }}
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        args=(--profile minimal --no-self-update)
+        if [ -n "$COMPONENTS" ]; then args+=(--component "$COMPONENTS"); fi
+        if [ -n "$TARGETS" ]; then args+=(--target "$TARGETS"); fi
+        rustup toolchain install "$TOOLCHAIN" "${args[@]}"
+        rustup default "$TOOLCHAIN"
+        rustc --version --verbose
+    - if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        key: ${{ inputs.toolchain }}-${{ inputs.cache-key }}
+        save-if: >-
+          ${{ inputs.save-cache == 'true' || (inputs.save-cache == 'auto'
+          && github.ref == 'refs/heads/master') }}

@@ -15,7 +15,7 @@ SQLiteConnections = module.SQLiteConnections
 
 
 class SQLiteTests(unittest.TestCase):
-    """Autocommit acknowledgement, named durability and cleanup are explicit."""
+    """Autocommit acknowledgement, durability and cleanup are explicit."""
 
     def test_pooled_mode_reuses_and_closes_its_writer(self):
         with tempfile.TemporaryDirectory() as directory:

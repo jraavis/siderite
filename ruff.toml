@@ -1,0 +1,11 @@
+# Python tooling: the benchmark runner and the scripts. CI pins the ruff
+# version (.github/workflows/ci.yml).
+line-length = 79
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W"]
+
+[lint.per-file-ignores]
+# Checks the interpreter version before importing modules that need it.
+"benchmarks/run_benchmarks.py" = ["E402"]
