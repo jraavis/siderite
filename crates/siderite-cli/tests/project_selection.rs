@@ -40,7 +40,7 @@ fn siderite_path() -> String {
 }
 
 fn write_package(dir: &Path, name: &str, bins: &[&str]) {
-    let dep = format!("siderite = {{ path = \"{}\" }}", siderite_path());
+    let dep = format!("siderite-web = {{ path = \"{}\" }}", siderite_path());
     write_with_deps(dir, name, &format!("[dependencies]\n{dep}\n"), bins);
 }
 
@@ -322,11 +322,11 @@ fn pick_a(name: &str, deps_a: &str, root_extra: &str) -> Option<PathBuf> {
 #[test]
 fn dev_and_build_only_dependencies_do_not_make_an_app() {
     let dep = format!("path = \"{}\"", siderite_path());
-    let dev = format!("[dev-dependencies]\nsiderite = {{ {dep} }}\n");
+    let dev = format!("[dev-dependencies]\nsiderite-web = {{ {dep} }}\n");
     assert_eq!(pick_a("dev", &dev, ""), None);
-    let build = format!("[build-dependencies]\nsiderite = {{ {dep} }}\n");
+    let build = format!("[build-dependencies]\nsiderite-web = {{ {dep} }}\n");
     assert_eq!(pick_a("build-dep", &build, ""), None);
-    let normal = format!("[dependencies]\nsiderite = {{ {dep} }}\n");
+    let normal = format!("[dependencies]\nsiderite-web = {{ {dep} }}\n");
     assert_eq!(pick_a("normal", &normal, ""), Some("a".into()));
 }
 
@@ -334,12 +334,12 @@ fn dev_and_build_only_dependencies_do_not_make_an_app() {
 #[test]
 fn renamed_and_workspace_inherited_dependencies_count() {
     let path = siderite_path();
-    let dep = format!("package = \"siderite\", path = \"{path}\"");
+    let dep = format!("package = \"siderite-web\", path = \"{path}\"");
     let renamed = format!("[dependencies]\nweb = {{ {dep} }}\n");
     assert_eq!(pick_a("renamed", &renamed, ""), Some("a".into()));
-    let inherited = "[dependencies]\nsiderite.workspace = true\n";
+    let inherited = "[dependencies]\nsiderite-web.workspace = true\n";
     let table = "[workspace.dependencies]";
-    let extra = format!("{table}\nsiderite = {{ path = \"{path}\" }}\n");
+    let extra = format!("{table}\nsiderite-web = {{ path = \"{path}\" }}\n");
     assert_eq!(pick_a("inherit", inherited, &extra), Some("a".into()));
 }
 

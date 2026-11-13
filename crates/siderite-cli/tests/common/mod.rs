@@ -57,7 +57,7 @@ pub fn fixture(root: &Path) -> (PathBuf, String) {
     fs::create_dir_all(app.join("src")).unwrap();
     let manifest = "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\
                     edition = \"2024\"\n\n[dependencies]\n\
-                    siderite = \"0.1\"\n";
+                    siderite-web = \"0.1\"\n";
     fs::write(app.join("Cargo.toml"), manifest).unwrap();
     fs::write(app.join("src/main.rs"), "fn main() {}\n").unwrap();
     let bin = root.join("bin");

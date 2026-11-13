@@ -143,7 +143,7 @@ fn reads_locked_versions() {
 #[test]
 fn a_version_mismatch_is_a_warning() {
     let scratch = ScratchDir::new("docs-version");
-    let lock = "[[package]]\nname = \"siderite\"\nversion = \"0.0.1\"\n";
+    let lock = "[[package]]\nname = \"siderite-web\"\nversion = \"0.0.1\"\n";
     std::fs::write(scratch.path().join("Cargo.lock"), lock).unwrap();
     let nested = scratch.path().join("src");
     std::fs::create_dir_all(&nested).unwrap();

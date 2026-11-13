@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-siderite.workspace = true
+siderite-web.workspace = true
 siderite-cli.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite"] }
 tokio.workspace = true

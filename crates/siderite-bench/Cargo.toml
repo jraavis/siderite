@@ -18,7 +18,7 @@ bench = false
 
 [dev-dependencies]
 axum.workspace = true
-siderite.workspace = true
+siderite-web.workspace = true
 siderite-backends = { workspace = true, features = ["sqlite", "postgres"] }
 criterion = { workspace = true, features = ["async_tokio"] }
 http.workspace = true

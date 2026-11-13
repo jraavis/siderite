@@ -294,9 +294,9 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "siderite",
  "siderite-cli",
  "siderite-testkit",
+ "siderite-web",
  "tokio",
 ]
 
@@ -1364,8 +1364,8 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
- "siderite",
  "siderite-cli",
+ "siderite-web",
  "tokio",
 ]
 
@@ -2638,10 +2638,10 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "siderite",
  "siderite-cli",
  "siderite-migrations",
  "siderite-testkit",
+ "siderite-web",
  "tokio",
 ]
 
@@ -3401,31 +3401,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
-name = "siderite"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures-util",
- "jsonschema",
- "regex",
- "rust_decimal",
- "serde",
- "serde_json",
- "siderite-backends",
- "siderite-cache",
- "siderite-config",
- "siderite-core",
- "siderite-macros",
- "siderite-openapi",
- "siderite-orm",
- "siderite-testkit",
- "siderite-validation",
- "tokio",
- "trybuild",
- "uuid",
-]
-
-[[package]]
 name = "siderite-backends"
 version = "0.1.0"
 dependencies = [
@@ -3455,8 +3430,8 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "siderite",
  "siderite-backends",
+ "siderite-web",
  "sqlx",
  "tokio",
  "tower",
@@ -3499,13 +3474,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "siderite",
  "siderite-backends",
  "siderite-config",
  "siderite-core",
  "siderite-migrations",
  "siderite-orm",
  "siderite-testkit",
+ "siderite-web",
  "thiserror",
  "tokio",
  "tracing",
@@ -3665,15 +3640,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "siderite-web"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures-util",
+ "jsonschema",
+ "regex",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "siderite-backends",
+ "siderite-cache",
+ "siderite-config",
+ "siderite-core",
+ "siderite-macros",
+ "siderite-openapi",
+ "siderite-orm",
+ "siderite-testkit",
+ "siderite-validation",
+ "tokio",
+ "trybuild",
+ "uuid",
+]
+
+[[package]]
 name = "siderite_todo"
 version = "0.0.0"
 dependencies = [
  "mongodb",
  "serde",
  "serde_json",
- "siderite",
  "siderite-backends",
  "siderite-cli",
+ "siderite-web",
  "sqlx",
  "tokio",
 ]
@@ -4222,10 +4222,10 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "siderite",
  "siderite-backends",
  "siderite-cli",
  "siderite-testkit",
+ "siderite-web",
  "tokio",
 ]
 
@@ -4236,10 +4236,10 @@ dependencies = [
  "http",
  "serde",
  "serde_json",
- "siderite",
  "siderite-backends",
  "siderite-cli",
  "siderite-testkit",
+ "siderite-web",
  "tokio",
 ]
 

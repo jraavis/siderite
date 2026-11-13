@@ -5,8 +5,13 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The crate whose dependents are siderite applications.
-const FRAMEWORK: &str = "siderite";
+/// The package whose dependents are siderite applications (its library
+/// is `siderite`; the crates.io name `siderite` belongs to another
+/// project).
+pub(crate) const FRAMEWORK: &str = "siderite-web";
+
+/// The `[package.metadata.*]` table siderite reads.
+const METADATA_TABLE: &str = "siderite";
 
 /// One workspace member, as far as project selection cares.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,7 +157,7 @@ fn package(item: &Value) -> Option<Package> {
         .map(str::to_owned);
     let version = item.get("version").and_then(Value::as_str);
     let version = version.unwrap_or_default().to_owned();
-    let metadata = item.get("metadata").and_then(|m| m.get(FRAMEWORK));
+    let metadata = item.get("metadata").and_then(|m| m.get(METADATA_TABLE));
     Some(Package {
         name,
         manifest_path,

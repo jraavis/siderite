@@ -19,7 +19,7 @@ fn ws(specs: &[Spec]) -> Workspace {
         .iter()
         .map(|(name, dir, uses, bins, default_run)| {
             let deps = if *uses {
-                vec![json!({"name": "siderite"})]
+                vec![json!({"name": "siderite-web"})]
             } else {
                 vec![]
             };
@@ -214,7 +214,7 @@ fn parse_reads_real_metadata_shape() {
             "name": "demo",
             "manifest_path": "/tmp/my app/Cargo.toml",
             "default_run": "demo",
-            "dependencies": [{"name": "serde"}, {"name": "siderite"}],
+            "dependencies": [{"name": "serde"}, {"name": "siderite-web"}],
             "targets": [
                 {"name": "demo", "kind": ["bin"]},
                 {"name": "demo", "kind": ["lib"]},

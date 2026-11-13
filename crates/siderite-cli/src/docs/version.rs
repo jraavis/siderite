@@ -1,10 +1,8 @@
 //! Which siderite version a project actually builds with, from its
 //! `Cargo.lock`, to warn when it differs from the packaged docs.
 
+use crate::workspace::FRAMEWORK;
 use std::path::Path;
-
-/// The framework crate.
-const FRAMEWORK: &str = "siderite";
 
 /// The siderite versions locked in the nearest `Cargo.lock` above `dir`
 /// (sorted, distinct); empty when there is no lock file or no siderite.
