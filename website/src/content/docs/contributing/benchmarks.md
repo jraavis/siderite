@@ -22,7 +22,7 @@ treat the README’s table as a snapshot, not a guarantee.
 |---|---|
 | `routing` | dispatch through siderite’s `RouterService` versus a raw axum `Router` |
 | `extract` | validating `Json<T>` versus raw `axum::Json`; `Dump` versus `serde_json::to_vec` |
-| `orm` | QuerySet → QueryPlan, SQL compilation (SQLite and PostgreSQL), fetch of 100 SQLite rows |
+| `orm` | QuerySet → QueryPlan, SQL compilation (SQLite and PostgreSQL), fetch of 100 SQLite rows with the same fetch through raw SQLx as the driver-only control, and model decoding without a driver (borrowed versus moved) |
 
 ## HTTP benchmarks versus FastAPI
 
