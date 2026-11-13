@@ -88,3 +88,11 @@ missing_docs = "warn"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+# Applies to binaries built in this workspace: the benchmark apps, the
+# examples and the CLI. `cargo bench` inherits it. Applications that depend
+# on siderite choose their own profile. Unwinding stays on so a panicking
+# handler fails one request instead of the whole server.
+[profile.release]
+lto = "fat"
+codegen-units = 1
