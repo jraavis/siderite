@@ -16,6 +16,7 @@
 
 pub mod backend;
 pub mod capabilities;
+pub mod cells;
 pub mod db;
 pub mod decode;
 pub mod error;
@@ -37,6 +38,7 @@ pub use backend::{Backend, ExecResult, Executor, QueryResult, Row, Transaction};
 pub use capabilities::{
     BackendCapabilities, BackendKind, Feature, IsolationLevel, RowLocking, TransactionSupport,
 };
+pub use cells::{Cells, ColumnPlan, RowSink, take_planned};
 pub use db::{Databases, Db};
 pub use decode::FromValues;
 pub use error::CursorError;

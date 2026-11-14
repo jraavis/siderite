@@ -5,6 +5,7 @@
 //! there is one source of truth and no runtime registration.
 
 use crate::backend::Row;
+use crate::cells::{Cells, ColumnPlan};
 use crate::db::Db;
 use crate::error::QueryError;
 use crate::plan::OrderDirection;
@@ -274,6 +275,29 @@ pub trait Model: Sized + Send + Sync + 'static {
         Self::from_row(row, prefix)
     }
 
+    /// Decode a model by moving its columns out of `cells`, at the
+    /// positions `plan` resolved for their header.
+    ///
+    /// The queryset uses this for whole result sets, so columns are found
+    /// once per result instead of by name in every row. Errors are the same
+    /// as [`from_row_mut`](Self::from_row_mut)'s. The default materializes
+    /// the row and forwards to [`from_row_mut`](Self::from_row_mut) with
+    /// [`ColumnPlan::prefix`], so hand-written models keep working;
+    /// `#[derive(Model)]` overrides it.
+    ///
+    /// Args:
+    ///     cells: Row to consume this model's columns from.
+    ///     plan: Positions of [`META`](Self::META)'s fields in the header.
+    ///
+    /// Returns:
+    ///     The decoded model.
+    ///
+    /// # Errors
+    /// As [`from_row`](Self::from_row).
+    fn from_cells(cells: &mut dyn Cells, plan: &ColumnPlan) -> Result<Self, QueryError> {
+        Self::from_row_mut(&mut cells.to_row()?, plan.prefix())
+    }
+
     /// Lazy queryset over this model (Django `Model.objects`).
     fn objects(db: &Db) -> QuerySet<Self> {
         QuerySet::new(db)
@@ -281,7 +305,7 @@ pub trait Model: Sized + Send + Sync + 'static {
 }
 
 /// `prefix + column`, borrowing `column` when there is no prefix.
-fn column_key<'a>(prefix: &str, column: &'a str) -> Cow<'a, str> {
+pub(crate) fn column_key<'a>(prefix: &str, column: &'a str) -> Cow<'a, str> {
     if prefix.is_empty() {
         Cow::Borrowed(column)
     } else {
@@ -289,7 +313,7 @@ fn column_key<'a>(prefix: &str, column: &'a str) -> Cow<'a, str> {
     }
 }
 
-fn missing(key: &str) -> QueryError {
+pub(crate) fn missing(key: &str) -> QueryError {
     QueryError::Decode {
         column: key.to_owned(),
         reason: "column missing from result".into(),

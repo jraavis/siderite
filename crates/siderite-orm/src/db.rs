@@ -18,6 +18,7 @@
 
 use crate::backend::{Backend, ExecResult, QueryResult};
 use crate::capabilities::BackendCapabilities;
+use crate::cells::RowSink;
 use crate::error::{OrmError, QueryError};
 use crate::model::{Model, ModelMeta};
 use crate::plan::{PlanOrigin, QueryPlan};
@@ -170,6 +171,25 @@ impl Db {
         self.ensure_local(plan.has_foreign_origin(self.origin()))?;
         let mut executor = self.executor()?;
         let query = executor.as_ref().fetch(plan);
+        let result = self.traced("select", &plan.source.name, query).await;
+        executor.finish();
+        result
+    }
+
+    /// Execute a read plan, handing each row to `sink` (see
+    /// [`Executor::fetch_each`]).
+    ///
+    /// # Errors
+    /// Capability, backend or decode errors, or the first error `sink`
+    /// returns.
+    pub async fn fetch_each(
+        &self,
+        plan: &QueryPlan,
+        sink: &mut dyn RowSink,
+    ) -> Result<(), OrmError> {
+        self.ensure_local(plan.has_foreign_origin(self.origin()))?;
+        let mut executor = self.executor()?;
+        let query = executor.as_ref().fetch_each(plan, sink);
         let result = self.traced("select", &plan.source.name, query).await;
         executor.finish();
         result

@@ -3,6 +3,7 @@
 use super::QuerySet;
 use super::related::attach_all;
 use crate::backend::{QueryResult, Row};
+use crate::cells::ModelSink;
 use crate::error::{OrmError, QueryError};
 use crate::expr::Expr;
 use crate::model::Model;
@@ -86,15 +87,32 @@ impl<M: Model> QuerySet<M> {
     /// # Errors
     /// Capability, backend or decode errors.
     pub async fn all(self) -> Result<Vec<M>, OrmError> {
-        let rows = self.fetch_rows().await?;
-        let mut models = Vec::with_capacity(rows.len());
-        for mut row in rows {
-            let mut model = M::from_row_mut(&mut row, "")?;
-            attach_all(&mut model, &self.related, &row)?;
-            models.push(model);
-        }
+        let mut models = if self.related.is_empty() {
+            self.fetch_models().await?
+        } else {
+            let rows = self.fetch_rows().await?;
+            let mut models = Vec::with_capacity(rows.len());
+            for mut row in rows {
+                let mut model = M::from_row_mut(&mut row, "")?;
+                attach_all(&mut model, &self.related, &row)?;
+                models.push(model);
+            }
+            models
+        };
         self.run_prefetches(&mut models).await?;
         Ok(models)
+    }
+
+    /// Models of the checked plan, decoded as the backend hands over each
+    /// row (no `select_related` objects to attach).
+    async fn fetch_models(&self) -> Result<Vec<M>, OrmError> {
+        self.ready()?;
+        if self.empty {
+            return Ok(Vec::new());
+        }
+        let mut sink = ModelSink::new();
+        self.db.fetch_each(&self.plan, &mut sink).await?;
+        Ok(sink.into_models())
     }
 
     /// Like [`all`](Self::all), pairing each model with its full result row,

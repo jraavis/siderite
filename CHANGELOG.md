@@ -21,6 +21,19 @@
   through the new `Model::from_row_mut` (`take_column`, `Row::take_at`)
   instead of cloning them. Hand-written `Model` impls keep working: the
   new method defaults to `from_row`.
+- **ORM:** multi-row fetches no longer look every column up by name in
+  every row. `QuerySet::all` (and `first`, `get`, `paginate`, `in_bulk`
+  and prefetches) without `select_related` decodes through the new
+  `Executor::fetch_each`: the model's column positions are resolved once
+  per result header (`ColumnPlan`) and each row is decoded with the new
+  `Model::from_cells` (`take_planned`, `Cells`, `RowSink`). The native
+  SQLite backend hands its driver rows over directly when reads run
+  inline, so no `Row` or per-row `Vec<Value>` is built: a 100-row fetch
+  is about 17% faster. Other backends keep `fetch_each`'s default, which
+  passes their `Row`s on. Decode errors name the same column and reason;
+  on the native inline path, a column no model field reads is no longer
+  decoded. Hand-written `Model` impls keep working: `from_cells` defaults
+  to `from_row_mut`.
 - **ORM:** `QuerySet::get` (and the lookups of `get_or_create` /
   `update_or_create`) drops the default and explicit ordering, as Django
   does, so a point lookup no longer sends `ORDER BY`. The ordering is kept

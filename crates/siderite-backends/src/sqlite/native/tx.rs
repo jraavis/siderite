@@ -13,7 +13,7 @@ use crate::sqlite::schema::{self, FOREIGN_KEY_CHECK, FOREIGN_KEYS, FkViolation};
 use async_trait::async_trait;
 use rusqlite::Connection;
 use siderite_orm::{BackendCapabilities, BackendError, ExecResult, Executor, OrmError};
-use siderite_orm::{QueryError, QueryPlan, QueryResult, Transaction, Value, WritePlan};
+use siderite_orm::{QueryError, QueryPlan, QueryResult, RowSink, Transaction, Value, WritePlan};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -133,6 +133,26 @@ impl NativeTransaction {
                 done
             }
         }
+    }
+
+    /// [`exec::fetch_into`] on the held connection; off the calling task
+    /// the rows are fetched there and handed to `sink` afterwards.
+    async fn run_into(
+        &self,
+        sql: &str,
+        params: Vec<Value>,
+        sink: &mut dyn RowSink,
+    ) -> Result<(), OrmError> {
+        if self.reads == Dispatch::Inline {
+            return match &*self.slot.lock().await {
+                Slot::Open(lease) => exec::fetch_into(lease.conn()?, sql, params, sink),
+                gone => Err(gone.error().into()),
+            };
+        }
+        for mut row in self.run(self.reads, sql, params, fetch_rows).await?.rows {
+            sink.push(&mut row)?;
+        }
+        Ok(())
     }
 
     async fn finish(&self, commit: bool) -> Result<(), OrmError> {
@@ -270,6 +290,11 @@ impl Executor for NativeTransaction {
         let compiled = compile(plan, &Sqlite)?;
         self.run(self.reads, &compiled.sql, compiled.params, fetch_rows)
             .await
+    }
+
+    async fn fetch_each(&self, plan: &QueryPlan, sink: &mut dyn RowSink) -> Result<(), OrmError> {
+        let compiled = compile(plan, &Sqlite)?;
+        self.run_into(&compiled.sql, compiled.params, sink).await
     }
 
     async fn execute(&self, plan: &WritePlan) -> Result<ExecResult, OrmError> {

@@ -2,7 +2,8 @@
 
 use super::*;
 use siderite_orm::expr::Field;
-use siderite_orm::{BackendCapabilityError, Expr, LockMode, OrderDirection};
+use siderite_orm::{BackendCapabilityError, Cells, Expr, LockMode, OrderDirection};
+use siderite_orm::{QueryError, Row, RowSink};
 
 struct User;
 
@@ -204,4 +205,109 @@ async fn invalid_settings_fail_to_connect() {
     assert!(matches!(result, Err(BackendError::Connection(_))));
     let missing = NativeSqliteBackend::connect("sqlite:///nonexistent/dir/app.db").await;
     assert!(matches!(missing, Err(BackendError::Connection(_))));
+}
+
+/// Takes the `take` columns of every row by index, or the whole row when
+/// `take` is empty, and fails on row `fail_at`.
+#[derive(Default)]
+struct Probe {
+    take: Vec<usize>,
+    fail_at: Option<usize>,
+    taken: Vec<Vec<Option<Value>>>,
+    rows: Vec<Row>,
+}
+
+impl RowSink for Probe {
+    fn push(&mut self, cells: &mut dyn Cells) -> Result<(), QueryError> {
+        if self.fail_at == Some(self.rows.len() + self.taken.len()) {
+            return Err(QueryError::Model("rejected".into()));
+        }
+        if self.take.is_empty() {
+            self.rows.push(cells.to_row()?);
+        } else {
+            let taken = self.take.iter().map(|&index| {
+                let mut value = Value::Null;
+                Ok(cells.take(index, &mut value)?.then_some(value))
+            });
+            self.taken.push(taken.collect::<Result<_, _>>()?);
+        }
+        Ok(())
+    }
+}
+
+fn by_id() -> QueryPlan {
+    QueryPlan::from_table("users").order_by(Field::<User, i64>::new("id"), OrderDirection::Asc)
+}
+
+#[tokio::test]
+async fn fetch_each_hands_over_the_rows_fetch_returns() -> Check {
+    for options in every_dispatch() {
+        let db = seeded(options).await?;
+        let fetched = db.fetch(&by_id()).await?.rows;
+        let mut whole = Probe::default();
+        db.fetch_each(&by_id(), &mut whole).await?;
+        assert_eq!(whole.rows, fetched);
+
+        let mut cells = Probe {
+            take: vec![1, 2, 9],
+            ..Probe::default()
+        };
+        db.fetch_each(&by_id(), &mut cells).await?;
+        let expected: Vec<_> = fetched
+            .iter()
+            .map(|row| vec![row.get("name").cloned(), row.get("age").cloned(), None])
+            .collect();
+        assert_eq!(cells.taken, expected);
+
+        let tx = db.begin(None).await?;
+        let mut held = Probe::default();
+        tx.fetch_each(&by_id(), &mut held).await?;
+        assert_eq!(held.rows, fetched);
+        tx.rollback().await?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn fetch_each_reports_the_first_rejection_and_cell_errors() -> Check {
+    for options in every_dispatch() {
+        let inline = options.reads == Dispatch::Inline;
+        let db = seeded(options).await?;
+        let mut rejecting = Probe {
+            fail_at: Some(1),
+            ..Probe::default()
+        };
+        let rejected = db.fetch_each(&by_id(), &mut rejecting).await;
+        assert_eq!(rejected.map_err(|e| e.to_string()), Err("rejected".into()));
+        assert_eq!(rejecting.rows.len(), 1);
+        assert_eq!(db.fetch(&by_id()).await?.rows.len(), 4);
+
+        db.execute_raw(
+            "INSERT INTO users (name, age) VALUES (CAST(x'ff' AS TEXT), 99)",
+            Vec::new(),
+        )
+        .await?;
+        let bad = by_id().filter(AGE.eq(99_i64));
+        let fetched = db.fetch(&bad).await.map(drop).map_err(|e| e.to_string());
+        let mut name = Probe {
+            take: vec![1],
+            ..Probe::default()
+        };
+        let each = db
+            .fetch_each(&bad, &mut name)
+            .await
+            .map_err(|e| e.to_string());
+        assert!(fetched.as_ref().is_err_and(|e| e.contains("`name`")));
+        assert_eq!(each, fetched);
+        // Inline, a cell nobody reads is never decoded.
+        let mut age = Probe {
+            take: vec![2],
+            ..Probe::default()
+        };
+        if inline {
+            db.fetch_each(&bad, &mut age).await?;
+            assert_eq!(age.taken, [[Some(Value::Int(99))]]);
+        }
+    }
+    Ok(())
 }

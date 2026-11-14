@@ -22,7 +22,8 @@ use crate::shared::{affected_result, returning_result};
 use crate::sqlite::param::Stored;
 use rusqlite::types::{Null, ValueRef};
 use rusqlite::{Batch, Connection, Statement};
-use siderite_orm::{BackendError, ExecResult, OrmError, QueryError, QueryResult, Row, Value};
+use siderite_orm::{BackendError, Cells, ExecResult, OrmError, QueryError, QueryResult, Row};
+use siderite_orm::{RowSink, Value};
 use std::sync::Arc;
 
 /// One operation on a connection: SQL and its parameters in, `T` out.
@@ -73,6 +74,42 @@ pub(super) fn fetch_rows(
     let mut rows = Collect::default();
     statements(conn, sql, &stored(params), true, |row| rows.push(row))?;
     Ok(QueryResult { rows: rows.rows })
+}
+
+/// Run `sql`, handing every row `sql` produces to `sink` straight from the
+/// driver, without building [`Row`]s.
+pub(super) fn fetch_into(
+    conn: &Connection,
+    sql: &str,
+    params: Vec<Value>,
+    sink: &mut dyn RowSink,
+) -> Result<(), OrmError> {
+    let mut names = None;
+    statements(conn, sql, &stored(params), true, |row| {
+        let names = shared_header(&mut names, row)?;
+        sink.push(&mut DriverCells { names, row })
+    })
+    .map(drop)
+}
+
+/// [`fetch_into`] where `mode` says. Off the calling task the sink cannot
+/// follow, so the rows are fetched there and handed over afterwards.
+pub(super) async fn dispatch_into(
+    mode: Dispatch,
+    lease: Lease,
+    sql: &str,
+    params: Vec<Value>,
+    sink: &mut dyn RowSink,
+) -> Result<(), OrmError> {
+    match mode {
+        Dispatch::Inline => fetch_into(lease.conn()?, sql, params, sink),
+        Dispatch::Blocking => {
+            for mut row in dispatch(mode, lease, sql, params, fetch_rows).await?.rows {
+                sink.push(&mut row)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Run `sql` and return the number of rows it changed.
@@ -260,24 +297,54 @@ struct Collect {
 
 impl Collect {
     fn push(&mut self, row: &rusqlite::Row<'_>) -> Result<(), QueryError> {
-        let names = match &self.names {
-            Some(names) => Arc::clone(names),
-            None => {
-                let names = header(row)?;
-                self.names = Some(Arc::clone(&names));
-                names
-            }
+        let names = shared_header(&mut self.names, row)?;
+        self.rows.push(DriverCells { names, row }.to_row()?);
+        Ok(())
+    }
+}
+
+/// The header every row of a fetch shares: built from the first row.
+fn shared_header<'a>(
+    names: &'a mut Option<Arc<[String]>>,
+    row: &rusqlite::Row<'_>,
+) -> Result<&'a Arc<[String]>, QueryError> {
+    match names {
+        Some(names) => Ok(names),
+        None => Ok(names.insert(header(row)?)),
+    }
+}
+
+/// A driver row read against the fetch's shared header.
+struct DriverCells<'a, 'stmt> {
+    names: &'a Arc<[String]>,
+    row: &'a rusqlite::Row<'stmt>,
+}
+
+impl Cells for DriverCells<'_, '_> {
+    fn columns(&self) -> &Arc<[String]> {
+        self.names
+    }
+
+    fn take(&mut self, index: usize, out: &mut Value) -> Result<bool, QueryError> {
+        let Some(name) = self.names.get(index) else {
+            return Ok(false);
         };
-        let values = (0..names.len())
+        *out = cell(self.row, index).map_err(|reason| QueryError::Decode {
+            column: name.clone(),
+            reason,
+        })?;
+        Ok(true)
+    }
+
+    fn to_row(&mut self) -> Result<Row, QueryError> {
+        let values = (0..self.names.len())
             .map(|index| {
-                cell(row, index).map_err(|reason| QueryError::Decode {
-                    column: names.get(index).cloned().unwrap_or_default(),
-                    reason,
-                })
+                let mut value = Value::Null;
+                self.take(index, &mut value)?;
+                Ok(value)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        self.rows.push(Row::with_columns(names, values));
-        Ok(())
+        Ok(Row::with_columns(Arc::clone(self.names), values))
     }
 }
 

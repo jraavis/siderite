@@ -22,8 +22,12 @@ cargo bench -p siderite-bench -- --warm-up-time 1 --measurement-time 2
   same single-connection pool, as the driver-only control: the gap between
   the two is what the ORM adds. `orm/decode_100_rows` decodes already
   fetched rows into models with no driver involved, by cloning
-  (`borrowed`, `Model::from_row`) and by moving (`moved`,
-  `Model::from_row_mut`, the path `QuerySet::all` takes).
+  (`borrowed`, `Model::from_row`), by moving with a by-name lookup per
+  row (`moved`, `Model::from_row_mut`, the `select_related` path) and by
+  moving through one position plan for the shared header (`planned`,
+  `Model::from_cells`, the path `QuerySet::all` takes over a backend's
+  rows). On the native SQLite backend `QuerySet::all` skips the rows and
+  decodes driver rows straight into models.
 
 ## Results
 

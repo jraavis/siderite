@@ -5,6 +5,7 @@
 //! transaction behind the same API.
 
 use crate::capabilities::{BackendCapabilities, IsolationLevel};
+use crate::cells::RowSink;
 use crate::error::{OrmError, QueryError};
 use crate::plan::QueryPlan;
 use crate::value::Value;
@@ -69,11 +70,13 @@ impl Row {
     /// Returns:
     ///     The position of the first column with that name, if any.
     pub fn position(&self, column: &str, hint: usize) -> Option<usize> {
-        let found = match self.names.get(hint) {
-            Some(name) if name == column => hint,
-            _ => self.names.iter().position(|name| name == column)?,
-        };
+        let found = find_column(&self.names, column, hint)?;
         (found < self.values.len()).then_some(found)
+    }
+
+    /// The shared column header.
+    pub(crate) fn names(&self) -> &Arc<[String]> {
+        &self.names
     }
 
     /// Look up a value by column name.
@@ -120,6 +123,15 @@ impl Row {
     }
 }
 
+/// Index of `column` in `names`: position `hint` when it holds that name,
+/// else the first column with it.
+pub(crate) fn find_column(names: &[String], column: &str, hint: usize) -> Option<usize> {
+    match names.get(hint) {
+        Some(name) if name == column => Some(hint),
+        _ => names.iter().position(|name| name == column),
+    }
+}
+
 /// Result of executing a read plan.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct QueryResult {
@@ -148,6 +160,21 @@ pub trait Executor: Send + Sync + 'static {
 
     /// Execute a read plan.
     async fn fetch(&self, plan: &QueryPlan) -> Result<QueryResult, OrmError>;
+
+    /// Execute a read plan, handing each row to `sink` in backend order.
+    ///
+    /// The queryset decodes models through this. A backend that can hand
+    /// over its driver's rows directly, without building [`Row`]s, overrides
+    /// it; the default runs [`fetch`](Self::fetch) and passes every row on.
+    ///
+    /// # Errors
+    /// As [`fetch`](Self::fetch), or the first error `sink` returns.
+    async fn fetch_each(&self, plan: &QueryPlan, sink: &mut dyn RowSink) -> Result<(), OrmError> {
+        for mut row in self.fetch(plan).await?.rows {
+            sink.push(&mut row)?;
+        }
+        Ok(())
+    }
 
     /// Execute a write plan.
     async fn execute(&self, plan: &WritePlan) -> Result<ExecResult, OrmError>;

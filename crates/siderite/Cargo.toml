@@ -34,7 +34,7 @@ rust_decimal.workspace = true
 
 [dev-dependencies]
 futures-util.workspace = true
-siderite-backends.workspace = true
+siderite-backends = { workspace = true, features = ["sqlite-native"] }
 siderite-testkit.workspace = true
 jsonschema.workspace = true
 serde.workspace = true

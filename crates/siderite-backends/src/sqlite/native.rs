@@ -121,11 +121,11 @@ mod tx;
 use super::gate::{self, WriteGate};
 use crate::sql::{Sqlite, compile, compile_write};
 use async_trait::async_trait;
-use exec::{dispatch, execute_rows, fetch_rows, script, write_fn};
+use exec::{dispatch, dispatch_into, execute_rows, fetch_rows, script, write_fn};
 use open::Target;
 use pool::{Lease, Pool};
 use siderite_orm::{Backend, BackendCapabilities, BackendError, ExecResult, Executor};
-use siderite_orm::{Feature, WritePlan};
+use siderite_orm::{Feature, RowSink, WritePlan};
 use siderite_orm::{IsolationLevel, OrmError, QueryPlan, QueryResult, Transaction, Value};
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
@@ -437,6 +437,20 @@ impl Executor for NativeSqliteBackend {
             &compiled.sql,
             compiled.params,
             fetch_rows,
+        )
+        .await
+    }
+
+    /// Decodes rows straight from the driver when reads run inline.
+    async fn fetch_each(&self, plan: &QueryPlan, sink: &mut dyn RowSink) -> Result<(), OrmError> {
+        let compiled = compile(plan, &Sqlite)?;
+        let lease = self.reader().await?;
+        dispatch_into(
+            self.shared.reads,
+            lease,
+            &compiled.sql,
+            compiled.params,
+            sink,
         )
         .await
     }

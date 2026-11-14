@@ -5,7 +5,7 @@
 #![allow(clippy::unwrap_used, missing_docs)]
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use siderite::orm::{Db, Row};
+use siderite::orm::{Cells, ColumnPlan, Db, Row};
 use siderite::prelude::*;
 use siderite_backends::sql::{Postgres, Sqlite, compile};
 use siderite_backends::sqlite::SqliteBackend;
@@ -119,6 +119,17 @@ fn moved(rows: Vec<Row>) -> Vec<Widget> {
     rows.into_iter().map(decode).collect()
 }
 
+/// Decode through one position plan for the shared header
+/// (`Model::from_cells`), as `QuerySet::all` does over materialized rows.
+fn planned(rows: Vec<Row>) -> Vec<Widget> {
+    let Some(first) = rows.first() else {
+        return Vec::new();
+    };
+    let plan = ColumnPlan::new(Widget::META, first.columns(), "");
+    let decode = |mut row: Row| Widget::from_cells(&mut row, &plan).unwrap();
+    rows.into_iter().map(decode).collect()
+}
+
 fn build(db: &Db) -> QuerySet<Widget> {
     Widget::objects(db)
         .filter(Widget::active.eq(true))
@@ -217,6 +228,9 @@ fn bench_orm(c: &mut Criterion) {
     });
     group.bench_function("decode_100_rows/moved", |b| {
         b.iter_batched(|| rows.clone(), moved, BatchSize::SmallInput);
+    });
+    group.bench_function("decode_100_rows/planned", |b| {
+        b.iter_batched(|| rows.clone(), planned, BatchSize::SmallInput);
     });
 
     let conn = seeded_rusqlite(100);
