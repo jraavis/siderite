@@ -15,11 +15,12 @@
 
 use crate::background::{BackgroundTaskLimits, TaskManager};
 use crate::body::Body;
-use crate::di::{self, DiRegistry};
+use crate::di::{self, Active, DiRegistry, RouteScope, Seed};
 use crate::error::{ApiError, ServerError};
 use crate::lifespan::{DEFAULT_SHUTDOWN_BUDGET, Lifespan};
 use crate::response::IntoResponse;
 use crate::routing::{Endpoint, MethodRouter, Route};
+use crate::service::RootRouter;
 use siderite_openapi::{DocumentBuilder, OpenApi, OpenApiError, ui};
 use siderite_orm::{Databases, Db};
 use std::collections::BTreeMap;
@@ -91,8 +92,9 @@ pub struct App {
     pub(crate) docs: DocsConfig,
     pub(crate) routes: Vec<(String, MethodRouter)>,
     mounts: Vec<Mount>,
-    /// State and middleware layers, applied in registration order.
-    pub(crate) router_layers: Vec<RouterLayer>,
+    /// Values inserted into every routed request (state, ...); the first
+    /// registered wins.
+    pub(crate) seeds: Vec<Seed>,
     /// Services mounted at prefixes (e.g. static files); not documented.
     pub(crate) services: Vec<RouterLayer>,
     /// Replaces the default 404 problem fallback (e.g. root static files).
@@ -149,7 +151,7 @@ impl App {
             docs: DocsConfig::default(),
             routes: Vec::new(),
             mounts: Vec::new(),
-            router_layers: Vec::new(),
+            seeds: Vec::new(),
             services: Vec::new(),
             fallback: None,
             startup_hooks: Vec::new(),
@@ -236,9 +238,9 @@ impl App {
     #[must_use]
     pub fn with_state<T: Send + Sync + 'static>(mut self, state: T) -> Self {
         let state = Arc::new(state);
-        self.router_layers
-            .push(Box::new(move |router: axum::Router| {
-                router.layer(axum::Extension(state))
+        self.seeds
+            .push(Arc::new(move |extensions: &mut http::Extensions| {
+                extensions.insert(Arc::clone(&state));
             }));
         self
     }
@@ -380,12 +382,17 @@ impl App {
     /// Build the internal router; lifts lifespan hooks out of mounts.
     ///
     /// Layering, innermost first: routes, mounts, services, DI scope, state
-    /// and other router layers. The app's middleware is returned separately so
-    /// the caller applies it once everything else (docs, fallback) exists.
+    /// and other registered values. The app's own endpoints apply the scope
+    /// themselves (see [`RouteScope`]) instead of through a router layer,
+    /// which would box and clone every route on every request. The app's
+    /// middleware is returned separately so the caller applies it once
+    /// everything else (docs, fallback) exists. `parent` is the DI chain of
+    /// the enclosing app.
     fn build_router(
         mut self,
         hooks: &mut Lifespan,
         root: bool,
+        parent: Option<Active>,
     ) -> (axum::Router, Vec<RouterLayer>, Option<RouterLayer>) {
         hooks.startup.append(&mut self.startup_hooks);
         // Own shutdown hooks come before the children's in the list; shutdown runs
@@ -398,55 +405,74 @@ impl App {
                 .iter()
                 .any(|endpoint| endpoint.background_tasks)
         });
-        let background = has_background.then(|| {
+        let mut seeds = std::mem::take(&mut self.seeds);
+        if has_background {
             let manager = TaskManager::new(self.background_limits);
             hooks.background.push(manager.clone());
-            manager
-        });
+            // Registered last: it used to be the outermost layer.
+            seeds.push(Arc::new(move |extensions: &mut http::Extensions| {
+                extensions.insert(manager.clone());
+            }));
+        }
+        let install_di = root || !self.di.is_empty();
+        let di = std::mem::take(&mut self.di);
+        let (scope, inherited) = RouteScope::new(seeds, di, install_di, parent);
+        let scope = Arc::new(scope);
+
         let mut grouped: BTreeMap<String, Vec<Endpoint>> = BTreeMap::new();
         for (path, r) in self.routes {
             grouped.entry(path).or_default().extend(r.endpoints);
         }
         let mut router = axum::Router::new();
         for (path, endpoints) in grouped {
-            let method_router = endpoints.into_iter().filter_map(Endpoint::into_axum).fold(
-                axum::routing::MethodRouter::new(),
-                axum::routing::MethodRouter::merge,
-            );
+            let mut method_router = endpoints
+                .into_iter()
+                .filter_map(|e| e.into_axum(&scope))
+                .fold(
+                    axum::routing::MethodRouter::new(),
+                    axum::routing::MethodRouter::merge,
+                );
+            if !scope.is_noop() {
+                // 405 answers went through the scope layer too.
+                method_router =
+                    method_router.fallback_service(di::method_not_allowed(Arc::clone(&scope)));
+            }
             router = router.route(&path, method_router);
         }
+        // Everything else gets the scope as a router layer.
+        let mut other = axum::Router::new();
+        let mut has_other = false;
         for mount in self.mounts {
-            let (child, middleware, _) = mount.app.build_router(hooks, false);
+            let (child, middleware, _) = mount.app.build_router(hooks, false, inherited.clone());
             let child = apply_middleware(child, middleware);
-            router = if mount.prefix.is_empty() {
-                router.merge(child)
+            other = if mount.prefix.is_empty() {
+                other.merge(child)
             } else {
-                router.nest(&mount.prefix, child)
+                other.nest(&mount.prefix, child)
             };
+            has_other = true;
         }
         for service in self.services {
-            router = service(router);
+            other = service(other);
+            has_other = true;
         }
         // The root app installs its fallback in `build`, after the docs routes.
         let mut fallback = self.fallback;
         if !root && let Some(f) = fallback.take() {
-            router = f(router);
+            other = f(other);
+            has_other = true;
         }
-        if root || !self.di.is_empty() {
-            router = di::install(router, self.di);
-        }
-        router = self
-            .router_layers
-            .into_iter()
-            .fold(router, |r, layer| layer(r));
-        if let Some(manager) = background {
-            router = router.layer(axum::Extension(manager));
+        if has_other {
+            if !scope.is_noop() {
+                other = di::install(other, Arc::clone(&scope));
+            }
+            router = router.merge(other);
         }
         (router, self.middleware, fallback)
     }
 
     /// Validate and build the root router, including documentation routes.
-    pub(crate) fn build(mut self) -> Result<(axum::Router, Lifespan), ServerError> {
+    pub(crate) fn build_root(mut self) -> Result<(RootRouter, Lifespan), ServerError> {
         self.validate()?;
         if let Some(databases) = self.databases.take() {
             self = self.with_state(databases);
@@ -462,7 +488,7 @@ impl App {
             server: Some(crate::server::ServerOwners::new(self.server_limits)),
             ..Lifespan::default()
         };
-        let (mut router, middleware, fallback) = self.build_router(&mut hooks, true);
+        let (mut router, middleware, fallback) = self.build_router(&mut hooks, true, None);
         if let Some(spec_url) = docs.openapi_url {
             let json = serde_json::to_string(&openapi)
                 .map_err(|e| ServerError::Configuration(e.to_string()))?;
@@ -483,7 +509,7 @@ impl App {
             router = router.merge(docs_router.route_layer(axum::middleware::from_fn(
                 |req: axum::extract::Request, next: axum::middleware::Next| {
                     let (parts, body) = req.into_parts();
-                    crate::middleware::note_matched_path(&parts);
+                    crate::middleware::note_matched_path(&parts.extensions);
                     next.run(axum::extract::Request::from_parts(parts, body))
                 },
             )));
@@ -493,14 +519,19 @@ impl App {
             None => router.fallback(route_not_found),
         };
         let router = apply_middleware(router, middleware);
-        let router = router.layer(axum::Extension(upgrades.handle()));
-        let router = if let Some(server) = &hooks.server {
-            router.layer(axum::Extension(server.readiness.clone()))
-        } else {
-            router
+        let values = crate::service::ServerValues {
+            upgrades: upgrades.handle(),
+            readiness: hooks.server.as_ref().map(|s| s.readiness.clone()),
         };
         hooks.transports.push(upgrades);
-        Ok((router, hooks))
+        Ok((RootRouter::new(router, values), hooks))
+    }
+
+    /// [`build_root`](Self::build_root) as a plain engine router.
+    #[cfg(test)]
+    pub(crate) fn build(self) -> Result<(axum::Router, Lifespan), ServerError> {
+        self.build_root()
+            .map(|(root, lifespan)| (root.into_router(), lifespan))
     }
 
     /// Convert into an in-process `tower::Service` (used by the testkit).
@@ -509,8 +540,8 @@ impl App {
     /// # Errors
     /// Returns [`ServerError::Configuration`] if the app is misconfigured.
     pub fn into_router_service(self) -> Result<crate::RouterService, ServerError> {
-        self.build()
-            .map(|(router, _)| crate::RouterService::new(router))
+        self.build_root()
+            .map(|(router, _)| crate::RouterService::from_root(router))
     }
 
     /// Like [`App::into_router_service`], but also returns the [`Lifespan`]
@@ -522,8 +553,8 @@ impl App {
     pub fn into_service_with_lifespan(
         self,
     ) -> Result<(crate::RouterService, Lifespan), ServerError> {
-        self.build()
-            .map(|(router, lifespan)| (crate::RouterService::new(router), lifespan))
+        self.build_root()
+            .map(|(router, lifespan)| (crate::RouterService::from_root(router), lifespan))
     }
 
     /// Serve until Ctrl-C or Unix SIGTERM, then drain and clean up resources.
@@ -561,7 +592,7 @@ impl App {
     {
         let budget = self.shutdown_budget;
         let limits = self.server_limits;
-        let (router, lifespan) = self.build()?;
+        let (router, lifespan) = self.build_root()?;
         let server = lifespan
             .server
             .clone()

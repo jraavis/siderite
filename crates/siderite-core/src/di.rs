@@ -52,6 +52,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::future::Future;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -60,6 +61,30 @@ use thiserror::Error;
 use tower::{Layer, Service, ServiceExt};
 
 type BoxFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Map keyed by `TypeId`. A `TypeId` is already a hash, so it is used as
+/// is instead of being hashed again with SipHash on every lookup.
+type TypeMap<V> = HashMap<TypeId, V, BuildHasherDefault<TypeIdHasher>>;
+
+#[derive(Default)]
+struct TypeIdHasher(u64);
+
+impl Hasher for TypeIdHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        // `TypeId` hashes through `write_u64`; this is a fallback (FNV-1a).
+        for byte in bytes {
+            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value;
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
 type Erased = Arc<dyn Any + Send + Sync>;
 
 /// Failure inside the dependency machinery. Rendered to clients as an opaque
@@ -136,7 +161,7 @@ type Teardown = BoxFut<'static, ()>;
 
 #[derive(Default)]
 struct ScopeState {
-    cache: HashMap<TypeId, Erased>,
+    cache: TypeMap<Erased>,
     stack: Vec<(TypeId, &'static str)>,
     teardowns: Vec<Teardown>,
 }
@@ -151,6 +176,9 @@ impl RequestScope {
     }
 
     fn of(parts: &mut Parts) -> Self {
+        if let Some(request) = parts.extensions.get::<DiRequest>() {
+            return request.scope.clone();
+        }
         if let Some(scope) = parts.extensions.get::<Self>() {
             return scope.clone();
         }
@@ -187,8 +215,8 @@ type GlobalFn =
 /// Application-level DI configuration collected on an [`App`].
 #[derive(Default)]
 pub(crate) struct DiRegistry {
-    provided: HashMap<TypeId, Erased>,
-    overrides: HashMap<TypeId, OverrideFn>,
+    provided: TypeMap<Erased>,
+    overrides: TypeMap<OverrideFn>,
     globals: Vec<GlobalFn>,
 }
 
@@ -198,9 +226,17 @@ impl DiRegistry {
     }
 }
 
+/// The DI state of a routed request, as one request extension: the registry
+/// chain of the innermost app and the request scope shared by all apps.
+#[derive(Clone)]
+struct DiRequest {
+    active: Active,
+    scope: RequestScope,
+}
+
 /// Chain of registries active for a request (innermost first).
 #[derive(Clone)]
-struct Active(Arc<ActiveNode>);
+pub(crate) struct Active(Arc<ActiveNode>);
 
 struct ActiveNode {
     registry: Arc<DiRegistry>,
@@ -247,7 +283,10 @@ async fn resolve_arc<U: Dependency>(parts: &mut Parts) -> Result<Arc<U>, ApiErro
     if let Some(chain) = scope.with(|s| cycle_chain(s, tid, name)) {
         return Err(ApiError::internal(DependencyError::Cycle { chain }));
     }
-    let active = parts.extensions.get::<Active>().cloned();
+    let active = parts
+        .extensions
+        .get::<DiRequest>()
+        .map(|request| request.active.clone());
     if let Some(value) = active
         .as_ref()
         .and_then(|a| a.find(|r| r.provided.get(&tid).cloned()))
@@ -373,7 +412,8 @@ impl<T: Send + Sync + 'static> FromRequestParts for Provided<T> {
         let tid = TypeId::of::<T>();
         let found = parts
             .extensions
-            .get::<Active>()
+            .get::<DiRequest>()
+            .map(|request| &request.active)
             .and_then(|a| a.find(|r| r.provided.get(&tid).cloned()));
         match found {
             Some(value) => downcast(value).map(Provided),
@@ -438,14 +478,135 @@ impl App {
     }
 }
 
-/// Wrap `router` so requests carry the DI scope, run global dependencies and
-/// trigger teardown.
-pub(crate) fn install(router: axum::Router, registry: DiRegistry) -> axum::Router {
-    router.layer(DiLayer(Arc::new(registry)))
+/// Inserts one value registered on an app (`with_state`, ...) into a request.
+pub(crate) type Seed = Arc<dyn Fn(&mut http::Extensions) + Send + Sync>;
+
+/// What one app adds to each request it routes: its registered values
+/// ("seeds") and, when it installs DI, the registry chain and request scope.
+///
+/// Built once per app when the router is built and shared by all of the
+/// app's endpoints, so the per-request work is a few extension inserts.
+pub(crate) struct RouteScope {
+    /// Applied in reverse, so the first registration wins (as when each was
+    /// a router layer, the first registered being the innermost).
+    seeds: Vec<Seed>,
+    /// The registry chain (innermost first) when this app installs DI.
+    di: Option<(Active, Arc<DiRegistry>)>,
+}
+
+impl RouteScope {
+    /// `parent` is the chain of the enclosing app, if any. Returns the scope
+    /// and the chain the app's mounts inherit.
+    pub(crate) fn new(
+        seeds: Vec<Seed>,
+        registry: DiRegistry,
+        install: bool,
+        parent: Option<Active>,
+    ) -> (Self, Option<Active>) {
+        let di = install.then(|| {
+            let registry = Arc::new(registry);
+            let node = ActiveNode {
+                registry: Arc::clone(&registry),
+                parent: parent.clone(),
+            };
+            (Active(Arc::new(node)), registry)
+        });
+        let inherited = di.as_ref().map(|(active, _)| active.clone()).or(parent);
+        (Self { seeds, di }, inherited)
+    }
+
+    /// Whether this scope does anything to a request.
+    pub(crate) fn is_noop(&self) -> bool {
+        self.seeds.is_empty() && self.di.is_none()
+    }
+
+    /// Whether requests must await global dependencies before the handler.
+    pub(crate) fn has_globals(&self) -> bool {
+        self.di.as_ref().is_some_and(|(_, r)| !r.globals.is_empty())
+    }
+
+    /// Prepare a routed request. Returns the request scope when this call
+    /// created it; its owner must call [`ScopeOwner::finish`] once the
+    /// response exists.
+    pub(crate) fn enter(&self, extensions: &mut http::Extensions) -> ScopeOwner {
+        for seed in self.seeds.iter().rev() {
+            seed(extensions);
+        }
+        let Some((active, _)) = &self.di else {
+            return ScopeOwner(None);
+        };
+        crate::middleware::note_matched_path(extensions);
+        let outer = extensions
+            .get::<DiRequest>()
+            .map(|outer| outer.scope.clone())
+            .or_else(|| extensions.get::<RequestScope>().cloned());
+        let (scope, owner) = match outer {
+            Some(scope) => (scope, None),
+            None => {
+                let scope = RequestScope::default();
+                (scope.clone(), Some(scope))
+            }
+        };
+        extensions.insert(DiRequest {
+            active: active.clone(),
+            scope,
+        });
+        ScopeOwner(owner)
+    }
+
+    /// Run this app's global dependencies (see [`App::dependency`]).
+    pub(crate) async fn run_globals(&self, parts: &mut Parts) -> Result<(), ApiError> {
+        if let Some((_, registry)) = &self.di {
+            for global in &registry.globals {
+                global(parts).await?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The request scope created by [`RouteScope::enter`], if that call created
+/// it.
+pub(crate) struct ScopeOwner(Option<RequestScope>);
+
+impl ScopeOwner {
+    /// Start teardown of the dependencies resolved during the request.
+    pub(crate) fn finish(self) {
+        if let Some(scope) = self.0 {
+            scope.spawn_teardowns();
+        }
+    }
+}
+
+/// Wrap the routes of `router` (mounted apps, services, a child's fallback)
+/// in `scope`. The app's own endpoints apply it themselves.
+pub(crate) fn install(router: axum::Router, scope: Arc<RouteScope>) -> axum::Router {
+    router.layer(DiLayer(scope))
+}
+
+/// The `405 Method Not Allowed` answer of a path, behind `scope` like the
+/// path's endpoints (global dependencies run first).
+pub(crate) fn method_not_allowed(
+    scope: Arc<RouteScope>,
+) -> impl Service<
+    axum::extract::Request,
+    Response = axum::response::Response,
+    Error = Infallible,
+    Future = impl Send,
+> + Clone
++ Send
++ Sync
++ 'static {
+    let answer = tower::service_fn(|_: axum::extract::Request| async {
+        Ok::<_, Infallible>(axum::response::IntoResponse::into_response(
+            http::StatusCode::METHOD_NOT_ALLOWED,
+        ))
+    });
+    DiLayer(scope).layer(answer)
 }
 
 #[derive(Clone)]
-struct DiLayer(Arc<DiRegistry>);
+struct DiLayer(Arc<RouteScope>);
 
 impl<S> Layer<S> for DiLayer {
     type Service = DiService<S>;
@@ -453,7 +614,7 @@ impl<S> Layer<S> for DiLayer {
     fn layer(&self, inner: S) -> DiService<S> {
         DiService {
             inner,
-            registry: Arc::clone(&self.0),
+            scope: Arc::clone(&self.0),
         }
     }
 }
@@ -461,7 +622,7 @@ impl<S> Layer<S> for DiLayer {
 #[derive(Clone)]
 struct DiService<S> {
     inner: S,
-    registry: Arc<DiRegistry>,
+    scope: Arc<RouteScope>,
 }
 
 impl<S> Service<axum::extract::Request> for DiService<S>
@@ -481,27 +642,22 @@ where
     }
 
     fn call(&mut self, req: axum::extract::Request) -> Self::Future {
+        let (mut parts, body) = req.into_parts();
+        let owner = self.scope.enter(&mut parts.extensions);
+        if !self.scope.has_globals() {
+            // `inner` was driven to readiness by `poll_ready`.
+            let fut = self.inner.call(http::Request::from_parts(parts, body));
+            return Box::pin(async move {
+                let response = fut.await;
+                owner.finish();
+                response
+            });
+        }
         let ready = self.inner.clone();
         let inner = std::mem::replace(&mut self.inner, ready);
-        let registry = Arc::clone(&self.registry);
+        let scope = Arc::clone(&self.scope);
         Box::pin(async move {
-            let (mut parts, body) = req.into_parts();
-            crate::middleware::note_matched_path(&parts);
-            let parent = parts.extensions.get::<Active>().cloned();
-            let node = ActiveNode {
-                registry: Arc::clone(&registry),
-                parent,
-            };
-            parts.extensions.insert(Active(Arc::new(node)));
-            let owned = match parts.extensions.get::<RequestScope>() {
-                Some(_) => None,
-                None => {
-                    let scope = RequestScope::default();
-                    parts.extensions.insert(scope.clone());
-                    Some(scope)
-                }
-            };
-            let response = match run_globals(&registry, &mut parts).await {
+            let response = match scope.run_globals(&mut parts).await {
                 Err(err) => err.into_response().map(Body::into_inner),
                 Ok(()) => {
                     inner
@@ -509,17 +665,8 @@ where
                         .await?
                 }
             };
-            if let Some(scope) = owned {
-                scope.spawn_teardowns();
-            }
+            owner.finish();
             Ok(response)
         })
     }
-}
-
-async fn run_globals(registry: &DiRegistry, parts: &mut Parts) -> Result<(), ApiError> {
-    for global in &registry.globals {
-        global(parts).await?;
-    }
-    Ok(())
 }

@@ -12,17 +12,20 @@
 //! recently added** method. Route macros (`#[post(...)]`) expand to exactly
 //! these calls.
 
+use crate::background::RequestGuard;
 use crate::body::Body;
+use crate::di::{RouteScope, ScopeOwner};
 use crate::extract::Request;
 use crate::handler::Handler;
 use crate::middleware::BoxService;
-use crate::response::{Response, SUCCESS};
+use crate::response::{IntoResponse, Response, SUCCESS};
 use http::{Method, StatusCode};
 use siderite_openapi::{HttpMethod, Operation, Schema, SchemaRegistry};
 use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tower::{Layer, Service, ServiceExt};
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
@@ -126,8 +129,9 @@ impl Endpoint {
         })
     }
 
-    /// Adapt to the internal router, applying the status override.
-    pub(crate) fn into_axum(self) -> Option<axum::routing::MethodRouter> {
+    /// Adapt to the internal router, applying the status override and the
+    /// app's request `scope` (state, DI) without an extra router layer.
+    pub(crate) fn into_axum(self, scope: &Arc<RouteScope>) -> Option<axum::routing::MethodRouter> {
         use axum::routing::MethodFilter;
         let filter = match self.method {
             Method::GET => MethodFilter::GET,
@@ -140,30 +144,110 @@ impl Endpoint {
             Method::TRACE => MethodFilter::TRACE,
             _ => return None,
         };
-        let handler = self.handler;
-        let status = self.meta.status;
-        let background = self.background_tasks;
-        Some(axum::routing::on(
-            filter,
-            move |req: axum::extract::Request| {
-                let handler = Arc::clone(&handler);
-                async move {
-                    let mut req = req.map(Body::from_inner);
-                    let guard = background
-                        .then(|| crate::background::RequestGuard::install(req.extensions_mut()));
-                    let mut response = handler(req).await;
-                    if let Some(status) = status
-                        && response.status() == StatusCode::OK
-                    {
-                        *response.status_mut() = status;
-                    }
-                    if let Some(guard) = guard {
-                        guard.finish(response.status());
-                    }
-                    response.map(Body::into_inner)
+        let service = EndpointService {
+            handler: self.handler,
+            status: self.meta.status,
+            background: self.background_tasks,
+            scope: Arc::clone(scope),
+        };
+        Some(axum::routing::on_service(filter, service))
+    }
+}
+
+/// One endpoint as the internal router sees it.
+#[derive(Clone)]
+struct EndpointService {
+    handler: BoxedHandler,
+    status: Option<StatusCode>,
+    background: bool,
+    scope: Arc<RouteScope>,
+}
+
+impl EndpointService {
+    /// The handler's response with the status override applied, after
+    /// background tasks were handed over.
+    fn finish(
+        status: Option<StatusCode>,
+        guard: Option<RequestGuard>,
+        mut response: Response,
+    ) -> Response {
+        if let Some(status) = status
+            && response.status() == StatusCode::OK
+        {
+            *response.status_mut() = status;
+        }
+        if let Some(guard) = guard {
+            guard.finish(response.status());
+        }
+        response
+    }
+}
+
+impl Service<axum::extract::Request> for EndpointService {
+    type Response = axum::response::Response;
+    type Error = Infallible;
+    type Future = EndpointFuture;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: axum::extract::Request) -> EndpointFuture {
+        let mut req = req.map(Body::from_inner);
+        let owner = self.scope.enter(req.extensions_mut());
+        if self.scope.has_globals() {
+            let this = self.clone();
+            let inner = Box::pin(async move {
+                let (mut parts, body) = req.into_parts();
+                if let Err(err) = this.scope.run_globals(&mut parts).await {
+                    return err.into_response();
                 }
-            },
-        ))
+                let mut req = Request::from_parts(parts, body);
+                let guard = this
+                    .background
+                    .then(|| RequestGuard::install(req.extensions_mut()));
+                let response = (this.handler)(req).await;
+                Self::finish(this.status, guard, response)
+            });
+            return EndpointFuture {
+                inner,
+                status: None,
+                guard: None,
+                owner: Some(owner),
+            };
+        }
+        let guard = self
+            .background
+            .then(|| RequestGuard::install(req.extensions_mut()));
+        EndpointFuture {
+            inner: (self.handler)(req),
+            status: self.status,
+            guard,
+            owner: Some(owner),
+        }
+    }
+}
+
+/// Response future of [`EndpointService`]: the handler's boxed future plus
+/// the post-processing done once it completes.
+pub(crate) struct EndpointFuture {
+    inner: BoxFuture<Response>,
+    status: Option<StatusCode>,
+    guard: Option<RequestGuard>,
+    owner: Option<ScopeOwner>,
+}
+
+impl Future for EndpointFuture {
+    type Output = Result<axum::response::Response, Infallible>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let response = std::task::ready!(this.inner.as_mut().poll(cx));
+        let response = EndpointService::finish(this.status, this.guard.take(), response);
+        if let Some(owner) = this.owner.take() {
+            owner.finish();
+        }
+        Poll::Ready(Ok(response.map(Body::into_inner)))
     }
 }
 

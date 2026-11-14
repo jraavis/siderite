@@ -33,8 +33,14 @@ impl FromRequestParts for WebSocketUpgrade {
             Ok(inner) => {
                 let owner = parts
                     .extensions
-                    .get::<crate::server::tasks::TaskHandle>()
-                    .cloned()
+                    .get::<crate::service::ServerValues>()
+                    .map(|values| values.upgrades.clone())
+                    .or_else(|| {
+                        parts
+                            .extensions
+                            .get::<crate::server::tasks::TaskHandle>()
+                            .cloned()
+                    })
                     .ok_or_else(upgrade_unavailable)?;
                 let permit = owner.reserve().ok_or_else(upgrade_unavailable)?;
                 Ok(Self {

@@ -309,8 +309,11 @@ impl App {
                 None => Ok(()),
             }
         }));
-        self.router_layers
-            .push(Box::new(move |router| router.layer(axum::Extension(slot))));
+        self.seeds.push(std::sync::Arc::new(
+            move |extensions: &mut http::Extensions| {
+                extensions.insert(slot.clone());
+            },
+        ));
         self
     }
 }

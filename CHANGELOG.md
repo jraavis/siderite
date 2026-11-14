@@ -25,6 +25,18 @@
   `update_or_create`) drops the default and explicit ordering, as Django
   does, so a point lookup no longer sends `ORDER BY`. The ordering is kept
   when it picks the rows: after `limit` / `offset`, or with `distinct_on`.
+- **HTTP:** less per-request framework overhead. Registered state, the DI
+  scope and global dependencies are applied inside each endpoint instead of
+  through one engine router layer each, which boxed and cloned the whole
+  route stack on every request. Server-wide values and the peer address are
+  inserted once per request rather than through extra router levels.
+  Allocations per request drop from 45 to 20 on a static route (axum: 14),
+  routing benches run about 1.5–1.9x faster, and `GET /todos/1` on native
+  SQLite serves about 5–7% more requests per second. Behaviour is
+  unchanged: the first registered state still wins, 405 answers still run
+  global dependencies, mounts still share one request scope. Code that read
+  `Readiness` straight from request extensions (not through the extractor)
+  must use the `Readiness` extractor.
 - **Build:** the workspace release profile uses fat LTO and one codegen
   unit for the benchmark apps, examples and CLI. Unwinding stays enabled,
   so a panicking handler still fails one request, not the server.

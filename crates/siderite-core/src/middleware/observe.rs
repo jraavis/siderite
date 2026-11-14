@@ -117,10 +117,10 @@ impl RouteSlot {
 }
 
 /// Record the matched route in the request's [`RouteSlot`], if any.
-pub(crate) fn note_matched_path(parts: &Parts) {
+pub(crate) fn note_matched_path(extensions: &http::Extensions) {
     if let (Some(slot), Some(path)) = (
-        parts.extensions.get::<RouteSlot>(),
-        parts.extensions.get::<axum::extract::MatchedPath>(),
+        extensions.get::<RouteSlot>(),
+        extensions.get::<axum::extract::MatchedPath>(),
     ) {
         slot.set(path.as_str().to_owned());
     }

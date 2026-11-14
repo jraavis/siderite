@@ -102,8 +102,9 @@ impl FromRequestParts for Readiness {
     async fn from_request_parts(parts: &mut Parts) -> Result<Self, ApiError> {
         parts
             .extensions
-            .get::<Self>()
-            .cloned()
+            .get::<crate::service::ServerValues>()
+            .and_then(|values| values.readiness.clone())
+            .or_else(|| parts.extensions.get::<Self>().cloned())
             .ok_or_else(|| ApiError::internal("readiness is not installed"))
     }
 }

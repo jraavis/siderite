@@ -3,17 +3,23 @@
 mod readiness;
 pub(crate) mod tasks;
 pub use readiness::{Readiness, ServerPhase};
+#[cfg(test)]
+mod root_tests;
 #[cfg(all(test, unix))]
 mod signal_tests;
 #[cfg(test)]
 mod tests;
 
+use crate::service::RootRouter;
 use crate::{App, ServerError};
+use axum::extract::ConnectInfo;
 use hyper_util::rt::TokioIo;
 use hyper_util::server::conn::auto::Builder;
 use hyper_util::service::TowerToHyperService;
+use std::convert::Infallible;
 use std::future::Future;
 use std::net::SocketAddr as Peer;
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -106,9 +112,37 @@ impl Drop for AbortOnDrop {
     }
 }
 
+/// One accepted connection's service: the root router plus the peer
+/// address, inserted as axum's `ConnectInfo`.
+#[derive(Clone)]
+struct Connection {
+    root: RootRouter,
+    peer: ConnectInfo<Peer>,
+}
+
+impl<B> Service<http::Request<B>> for Connection
+where
+    B: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    B::Error: Into<axum::BoxError>,
+{
+    type Response = axum::response::Response;
+    type Error = Infallible;
+    type Future = axum::routing::future::RouteFuture<Infallible>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
+        self.root.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: http::Request<B>) -> Self::Future {
+        let mut req = req.map(axum::body::Body::new);
+        req.extensions_mut().insert(self.peer);
+        self.root.call(req)
+    }
+}
+
 pub(crate) async fn serve<F>(
     listener: TcpListener,
-    router: axum::Router,
+    router: impl Into<RootRouter>,
     limits: ServerLimits,
     owners: ServerOwners,
     budget: Duration,
@@ -121,7 +155,7 @@ where
     let streams = &owners.streams;
     let (draining, receiver) = watch::channel(false);
     let workers = &owners.connections;
-    let mut service = router.into_make_service_with_connect_info::<Peer>();
+    let root: RootRouter = router.into();
     tokio::pin!(shutdown);
     let error = loop {
         tokio::select! {
@@ -148,9 +182,9 @@ where
                     Err(error) => break Some(ServerError::Serve(error)),
                 };
                 let Some(permit) = permit else { break None; };
-                let per_connection = match service.call(peer).await {
-                    Ok(service) => service,
-                    Err(error) => match error {},
+                let per_connection = Connection {
+                    root: root.clone(),
+                    peer: ConnectInfo(peer),
                 };
                 let executor = streams.handle();
                 let mut stopping = receiver.clone();
