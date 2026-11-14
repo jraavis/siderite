@@ -95,6 +95,21 @@
   with `--features sqlite-native`. No group commit yet. The SQLx backend
   remains the default, and the foreign-key bookkeeping of schema changes
   and value binding are now shared between the two.
+- **SQLite:** `NativeSqliteOptions::single_process` (off by default) opens
+  the database through SQLite's `unix-excl` VFS: one exclusive lock for the
+  whole process and the WAL index in heap memory, so a read transaction no
+  longer locks the `-shm` file with `fcntl` under a process-wide mutex.
+  Readers still see each commit at once and still run beside an open write
+  transaction; durability is unchanged and a crashed process's committed
+  data is recovered on the next open. The trade-off: no other process (a
+  second server, a CLI migration, a `sqlite3` shell) can use the database
+  while the app has it open; it gets "database is locked" after its busy
+  timeout, and connecting fails that way if another process is already
+  using the file. Unix, read-write file databases only. On the todo
+  benchmark (`SIDERITE_SQLITE_SINGLE_PROCESS=1`) server CPU per
+  `GET /todos/1` drops about 7–8% (24.4 to 22.5 µs), the WAL begin/end
+  path falls from about 15% to 7.5% of samples, and `POST /todos` runs
+  about 5–6% faster.
 - **SQLite:** the native backend is documented next to the SQLx one
   (backends guide, ORM reference, README): an application opts in by
   enabling `sqlite-native` on `siderite-backends` and constructing

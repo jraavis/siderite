@@ -109,6 +109,16 @@ fn sqlite_profile() -> String {
     })
 }
 
+/// `SIDERITE_SQLITE_SINGLE_PROCESS=1`: open native SQLite in single-process
+/// mode, which locks every other process (including the benchmark runner's
+/// fixture client) out of the database while the app runs.
+///
+/// Returns:
+///     Whether single-process mode was requested.
+fn single_process() -> bool {
+    std::env::var("SIDERITE_SQLITE_SINGLE_PROCESS").is_ok_and(|v| v == "1")
+}
+
 /// Open SQLite with the requested profile on the requested driver.
 ///
 /// `SIDERITE_SQLITE_DRIVER` (the runner's `--sqlite-driver`) is `sqlx`
@@ -129,6 +139,11 @@ async fn open_sqlite(url: &str) -> Result<Db, ApiError> {
     // counterpart, so results are labelled as a separate workload.
     let group_commit = std::env::var("SQLITE_GROUP_COMMIT").is_ok_and(|v| v == "1");
     let driver = std::env::var("SIDERITE_SQLITE_DRIVER").unwrap_or_else(|_| "sqlx".into());
+    if single_process() && driver != "native" {
+        return Err(ApiError::internal(
+            "SIDERITE_SQLITE_SINGLE_PROCESS needs the native SQLite driver",
+        ));
+    }
     let db = if driver == "native" {
         if group_commit {
             return Err(ApiError::internal(
@@ -190,6 +205,7 @@ async fn open_sqlite_native(url: &str, profile: &str) -> Result<Db, ApiError> {
         readers: pool_size() as usize,
         journal_mode,
         synchronous,
+        single_process: single_process(),
         ..NativeSqliteOptions::default()
     };
     let backend = NativeSqliteBackend::connect_with(url, options)

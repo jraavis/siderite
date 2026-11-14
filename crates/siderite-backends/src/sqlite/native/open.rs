@@ -63,6 +63,16 @@ impl Target {
         } else {
             OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
         };
+        if options.single_process && !memory {
+            if read_only {
+                // SQLite takes no process-wide lock on a read-only handle,
+                // so the option would silently do nothing.
+                return Err(BackendError::Connection(
+                    "single-process SQLite needs a writable database, not mode=ro".into(),
+                ));
+            }
+            vfs = Some(single_process_vfs(vfs)?);
+        }
         let path = if memory {
             ":memory:".to_owned()
         } else {
@@ -100,7 +110,29 @@ impl Target {
     }
 }
 
-/// The pragmas for every connection, in the order SQLx applies them.
+/// The VFS [`NativeSqliteOptions::single_process`] opens through, checked
+/// against a `vfs` the URL already names.
+fn single_process_vfs(named: Option<String>) -> Result<String, BackendError> {
+    if !cfg!(unix) {
+        return Err(BackendError::Connection(
+            "single-process SQLite needs the unix-excl VFS, which only exists on Unix".into(),
+        ));
+    }
+    match named {
+        Some(vfs) if vfs != SINGLE_PROCESS_VFS => Err(BackendError::Connection(format!(
+            "single-process SQLite opens through the {SINGLE_PROCESS_VFS} VFS, \
+             but the URL names vfs={vfs}"
+        ))),
+        _ => Ok(SINGLE_PROCESS_VFS.to_owned()),
+    }
+}
+
+/// SQLite's Unix VFS that locks the file once for the whole process and
+/// keeps the WAL index in heap memory.
+const SINGLE_PROCESS_VFS: &str = "unix-excl";
+
+/// The pragmas for every connection, in the order SQLx applies them,
+/// followed by the native backend's own.
 fn setup(options: &NativeSqliteOptions) -> String {
     let mut sql = String::new();
     if let Some(mode) = options.journal_mode {
@@ -117,6 +149,12 @@ fn setup(options: &NativeSqliteOptions) -> String {
         sql.push_str("PRAGMA synchronous = ");
         sql.push_str(level.as_sql());
         sql.push_str("; ");
+    }
+    if options.single_process {
+        // Reads the header, which takes the process-wide lock now: a
+        // database another process has open fails here, not on a later
+        // query. (Harmless for an in-memory database.)
+        sql.push_str("PRAGMA schema_version; ");
     }
     sql
 }
@@ -260,6 +298,38 @@ mod tests {
     }
 
     #[test]
+    fn single_process_opens_through_unix_excl() -> Result<(), BackendError> {
+        let options = NativeSqliteOptions {
+            single_process: true,
+            ..NativeSqliteOptions::default()
+        };
+        let parse = |url: &str| Target::parse(url, &options);
+        assert_eq!(
+            parse("sqlite://app.db?mode=rwc")?.path,
+            "file:app%2Edb?vfs=unix%2Dexcl"
+        );
+        assert_eq!(
+            parse("sqlite://app.db?vfs=unix-excl")?.path,
+            "file:app%2Edb?vfs=unix%2Dexcl"
+        );
+        assert_eq!(parse("sqlite::memory:")?.path, ":memory:");
+        let refused = |url: &str| match parse(url) {
+            Err(BackendError::Connection(message)) => message,
+            other => format!("accepted: {other:?}"),
+        };
+        assert_eq!(
+            refused("sqlite://app.db?vfs=unix-none"),
+            "single-process SQLite opens through the unix-excl VFS, \
+             but the URL names vfs=unix-none"
+        );
+        assert_eq!(
+            refused("sqlite://app.db?mode=ro"),
+            "single-process SQLite needs a writable database, not mode=ro"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn setup_follows_the_options() {
         let options = NativeSqliteOptions {
             journal_mode: Some(super::super::JournalMode::Wal),
@@ -274,6 +344,14 @@ mod tests {
         assert_eq!(
             setup(&NativeSqliteOptions::default()),
             "PRAGMA foreign_keys = ON; "
+        );
+        let tuned = NativeSqliteOptions {
+            single_process: true,
+            ..NativeSqliteOptions::default()
+        };
+        assert_eq!(
+            setup(&tuned),
+            "PRAGMA foreign_keys = ON; PRAGMA schema_version; "
         );
     }
 }

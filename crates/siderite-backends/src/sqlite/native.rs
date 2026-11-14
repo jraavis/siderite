@@ -53,6 +53,48 @@
 //! the transaction is then rolled back and later calls on it fail with
 //! [`QueryError::TransactionAborted`](siderite_orm::QueryError::TransactionAborted).
 //!
+//! # Single-process mode
+//!
+//! With WAL, every statement on a reader opens and closes a read
+//! transaction, and by default each of those locks a slot in the shared
+//! WAL index (the `-shm` file) with `fcntl` while holding a mutex every
+//! connection in the process shares. Under load that system call, and the
+//! threads queueing behind it, is most of what the read transaction costs.
+//!
+//! [`NativeSqliteOptions::single_process`] opens the database through
+//! SQLite's `unix-excl` VFS instead. On first use the process takes an
+//! exclusive POSIX lock on the database file and keeps it until its last
+//! connection to the file closes; from then on the locks between
+//! connections are bookkeeping in memory, and the WAL index lives in heap
+//! memory (no `-shm` file is created). Inside the process nothing changes:
+//! the readers, the writer and schema connections still run side by side,
+//! readers still see every commit as soon as it is made, reads still run
+//! while a write transaction is open, and checkpoints run as usual. Other
+//! SQLite connections the same process opens to the file share the
+//! in-memory locks and keep working.
+//!
+//! What it costs: **no other process can use the database while this one
+//! has it open** — no second server process, no CLI migration run, no
+//! `sqlite3` shell, no backup or replication tool that reads the WAL. A
+//! process that tries is held off by the lock: its read waits out its own
+//! busy timeout and fails with "database is locked". The other way round,
+//! if another process is using the database when this backend connects,
+//! [`connect_with`](NativeSqliteBackend::connect_with) waits out
+//! [`busy_timeout`](NativeSqliteOptions::busy_timeout) and fails the same
+//! way. The lock belongs to the process, so the kernel drops it when the
+//! process exits, cleanly or not.
+//!
+//! Durability is unchanged: the journal, the syncs and what a commit
+//! writes are the same. Only the WAL index, which SQLite can rebuild from
+//! the WAL, moves to memory; after a crash the next process to open the
+//! database rebuilds it, as SQLite always does after a crash, and every
+//! committed transaction is there.
+//!
+//! It applies to file databases on Unix opened read-write (a `mode=ro`
+//! handle takes no process lock, so that combination is rejected), cannot
+//! be combined with a different `vfs=` in the URL, and is ignored for
+//! in-memory databases.
+//!
 //! # Parity with the SQLx backend
 //!
 //! Values bind and decode identically (by storage class), errors classify
@@ -193,6 +235,18 @@ pub struct NativeSqliteOptions {
     pub reads: Dispatch,
     /// Where writes, transactions and schema changes run.
     pub writes: Dispatch,
+    /// Single-process mode (SQLite's `unix-excl` VFS): cheaper read
+    /// transactions, at the price of locking every other process out of
+    /// the database while this one has it open. Off by default.
+    ///
+    /// Another process (a second server, a CLI migration, a `sqlite3`
+    /// shell) that tries to read waits out its busy timeout and fails with
+    /// "database is locked"; if one is already using the database,
+    /// connecting fails that way after
+    /// [`busy_timeout`](Self::busy_timeout). Durability is unchanged. Unix
+    /// only, read-write file databases only. See
+    /// [single-process mode](self#single-process-mode).
+    pub single_process: bool,
 }
 
 impl Default for NativeSqliteOptions {
@@ -207,6 +261,7 @@ impl Default for NativeSqliteOptions {
             acquire_timeout: Duration::from_secs(30),
             reads: Dispatch::Inline,
             writes: Dispatch::Blocking,
+            single_process: false,
         }
     }
 }

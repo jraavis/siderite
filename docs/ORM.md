@@ -90,6 +90,16 @@ transactions and schema changes queue for one writer connection behind the
 write gate and run on Tokio's blocking pool. `Dispatch` changes either
 side. Group commit is not available on the native backend yet.
 
+`single_process: true` opens the file through SQLite's `unix-excl` VFS:
+the process takes one exclusive lock on the database and keeps the WAL
+index in memory, so a read no longer makes `fcntl` locking calls. The
+backend's own connections behave as before, and durability is unchanged.
+The price is that **no other process can use the database while the app
+has it open** (a second server, a CLI migration, a `sqlite3` shell): it
+fails with "database is locked" after its busy timeout, and connecting
+fails the same way if another process already has the file open. Off by
+default; Unix and read-write file databases only.
+
 ### Experimental native MySQL
 
 Enable `mysql-native` on `siderite-backends` to opt into

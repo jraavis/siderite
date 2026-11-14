@@ -64,6 +64,15 @@ or on the blocking pool (writes, by default). An inline statement occupies
 its runtime worker until SQLite returns, so switch reads to
 `Dispatch::Blocking` for long analytical queries.
 
+`single_process: true` (off by default) opens the file through SQLite's
+`unix-excl` VFS: one exclusive lock for the whole process and the WAL index
+in memory, so read transactions make no `fcntl` locking calls. Durability
+and the backend's own concurrency are unchanged, but **no other process can
+use the database while the app has it open**: a second server, a CLI
+migration or a `sqlite3` shell fails with "database is locked" after its
+busy timeout, and connecting fails the same way if another process already
+has the file open. Unix and read-write file databases only.
+
 Live tests skip themselves when the matching URL variable is unset. Start
 the four servers from the root `docker-compose.yml`. See
 [Testing](/siderite/guides/production/testing/).

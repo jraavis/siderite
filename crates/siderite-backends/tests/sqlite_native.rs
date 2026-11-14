@@ -1,7 +1,8 @@
 //! The native SQLite backend: parity with the SQLx backend on the same SQL,
 //! and the behaviour its connection layout promises (concurrent WAL reads,
-//! queued writers, rollback on drop, the single in-memory connection, and
-//! where statements run).
+//! queued writers, rollback on drop, the single in-memory connection, where
+//! statements run, and single-process mode). The connection-layout tests
+//! run in both locking modes.
 #![cfg(feature = "sqlite-native")]
 
 use chrono::{NaiveDate, TimeZone, Utc};
@@ -50,6 +51,19 @@ fn wal() -> NativeSqliteOptions {
         journal_mode: Some(JournalMode::Wal),
         ..NativeSqliteOptions::default()
     }
+}
+
+fn single_process() -> NativeSqliteOptions {
+    NativeSqliteOptions {
+        single_process: true,
+        ..wal()
+    }
+}
+
+/// WAL options in both locking modes, for behaviour that must not depend
+/// on the mode.
+fn modes() -> [NativeSqliteOptions; 2] {
+    [wal(), single_process()]
 }
 
 async fn both(schema: &str) -> Result<(SqliteBackend, NativeSqliteBackend), OrmError> {
@@ -268,11 +282,15 @@ async fn schema_transactions_check_new_violations_like_sqlx() -> Check {
 /// see the last committed state.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn wal_readers_run_while_a_write_transaction_is_open() -> Check {
+    for base in modes() {
+        readers_run_beside_a_write_transaction(base).await?;
+    }
+    Ok(())
+}
+
+async fn readers_run_beside_a_write_transaction(base: NativeSqliteOptions) -> Check {
     let file = TempDb::new();
-    let options = NativeSqliteOptions {
-        readers: 4,
-        ..wal()
-    };
+    let options = NativeSqliteOptions { readers: 4, ..base };
     let db = NativeSqliteBackend::connect_with(&file.url(), options).await?;
     db.execute_script("CREATE TABLE items (n INTEGER); INSERT INTO items VALUES (1)")
         .await?;
@@ -293,13 +311,21 @@ async fn wal_readers_run_while_a_write_transaction_is_open() -> Check {
     let all = futures_util::future::join_all(reads);
     let counts = tokio::time::timeout(Duration::from_secs(5), all)
         .await
-        .expect("reads waited for the writer");
+        .map_err(|_| BackendError::Database("reads waited for the writer".into()))?;
     for read in counts {
-        assert_eq!(read.unwrap()?, Value::Int(1));
+        let read = read.map_err(|e| BackendError::Database(e.to_string()))?;
+        assert_eq!(read?, Value::Int(1));
     }
     tx.commit().await?;
     assert_eq!(count(&db, "items").await?, Value::Int(2));
     Ok(())
+}
+
+/// Every locking mode with every dispatch.
+fn modes_and_dispatch() -> impl Iterator<Item = (NativeSqliteOptions, Dispatch)> {
+    modes().into_iter().flat_map(|base| {
+        [Dispatch::Inline, Dispatch::Blocking].map(|dispatch| (base.clone(), dispatch))
+    })
 }
 
 /// Writers queue for the one writer connection instead of meeting SQLite's
@@ -307,12 +333,12 @@ async fn wal_readers_run_while_a_write_transaction_is_open() -> Check {
 /// fail at once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn writers_queue_instead_of_failing_busy() -> Check {
-    let file = TempDb::new();
-    for writes in [Dispatch::Inline, Dispatch::Blocking] {
+    for (base, writes) in modes_and_dispatch() {
+        let file = TempDb::new();
         let options = NativeSqliteOptions {
             busy_timeout: Duration::ZERO,
             writes,
-            ..wal()
+            ..base
         };
         let db = NativeSqliteBackend::connect_with(&file.url(), options).await?;
         db.execute_script("DROP TABLE IF EXISTS items; CREATE TABLE items (n INTEGER UNIQUE)")
@@ -345,9 +371,9 @@ async fn writers_queue_instead_of_failing_busy() -> Check {
 /// whichever way writes are dispatched.
 #[tokio::test]
 async fn dropped_transactions_roll_back() -> Check {
-    for writes in [Dispatch::Inline, Dispatch::Blocking] {
+    for (base, writes) in modes_and_dispatch() {
         let file = TempDb::new();
-        let options = NativeSqliteOptions { writes, ..wal() };
+        let options = NativeSqliteOptions { writes, ..base };
         let db = NativeSqliteBackend::connect_with(&file.url(), options)
             .await?
             .with_write_timeout(Duration::from_secs(2));
@@ -466,12 +492,12 @@ async fn ticks_during<F: Future<Output = Result<(), OrmError>>>(
 /// current-thread runtime runs meanwhile; offloaded ones leave it free.
 #[tokio::test(flavor = "current_thread")]
 async fn inline_blocks_the_runtime_and_blocking_does_not() -> Check {
-    let file = TempDb::new();
-    for mode in [Dispatch::Inline, Dispatch::Blocking] {
+    for (base, mode) in modes_and_dispatch() {
+        let file = TempDb::new();
         let options = NativeSqliteOptions {
             reads: mode,
             writes: mode,
-            ..wal()
+            ..base
         };
         let db = NativeSqliteBackend::connect_with(&file.url(), options).await?;
         db.execute_script("DROP TABLE IF EXISTS items; CREATE TABLE items (n INTEGER)")
@@ -493,5 +519,262 @@ async fn inline_blocks_the_runtime_and_blocking_does_not() -> Check {
             Dispatch::Blocking => assert!(read > 0 && write > 0, "{read} {write}"),
         }
     }
+    Ok(())
+}
+
+// ---- single-process mode ----
+
+/// Readers see each commit as soon as it is made, whether it came from a
+/// single statement or a transaction, and no `-shm` file appears: the WAL
+/// index is in memory.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn single_process_readers_see_every_commit() -> Check {
+    let file = TempDb::new();
+    let options = NativeSqliteOptions {
+        readers: 4,
+        ..single_process()
+    };
+    let db = NativeSqliteBackend::connect_with(&file.url(), options).await?;
+    db.execute_script("CREATE TABLE items (n INTEGER)").await?;
+    for n in 1..=40 {
+        if n % 4 == 0 {
+            let tx = db.begin(None).await?;
+            tx.execute_raw("INSERT INTO items VALUES (?)", vec![Value::Int(n)])
+                .await?;
+            tx.commit().await?;
+        } else {
+            db.execute_raw("INSERT INTO items VALUES (?)", vec![Value::Int(n)])
+                .await?;
+        }
+        let reads: Vec<_> = (0..8)
+            .map(|_| {
+                let db = db.clone();
+                tokio::spawn(async move { count(&db, "items").await })
+            })
+            .collect();
+        for read in reads {
+            assert_eq!(read.await.unwrap()?, Value::Int(n));
+        }
+    }
+    assert!(file.with_suffix("-wal").exists());
+    assert!(!file.with_suffix("-shm").exists());
+    Ok(())
+}
+
+/// Another process is locked out while the backend has the database open:
+/// a plain SQLite read fails with "database is locked" once its busy
+/// timeout runs out, and so does a second single-process backend. Once the
+/// backend is dropped the other process gets in.
+#[tokio::test]
+async fn single_process_locks_other_processes_out() -> Check {
+    let file = TempDb::new();
+    let db = NativeSqliteBackend::connect_with(&file.url(), single_process()).await?;
+    db.execute_script("CREATE TABLE items (n INTEGER); INSERT INTO items VALUES (1)")
+        .await?;
+    assert_eq!(probe(&file, "read", "shared")?, "err database is locked");
+    assert_eq!(
+        probe(&file, "connect", "single")?,
+        "err database error: error returned from database: (code: 5) database is locked"
+    );
+    // Inside the process, a connection of its own still works.
+    assert_eq!(probe_in_process(&file), Ok(1));
+    drop(db);
+    assert_eq!(probe(&file, "read", "shared")?, "ok 1");
+    Ok(())
+}
+
+/// The other way round: connecting fails, after the busy timeout, while
+/// another process is using the database.
+#[tokio::test]
+async fn single_process_connect_fails_while_another_process_reads() -> Check {
+    use std::io::{BufRead, BufReader};
+    let file = TempDb::new();
+    let db = NativeSqliteBackend::connect_with(&file.url(), wal()).await?;
+    db.execute_script("CREATE TABLE items (n INTEGER)").await?;
+    drop(db);
+    let mut child = probe_command(&file, "hold", "shared")?
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| BackendError::Connection(e.to_string()))?;
+    let stdout = child.stdout.take().expect("piped stdout");
+    let mut lines = BufReader::new(stdout).lines().map_while(Result::ok);
+    let mut next_report = || lines.find_map(|line| probe_report(&line).map(str::to_owned));
+    assert_eq!(next_report().as_deref(), Some("ready"));
+    let options = NativeSqliteOptions {
+        busy_timeout: Duration::from_millis(200),
+        ..single_process()
+    };
+    let refused = NativeSqliteBackend::connect_with(&file.url(), options.clone()).await;
+    assert_eq!(
+        refused.map(drop).map_err(|e| e.to_string()),
+        Err(
+            "database connection error: database error: error returned from database: \
+             (code: 5) database is locked"
+                .into()
+        )
+    );
+    drop(child.stdin.take());
+    assert_eq!(next_report().as_deref(), Some("ok 0"));
+    assert!(child.wait().is_ok_and(|status| status.success()));
+    let db = NativeSqliteBackend::connect_with(&file.url(), options).await?;
+    assert_eq!(count(&db, "items").await?, Value::Int(0));
+    Ok(())
+}
+
+/// A process that dies without closing its connections leaves an
+/// unchecked-pointed WAL behind; the next one to open the database finds
+/// every committed transaction, in either mode.
+#[tokio::test]
+async fn reopening_after_a_crash_recovers_committed_data() -> Check {
+    for (base, mode) in modes().into_iter().zip(["shared", "single"]) {
+        let file = TempDb::new();
+        assert_eq!(probe(&file, "crash", mode)?, "committed", "{mode}");
+        let wal = std::fs::metadata(file.with_suffix("-wal")).map(|m| m.len());
+        assert!(wal.as_ref().is_ok_and(|len| *len > 0), "{mode}: {wal:?}");
+        let db = NativeSqliteBackend::connect_with(&file.url(), base).await?;
+        assert_eq!(count(&db, "items").await?, Value::Int(100), "{mode}");
+        let check = db.fetch_raw("PRAGMA integrity_check", Vec::new()).await?;
+        assert_eq!(
+            check.rows[0].column_at(0).map(|(_, v)| v),
+            Some(&Value::Text("ok".into()))
+        );
+        db.execute_raw("INSERT INTO items VALUES (101)", Vec::new())
+            .await?;
+        assert_eq!(count(&db, "items").await?, Value::Int(101), "{mode}");
+    }
+    Ok(())
+}
+
+impl TempDb {
+    fn with_suffix(&self, suffix: &str) -> PathBuf {
+        let mut path = self.0.clone().into_os_string();
+        path.push(suffix);
+        PathBuf::from(path)
+    }
+}
+
+/// Environment for [`child_process_probe`]: the database, what to do, and
+/// the locking mode (`shared` or `single`).
+const PROBE_DB: &str = "SIDERITE_NATIVE_PROBE_DB";
+const PROBE_ACTION: &str = "SIDERITE_NATIVE_PROBE_ACTION";
+const PROBE_MODE: &str = "SIDERITE_NATIVE_PROBE_MODE";
+
+/// This test binary, rerun to execute only [`child_process_probe`].
+fn probe_command(
+    file: &TempDb,
+    action: &str,
+    mode: &str,
+) -> Result<std::process::Command, OrmError> {
+    let exe = std::env::current_exe().map_err(|e| BackendError::Connection(e.to_string()))?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .args(["child_process_probe", "--exact", "--nocapture"])
+        .args(["--test-threads", "1"])
+        .env(PROBE_DB, &file.0)
+        .env(PROBE_ACTION, action)
+        .env(PROBE_MODE, mode);
+    Ok(command)
+}
+
+/// Run the probe in a second process and return what it reported.
+fn probe(file: &TempDb, action: &str, mode: &str) -> Result<String, OrmError> {
+    let output = probe_command(file, action, mode)?
+        .output()
+        .map_err(|e| BackendError::Connection(e.to_string()))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report = stdout.lines().find_map(probe_report).map(str::to_owned);
+    Ok(report.unwrap_or_else(|| {
+        format!(
+            "no report ({}): {stdout}{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )
+    }))
+}
+
+/// What the probe reported on `line`; libtest may print its own text first
+/// on the same line.
+fn probe_report(line: &str) -> Option<&str> {
+    line.split_once("PROBE ").map(|(_, report)| report)
+}
+
+/// A plain SQLite connection in this process, outside the backend.
+fn probe_in_process(file: &TempDb) -> Result<i64, String> {
+    let conn = rusqlite::Connection::open(&file.0).map_err(|e| e.to_string())?;
+    conn.query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+        .map_err(|e| e.to_string())
+}
+
+/// Not a test of its own: the second process the tests above start. Does
+/// nothing unless [`PROBE_DB`] is set.
+///
+/// - `read`: a plain SQLite connection, as a `sqlite3` shell would open it,
+///   with no busy timeout, counts `items`.
+/// - `connect`: a single-process backend with a 100 ms busy timeout.
+/// - `hold`: a plain connection reads, reports `ready`, and keeps the
+///   database open until stdin closes.
+/// - `crash`: a backend in the given mode commits 100 rows and aborts
+///   without closing anything.
+#[tokio::test]
+async fn child_process_probe() -> Check {
+    let Some(path) = std::env::var_os(PROBE_DB).map(PathBuf::from) else {
+        return Ok(());
+    };
+    let action = std::env::var(PROBE_ACTION).unwrap_or_default();
+    let base = match std::env::var(PROBE_MODE).as_deref() {
+        Ok("single") => single_process(),
+        _ => wal(),
+    };
+    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let report = match action.as_str() {
+        "read" => {
+            let conn = rusqlite::Connection::open(&path).expect("open");
+            conn.busy_timeout(Duration::ZERO).expect("busy timeout");
+            match conn.query_row("SELECT COUNT(*) FROM items", [], |row| row.get::<_, i64>(0)) {
+                Ok(n) => format!("ok {n}"),
+                Err(e) => format!("err {e}"),
+            }
+        }
+        "connect" => {
+            let options = NativeSqliteOptions {
+                busy_timeout: Duration::from_millis(100),
+                ..base
+            };
+            match NativeSqliteBackend::connect_with(&url, options).await {
+                Ok(db) => format!("ok {:?}", count(&db, "items").await?),
+                Err(BackendError::Connection(e)) => format!("err {e}"),
+                Err(e) => format!("err {e}"),
+            }
+        }
+        "hold" => {
+            let conn = rusqlite::Connection::open(&path).expect("open");
+            let n: i64 = conn
+                .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+                .expect("read");
+            println!("PROBE ready");
+            let mut rest = Vec::new();
+            drop(std::io::Read::read_to_end(&mut std::io::stdin(), &mut rest));
+            format!("ok {n}")
+        }
+        "crash" => {
+            let db = NativeSqliteBackend::connect_with(&url, base).await?;
+            db.execute_script("CREATE TABLE items (n INTEGER)").await?;
+            for n in 0..50 {
+                db.execute_raw("INSERT INTO items VALUES (?)", vec![Value::Int(n)])
+                    .await?;
+            }
+            let tx = db.begin(None).await?;
+            for n in 50..100 {
+                tx.execute_raw("INSERT INTO items VALUES (?)", vec![Value::Int(n)])
+                    .await?;
+            }
+            tx.commit().await?;
+            println!("PROBE committed");
+            std::process::abort();
+        }
+        other => format!("unknown action {other}"),
+    };
+    println!("PROBE {report}");
     Ok(())
 }
