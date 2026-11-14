@@ -13,7 +13,7 @@ cargo bench -p siderite-bench -- --warm-up-time 1 --measurement-time 2
 
 Run a single group by name, for example `cargo bench -p siderite-bench -- routing`.
 The groups are `routing`, `extract`, and `orm`. Criterion writes HTML
-reports to `target/criterion`.
+reports with SVG charts to `target/criterion/report/index.html`.
 
 Numbers are machine-specific. Compare runs only on the same machine, and
 treat the README’s table as a snapshot, not a guarantee.
@@ -65,6 +65,9 @@ truncated and reseeded with 100 rows before each phase.
 | SQLite (WAL) | list 20 | 17,406 | 1,705 | 10.21x | 2.8 ms / 24.4 ms | `--sqlite-wal` |
 | SQLite (WAL) | get one | 20,818 | 6,052 | 3.44x | 3.2 ms / 8.2 ms | |
 | SQLite (WAL) | insert | 14,508 | 4,414 | 3.29x | 1.9 ms / 27.7 ms | |
+| SQLite (native WAL) | list 20 | 20,359 | 789 | 25.89x | 1.8 ms / 73.2 ms | `--sqlite-driver native`, pool 10 |
+| SQLite (native WAL) | get one | 19,301 | 2,303 | 9.13x | 1.7 ms / 13.8 ms | Direct driver row decode |
+| SQLite (native WAL) | insert | 9,945 | 1,959 | 5.20x | 22.9 ms / 19.4 ms | Dedicated writer task |
 | PostgreSQL 17 | list 20 | 9,583 | 7,606 | 1.26x | 6.1 ms / 9.0 ms | Pool 10 |
 | PostgreSQL 17 | get one | 10,723 | 8,422 | 1.27x | 3.5 ms / 8.0 ms | |
 | PostgreSQL 17 | insert | 8,546 | 5,957 | 1.43x | 1.7 ms / 2.7 ms | |
@@ -80,6 +83,7 @@ truncated and reseeded with 100 rows before each phase.
 - **SQLite write gate:** Siderite's `WriteGate` serializes write requests across pool connections in-process via a FIFO queue. This avoids SQLite file lock races where losing connections sleep in SQLite's busy handler (exponential backoff up to 100 ms), dropping p99 tail latency from ~150 ms to **5.4 ms**.
 - **SQLite group commit:** The opt-in `SqliteBackend::group_commit` batches concurrent autocommit writes into a single transaction and commit sync, driving insert throughput to **8,589 req/s** (**5.89x** speedup).
 - **SQLite WAL mode:** In write-ahead log mode, readers and writers operate concurrently without blocking, reaching **14,508 req/s** (**3.29x** speedup) at **1.9 ms** p99.
+- **Native SQLite backend & direct row decoding:** The opt-in native driver (`--sqlite-driver native`, `--features sqlite-native`) uses dedicated reader connections and an asynchronous `WriteGate`. Combined with direct row-to-model decoding (`QuerySet::all` row sink) that skips intermediary `Row` and `Vec<Value>` allocations, 20-row listing throughput reaches **20,359 req/s** (**25.89x** speedup over FastAPI) with **1.8 ms** p99 latency.
 
 ## See also
 

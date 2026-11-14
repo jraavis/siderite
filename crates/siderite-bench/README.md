@@ -18,9 +18,10 @@ cargo bench -p siderite-bench -- --warm-up-time 1 --measurement-time 2
   `axum::response::IntoResponse`, and `serde_json::to_vec`).
 - `orm`: `QuerySet` builder to `QueryPlan`, SQL compilation of that plan for
   SQLite and PostgreSQL, and fetching 100 rows from in-memory SQLite.
-  `orm/sqlx_fetch_100_rows` runs the same query through raw SQLx with the
-  same single-connection pool, as the driver-only control: the gap between
-  the two is what the ORM adds. `orm/decode_100_rows` decodes already
+  `orm/sqlite_native_fetch_100_rows` runs the 100-row fetch on the native SQLite
+  backend (`NativeSqliteBackend`). `orm/sqlx_fetch_100_rows` runs the same query
+  through raw SQLx with the same single-connection pool, as the driver-only control:
+  the gap between the two is what the ORM adds. `orm/decode_100_rows` decodes already
   fetched rows into models with no driver involved, by cloning
   (`borrowed`, `Model::from_row`), by moving with a by-name lookup per
   row (`moved`, `Model::from_row_mut`, the `select_related` path) and by
@@ -28,6 +29,8 @@ cargo bench -p siderite-bench -- --warm-up-time 1 --measurement-time 2
   `Model::from_cells`, the path `QuerySet::all` takes over a backend's
   rows). On the native SQLite backend `QuerySet::all` skips the rows and
   decodes driver rows straight into models.
+  `orm/get_by_pk` benchmarks primary-key lookups across Siderite SQLx,
+  Siderite Native, raw SQLx, and in-memory `rusqlite` as the baseline floor.
 
 ## Results
 
@@ -78,6 +81,11 @@ Notes on what is measured:
 - `serde_json/to_vec` serializes the raw model to bytes without constructing an HTTP response.
 - `orm/sqlite_fetch_100_rows` runs `Widget::objects(&db).all()` against a
   single-connection in-memory SQLite database seeded with 100 rows.
+- `orm/sqlite_native_fetch_100_rows` runs the same 100-row fetch on
+  `NativeSqliteBackend`, decoding driver rows directly into model fields.
+- `orm/get_by_pk` measures primary-key point lookups across Siderite (SQLx),
+  Siderite Native, raw SQLx, and in-memory `rusqlite`.
+- Criterion HTML reports with plots are written to `target/criterion/report/index.html`.
 
 ## End-to-end HTTP benchmarks
 
